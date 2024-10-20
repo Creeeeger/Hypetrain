@@ -6,31 +6,22 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 public class Settings_handler extends JFrame {
+    static JLabel volume, hype, infos;
+    static JTextField volume_text, hype_text;
+    int vol;
+    float hyp;
 
-    // JTextField components for user input
-    JTextField resolution; // Text field for the user to input the desired resolution
-    JTextField epochs; // Text field for the user to input the number of epochs
-    JTextField batch; // Text field for the user to input the batch size
-    JTextField display_scale; // Text field for the user to input the data visualization scale
-
-    // Descriptive labels to guide the user in the GUI
-    JLabel resolution_desc; // Label describing the resolution input field
-    JLabel epochs_desc; // Label describing the epochs input field
-    JLabel batch_desc; // Label describing the batch size input field
-    JLabel display_scale_desc; // Label describing the display scale input field
-    JLabel infos; // Label for displaying informational messages or error messages
-
-    // Constructor for the model_param class to set up the user interface for model parameter configuration
-    public Settings_handler() {
-        // Set the layout manager for the frame to BorderLayout with specified horizontal and vertical gaps
+    public Settings_handler(int vol, float hyp) {
         setLayout(new BorderLayout(10, 10));
+        this.vol = vol;
+        this.hyp = hyp;
 
         // Create a panel to hold the settings components
         JPanel settingsPanel = new JPanel();
         // Set the layout of the panel to BoxLayout, which arranges components vertically
         settingsPanel.setLayout(new BoxLayout(settingsPanel, BoxLayout.Y_AXIS));
         // Add a titled border to the panel for clarity
-        settingsPanel.setBorder(BorderFactory.createTitledBorder("Model Parameters for training models"));
+        settingsPanel.setBorder(BorderFactory.createTitledBorder("Settings for stock management"));
 
         // Informational label to guide the user
         infos = new JLabel("Select your settings and then press apply");
@@ -39,39 +30,21 @@ public class Settings_handler extends JFrame {
         // Add space between the label and the next component
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
-        // Create and add components for the resolution setting
-        resolution_desc = new JLabel("Picture size - to x * x pixel the images will be downscaled first before processing (larger value more information but longer processing time)");
-        resolution = new JTextField(String.valueOf(res), 4); // Create a text field with the current resolution as its initial value
+        volume = new JLabel();
+        volume_text = new JTextField(String.valueOf(vol), 15);
 
-        // Create and add components for the epochs setting
-        epochs_desc = new JLabel("Epochs - How many training rounds");
-        epochs = new JTextField(String.valueOf(epo), 4); // Create a text field for the number of epochs
-
-        // Create and add components for the batch size setting
-        batch_desc = new JLabel("Batch size - how many images should be used for training at once");
-        batch = new JTextField(String.valueOf(bat), 4); // Create a text field for batch size
-
-        // Create and add components for the display scale setting
-        display_scale_desc = new JLabel("Data visualisation scale for the displaying and analysis of training");
-        display_scale = new JTextField(String.valueOf(lea), 10); // Create a text field for display scale
+        hype = new JLabel();
+        hype_text = new JTextField(String.valueOf(hyp), 5);
 
         // Add components to the settings panel with spacing
-        settingsPanel.add(resolution_desc);
+        settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between description and input field
-        settingsPanel.add(resolution);
+        settingsPanel.add(volume_text);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between fields
-        settingsPanel.add(epochs_desc);
+        settingsPanel.add(hype);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(epochs);
+        settingsPanel.add(hype_text);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(batch_desc);
-        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(batch);
-        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(display_scale_desc);
-        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(display_scale);
-        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Add space before the button
 
         // Create and configure the "Apply Settings" button
         JButton apply = new JButton("Apply Settings");
@@ -93,18 +66,17 @@ public class Settings_handler extends JFrame {
         public void actionPerformed(ActionEvent e) {
             try {
                 // Retrieve and parse user input from text fields
-                // The user inputs are expected to be in specific formats (int or float)
-                int res = Integer.parseInt(resolution.getText());  // Parse resolution as an integer
-                int epo = Integer.parseInt(epochs.getText());      // Parse epochs as an integer
-                int bat = Integer.parseInt(batch.getText());        // Parse batch size as an integer
-                float lea = Float.parseFloat(display_scale.getText()); // Parse learning rate as a float
+                vol = Integer.parseInt(volume_text.getText());
+                hyp = Float.parseFloat(hype_text.getText());
 
-                // Create an instance of the main UI class to call the method that saves and reloads the configuration
-                Main_UI mainUI = new Main_UI();
-                // Save the configuration and reload it with the new settings
-                mainUI.save_reload_config(res, epo, bat, lea, pic, ten);
+                String[][] values = {
+                        {"volume", String.valueOf(vol)},
+                        {"hype_strength", String.valueOf(hyp)}
+                };
 
-                // Close the settings window by setting its visibility to false
+                config_handler.save_config(values);
+
+                System.out.println("Data saved successfully to config");
                 setVisible(false);
             } catch (Exception x) {
                 // Handle any parsing errors that occur if the input is not in the expected format
