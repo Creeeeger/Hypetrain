@@ -2,13 +2,20 @@ package org.crecker;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.ActionEvent;
+import java.awt.event.ActionListener;
 import java.io.File;
-import java.util.Objects;
+import java.util.HashMap;
+import java.util.Map;
 
 public class Main_UI extends JFrame {
     static int vol;
     static float hyp;
     static String[][] setting_data;
+    static JPanel symbol_panel, chart_tool_panel, hype_panel;
+    static JMenuBar menuBar;
+    static JMenu file, settings;
+    static JMenuItem load, save, exit, setting_handler;
 
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
@@ -18,23 +25,21 @@ public class Main_UI extends JFrame {
         // Menu bar
         setJMenuBar(createMenuBar());
 
-        // Create the sections
-        JPanel leftPanel = createLeftPanel();       // Scroll section with items
-        JPanel centerPanel = createCenterPanel();   // Stock courses section
-        JPanel toolsPanel = createToolsPanel();     // Tools section
-        JPanel notificationsPanel = createNotificationsPanel(); // Notifications section
+        //Panels
+        symbol_panel = create_symbol_panel();
+        chart_tool_panel = create_chart_tool_panel();
+        hype_panel = create_hype_panel();
 
         // Add sections to the frame using BorderLayout
-        add(leftPanel, BorderLayout.WEST);
-        add(centerPanel, BorderLayout.CENTER);
-        add(toolsPanel, BorderLayout.EAST);
-        add(notificationsPanel, BorderLayout.SOUTH); // Using south for better layout management
+        add(symbol_panel, BorderLayout.WEST);
+        add(chart_tool_panel, BorderLayout.CENTER);
+        add(hype_panel, BorderLayout.EAST);
     }
 
-    public static void main(String[] args) throws Exception {
+    public static void main(String[] args) {
         Main_UI gui = new Main_UI();
         gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        gui.setSize(800, 600); // Width and height of the window
+        gui.setSize(1000, 800); // Width and height of the window
         gui.setVisible(true);
         gui.setTitle("Hype train");
 
@@ -66,57 +71,65 @@ public class Main_UI extends JFrame {
         }
     }
 
-    // Create the menu bar
-    private JMenuBar createMenuBar() {
-        JMenuBar menuBar = new JMenuBar();
-
-        // Create menus
-        JMenu fileMenu = new JMenu("File");
-        JMenu editMenu = new JMenu("Edit");
-        JMenu helpMenu = new JMenu("Help");
-
-        // Add menu items to "File" menu
-        fileMenu.add(new JMenuItem("Open"));
-        fileMenu.add(new JMenuItem("Save"));
-        fileMenu.addSeparator(); // Add a separator line
-        fileMenu.add(new JMenuItem("Exit"));
-
-        // Add menu items to "Edit" menu
-        editMenu.add(new JMenuItem("Undo"));
-        editMenu.add(new JMenuItem("Redo"));
-
-        // Add menu items to "Help" menu
-        helpMenu.add(new JMenuItem("About"));
-
-        // Add menus to the menu bar
-        menuBar.add(fileMenu);
-        menuBar.add(editMenu);
-        menuBar.add(helpMenu);
-
-        return menuBar;
-    }
-
-    // Create the left panel with a scrollable list
-    private JPanel createLeftPanel() {
+    private JPanel create_symbol_panel() {
+        // Create a panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
+        panel.setPreferredSize(new Dimension(150, 0)); // Set fixed width of 150px
+
+        // Create a search field at the top
+        JTextField searchField = new JTextField();
+        searchField.setBorder(BorderFactory.createTitledBorder("Search"));
 
         // Create a scrollable list of stock items
-        String[] stockItems = {"Apple", "Tesla", "Google", "Amazon", "IBM", "NVIDIA"};
+        String[] stockItems = {"NVDA", "AAPL", "GOOGL", "TSLA", "MSFT"};
         JList<String> stockList = new JList<>(stockItems);
         stockList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Define fixed colors for each stock symbol using a HashMap
+        Map<String, Color> stockColors = new HashMap<>();
+        stockColors.put("NVDA", new Color(102, 205, 170)); // Medium Aquamarine
+        stockColors.put("AAPL", new Color(135, 206, 250)); // Light Sky Blue
+        stockColors.put("GOOGL", new Color(255, 182, 193)); // Light Pink
+        stockColors.put("TSLA", new Color(240, 230, 140)); // Khaki
+        stockColors.put("MSFT", new Color(221, 160, 221)); // Plum
+
+        // Create a custom ListCellRenderer to apply fixed colors and round borders
+        stockList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel(value, JLabel.CENTER); // Center text
+
+            // Set fixed background color from the map
+            Color fixedColor = stockColors.getOrDefault(value, Color.LIGHT_GRAY); // Default to light gray if no color is mapped
+            label.setOpaque(true);
+            label.setBackground(fixedColor);
+
+            // Set black round border
+            label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2, true));
+
+            // Handle selection styling without changing the background color
+            if (isSelected) {
+                label.setBackground(fixedColor); // Keep the fixed color
+                label.setForeground(Color.WHITE); // Change text color on selection
+            } else {
+                label.setForeground(Color.BLACK); // Default text color when not selected
+            }
+
+            return label;
+        });
+
+        // Add the stock list into a scroll pane
         JScrollPane scrollPane = new JScrollPane(stockList);
 
-        // Add scroll list to the panel
+        // Add the search field to the top and the scrollable stock list to the center of the panel
+        panel.add(searchField, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
 
-        // Optional: Add a border with title
-        panel.setBorder(BorderFactory.createTitledBorder("Stocks"));
+        // Optional: Add a border with title to the panel
+        panel.setBorder(BorderFactory.createTitledBorder("Stock Symbols"));
 
         return panel;
     }
 
-    // Create the center panel for stock courses
-    private JPanel createCenterPanel() {
+    private JPanel create_chart_tool_panel() {
         JPanel panel = new JPanel(new BorderLayout());
 
         // Display stock courses in a text area
@@ -125,42 +138,90 @@ public class Main_UI extends JFrame {
         JScrollPane scrollPane = new JScrollPane(stockCourses);
 
         panel.add(scrollPane, BorderLayout.CENTER);
-        panel.setBorder(BorderFactory.createTitledBorder("Stock Courses"));
+        panel.setBorder(BorderFactory.createTitledBorder("Stock Chats"));
 
         return panel;
     }
 
-    // Create the right panel with tools (using a box layout)
-    private JPanel createToolsPanel() {
+    private JPanel create_hype_panel() {
         JPanel panel = new JPanel();
+        panel.setPreferredSize(new Dimension(200, 0)); // Set fixed width of 150px
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
-        // Add tools like buttons and text fields
-        panel.add(new JLabel("Tools"));
-        panel.add(new JButton("Buy"));
-        panel.add(new JButton("Sell"));
-        panel.add(new JTextField("Amount"));
+        JLabel notifications = new JLabel("Hype notifications");
+        panel.add(notifications);
 
         // Optional: Add some spacing between tools
         panel.add(Box.createRigidArea(new Dimension(0, 10))); // Vertical spacing
 
-        panel.setBorder(BorderFactory.createTitledBorder("Tools"));
+        panel.setBorder(BorderFactory.createTitledBorder("Notifications"));
 
         return panel;
     }
 
-    // Create the far right panel with notifications
-    private JPanel createNotificationsPanel() {
-        JPanel panel = new JPanel(new BorderLayout());
+    // Create the menu bar
+    private JMenuBar createMenuBar() {
+        menuBar = new JMenuBar();
 
-        // Notifications displayed in a text area
-        JTextArea notificationsArea = new JTextArea("Notifications:\n\n- Stock Alert: AAPL is up 5%\n- New trade executed");
-        notificationsArea.setEditable(false); // Make the text area read-only
-        JScrollPane scrollPane = new JScrollPane(notificationsArea);
+        // Create menus
+        file = new JMenu("File");
+        settings = new JMenu("Settings");
 
-        panel.add(scrollPane, BorderLayout.CENTER);
-        panel.setBorder(BorderFactory.createTitledBorder("Notifications"));
+        //JMenuItems
+        load = new JMenuItem("Load the config");
+        save = new JMenuItem("Save the config");
+        exit = new JMenuItem("Exit and don't save");
 
-        return panel;
+        setting_handler = new JMenuItem("Open settings");
+
+        //add it to the menus
+        file.add(load);
+        file.add(save);
+        file.add(exit);
+
+        settings.add(setting_handler);
+
+        // Add menus to the menu bar
+        menuBar.add(file);
+        menuBar.add(settings);
+
+        load.addActionListener(new event_Load());
+        save.addActionListener(new event_save());
+        exit.addActionListener(new event_exit());
+        setting_handler.addActionListener(new event_settings());
+
+        return menuBar;
+    }
+
+    public class event_Load implements ActionListener{
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+
+        }
+    }
+
+    public class event_save implements ActionListener{
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+
+        }
+    }
+
+    public class event_exit implements ActionListener{
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+
+        }
+    }
+
+    public class event_settings implements ActionListener{
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+
+        }
     }
 }
