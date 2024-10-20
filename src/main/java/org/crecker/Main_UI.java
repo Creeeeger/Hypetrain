@@ -2,16 +2,13 @@ package org.crecker;
 
 import javax.swing.*;
 import java.awt.*;
+import java.io.File;
+import java.util.Objects;
 
 public class Main_UI extends JFrame {
-
-    public static void main(String[] args) {
-        Main_UI gui = new Main_UI();
-        gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        gui.setSize(800, 600); // Width and height of the window
-        gui.setVisible(true);
-        gui.setTitle("Hype train");
-    }
+    static int vol;
+    static float hyp;
+    static String[][] setting_data;
 
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
@@ -32,6 +29,41 @@ public class Main_UI extends JFrame {
         add(centerPanel, BorderLayout.CENTER);
         add(toolsPanel, BorderLayout.EAST);
         add(notificationsPanel, BorderLayout.SOUTH); // Using south for better layout management
+    }
+
+    public static void main(String[] args) throws Exception {
+        Main_UI gui = new Main_UI();
+        gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        gui.setSize(800, 600); // Width and height of the window
+        gui.setVisible(true);
+        gui.setTitle("Hype train");
+
+        File config = new File("config.xml");
+        if (!config.exists()) {
+            config_handler.create_config();
+            setting_data = config_handler.load_config();
+
+            //hard coded!!!
+            vol = Integer.parseInt(setting_data[0][1]);
+            hyp = Float.parseFloat(setting_data[1][1]);
+
+            System.out.println(vol + " " + hyp);
+            Settings_handler gui_Setting = new Settings_handler(vol, hyp);
+            gui_Setting.setVisible(true);
+            gui_Setting.setSize(500, 500);
+            gui_Setting.setAlwaysOnTop(true);
+            System.out.println("New config created");
+
+        } else {
+            System.out.println("Load config");
+            setting_data = config_handler.load_config();
+
+            for (int i = 0; i < setting_data.length; i++) {
+                System.out.println(setting_data[i][1]);
+            }
+
+            System.out.println("config loaded");
+        }
     }
 
     // Create the menu bar

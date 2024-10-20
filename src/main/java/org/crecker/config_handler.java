@@ -143,35 +143,13 @@ public class config_handler {
             Element root = doc.createElement("config");
             doc.appendChild(root);
 
-            // Create the <img_path> element to store the image path configuration and set its value to "/"
-            Element last_path = doc.createElement("img_path");
-            last_path.appendChild(doc.createTextNode("/"));
-            root.appendChild(last_path);
+            Element volume = doc.createElement("volume");
+            volume.appendChild(doc.createTextNode("1000"));
+            root.appendChild(volume);
 
-            // Create the <ts_path> element to store the path of the training set and set its value to "/"
-            Element database_path = doc.createElement("ts_path");
-            database_path.appendChild(doc.createTextNode("/"));
-            root.appendChild(database_path);
-
-            // Create the <resolution> element to store the resolution of the images and set its value to "32"
-            Element resolution = doc.createElement("resolution");
-            resolution.appendChild(doc.createTextNode("32"));
-            root.appendChild(resolution);
-
-            // Create the <batch> element to store the batch size and set its value to "100"
-            Element batch = doc.createElement("batch");
-            batch.appendChild(doc.createTextNode("100"));
-            root.appendChild(batch);
-
-            // Create the <epochs> element to store the number of epochs to run the training and set its value to "32"
-            Element epochs = doc.createElement("epochs");
-            epochs.appendChild(doc.createTextNode("32"));
-            root.appendChild(epochs);
-
-            // Create the <learning> element to store the learning rate and set its value to "1.0"
-            Element learning = doc.createElement("learning");
-            learning.appendChild(doc.createTextNode("1.0"));
-            root.appendChild(learning);
+            Element hype_strength = doc.createElement("hype_strength");
+            hype_strength.appendChild(doc.createTextNode("1.0"));
+            root.appendChild(hype_strength);
 
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
