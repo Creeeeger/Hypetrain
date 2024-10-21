@@ -97,7 +97,7 @@ public class Main_data_handler {
         plotData(timeSeries);
     }
 
-    private static void plotData(TimeSeries timeSeries) {
+    public static void plotData(TimeSeries timeSeries) {
         // Wrap the TimeSeries in a TimeSeriesCollection, which implements XYDataset
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         dataset.addSeries(timeSeries);
@@ -123,7 +123,7 @@ public class Main_data_handler {
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     }
 
-    private static Date convertToDate(String timestamp) {
+    public static Date convertToDate(String timestamp) {
         // Convert timestamp to Date
         // Assuming timestamp format is "yyyy-MM-dd HH:mm:ss"
         try {
