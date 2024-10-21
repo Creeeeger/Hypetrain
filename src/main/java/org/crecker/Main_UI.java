@@ -51,8 +51,8 @@ public class Main_UI extends JFrame {
             //hard coded!!!
             vol = Integer.parseInt(setting_data[0][1]);
             hyp = Float.parseFloat(setting_data[1][1]);
+            System.out.println(vol + " " + hyp); //Debug values
 
-            System.out.println(vol + " " + hyp);
             Settings_handler gui_Setting = new Settings_handler(vol, hyp);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
@@ -62,13 +62,52 @@ public class Main_UI extends JFrame {
         } else {
             System.out.println("Load config");
             setting_data = config_handler.load_config();
-
-            for (int i = 0; i < setting_data.length; i++) {
-                System.out.println(setting_data[i][1]);
-            }
+            vol = Integer.parseInt(setting_data[0][1]);
+            hyp = Float.parseFloat(setting_data[1][1]);
+            System.out.println(vol + " " + hyp); //Debug values
 
             System.out.println("config loaded");
         }
+    }
+
+    public static void refresh(boolean symbols, boolean charts, boolean notification, boolean settings) { //Method for refreshing the ui based on the given panels to refresh
+        if (symbols) {
+            symbol_panel.revalidate();
+            symbol_panel.repaint();
+        }
+
+        if (charts) {
+            chart_tool_panel.revalidate();
+            chart_tool_panel.repaint();
+        }
+
+        if (notification) {
+            hype_panel.revalidate();
+            hype_panel.repaint();
+        }
+
+        if (settings) {
+            Settings_handler.settingsPanel.revalidate();
+            Settings_handler.settingsPanel.repaint();
+        }
+
+        System.out.println("Refreshed");
+    }
+
+    public static void load_config() {
+        setting_data = config_handler.load_config();
+
+        //hard coded!!!
+        vol = Integer.parseInt(setting_data[0][1]);
+        hyp = Float.parseFloat(setting_data[1][1]);
+        System.out.println(vol + " " + hyp); //Debug values
+        System.out.println("Config reloaded!");
+    }
+
+    public static void save_config(String[][] data) {
+        config_handler.save_config(data);
+        System.out.println("Config saved successfully");
+
     }
 
     private JPanel create_symbol_panel() {
@@ -168,7 +207,7 @@ public class Main_UI extends JFrame {
         settings = new JMenu("Settings");
 
         //JMenuItems
-        load = new JMenuItem("Load the config");
+        load = new JMenuItem("Load the config (manually again)");
         save = new JMenuItem("Save the config");
         exit = new JMenuItem("Exit and don't save");
 
@@ -193,35 +232,44 @@ public class Main_UI extends JFrame {
         return menuBar;
     }
 
-    public class event_Load implements ActionListener{
+    public static class event_settings implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-
+            Settings_handler gui = new Settings_handler(vol, hyp);
+            gui.setSize(500, 500);
+            gui.setAlwaysOnTop(true);
+            gui.setTitle("Config handler ");
+            gui.setVisible(true);
         }
     }
 
-    public class event_save implements ActionListener{
+    public static class event_Load implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-
+            load_config();
         }
     }
 
-    public class event_exit implements ActionListener{
+    public static class event_save implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-
+            String[][] values = {
+                    {"volume", String.valueOf(vol)},
+                    {"hype_strength", String.valueOf(hyp)}
+            };
+            save_config(values);
         }
     }
 
-    public class event_settings implements ActionListener{
+    public static class event_exit implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-
+            System.out.println("Exit application");
+            System.exit(0); // Exit the application
         }
     }
 }

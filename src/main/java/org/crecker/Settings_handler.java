@@ -6,6 +6,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
 public class Settings_handler extends JFrame {
+    public static JPanel settingsPanel;
     static JLabel volume, hype, infos;
     static JTextField volume_text, hype_text;
     int vol;
@@ -17,7 +18,7 @@ public class Settings_handler extends JFrame {
         this.hyp = hyp;
 
         // Create a panel to hold the settings components
-        JPanel settingsPanel = new JPanel();
+        settingsPanel = new JPanel();
         // Set the layout of the panel to BoxLayout, which arranges components vertically
         settingsPanel.setLayout(new BoxLayout(settingsPanel, BoxLayout.Y_AXIS));
         // Add a titled border to the panel for clarity
@@ -77,6 +78,10 @@ public class Settings_handler extends JFrame {
                 config_handler.save_config(values);
 
                 System.out.println("Data saved successfully to config");
+                Main_UI.load_config();
+                Main_UI.refresh(true, true, true, false);
+                System.out.println("config updated and re-loaded");
+
                 setVisible(false);
             } catch (Exception x) {
                 // Handle any parsing errors that occur if the input is not in the expected format
