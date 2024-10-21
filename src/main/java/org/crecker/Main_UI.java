@@ -4,6 +4,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.util.HashMap;
 import java.util.Map;
@@ -16,6 +18,9 @@ public class Main_UI extends JFrame {
     static JMenuBar menuBar;
     static JMenu file, settings;
     static JMenuItem load, save, exit, setting_handler;
+    private DefaultListModel<Notification> notificationListModel;
+    private JList<Notification> notificationList;
+    private Notification currentNotification; // Track currently opened notification
 
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
@@ -182,20 +187,67 @@ public class Main_UI extends JFrame {
         return panel;
     }
 
-    private JPanel create_hype_panel() {
+    public JPanel create_hype_panel() {
         JPanel panel = new JPanel();
-        panel.setPreferredSize(new Dimension(200, 0)); // Set fixed width of 150px
+        panel.setPreferredSize(new Dimension(200, 0)); // Set fixed width of 200px
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
         JLabel notifications = new JLabel("Hype notifications");
         panel.add(notifications);
 
-        // Optional: Add some spacing between tools
+        // Initialize the notification list model
+        notificationListModel = new DefaultListModel<>();
+        notificationList = new JList<>(notificationListModel);
+        notificationList.setVisibleRowCount(10); // Set the visible row count
+        notificationList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Add mouse listener to handle clicks
+        notificationList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) { // Open on double click
+                    int index = notificationList.locationToIndex(e.getPoint());
+                    if (index != -1) {
+                        Notification clickedNotification = notificationListModel.getElementAt(index);
+                        openNotification(clickedNotification);
+                    }
+                }
+            }
+        });
+
+        // Wrap the JList in a JScrollPane
+        JScrollPane scrollPane = new JScrollPane(notificationList);
+        scrollPane.setPreferredSize(new Dimension(200, 100)); // Set the preferred size of the scroll pane
+        panel.add(scrollPane);
+
+        // Optional: Add some spacing between components
         panel.add(Box.createRigidArea(new Dimension(0, 10))); // Vertical spacing
 
         panel.setBorder(BorderFactory.createTitledBorder("Notifications"));
 
+        //test button to add test notifications
+        JButton button = new JButton("add (test)");
+        panel.add(button);
+        button.addActionListener(new event_addNotification());
+
         return panel;
+    }
+
+    // Method to add a notification
+    public void addNotification(String title, String content) {
+        Notification newNotification = new Notification(title, content);
+        notificationListModel.addElement(newNotification);
+    }
+
+    // Open notification and close previous one
+    private void openNotification(Notification notification) {
+        // Close the currently opened notification if it exists
+        if (currentNotification != null) {
+            currentNotification.closeNotification();
+        }
+        // Show the new notification
+        notification.showNotification();
+        currentNotification = notification; // Update the current notification reference
     }
 
     // Create the menu bar
@@ -270,6 +322,15 @@ public class Main_UI extends JFrame {
         public void actionPerformed(ActionEvent e) {
             System.out.println("Exit application");
             System.exit(0); // Exit the application
+        }
+    }
+
+    //test method
+    public class event_addNotification implements ActionListener {
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            addNotification(String.valueOf(Math.random() * 100), String.valueOf(Math.random() * 100));
         }
     }
 }
