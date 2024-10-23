@@ -1,0 +1,18 @@
+TODO
+--Symbols--
+- add search field logic
+- add symbol add logic
+
+--Notifications--
+- create proper notifications
+- add clear notification list
+- add sort notifications
+
+--Chart data--
+- display data of selected symbols
+- add tool to check gain
+- add general data to the bottom
+- add hype mode to look automatically for stocks
+
+--Hype mode--
+- add the whole hype mode

@@ -98,6 +98,11 @@ public class data_tester {
     }
 
     public static void tester(List<StockUnit> stocks) {
+       // Stock_value(stocks);
+        Stock_change(stocks);
+    }
+
+    public static void Stock_value(List<StockUnit> stocks) {
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
 
@@ -111,6 +116,27 @@ public class data_tester {
         }
 
         // Plot the data
-        Main_data_handler.plotData(timeSeries);
+        Main_data_handler.plotData(timeSeries, "NVDA price change", "Date", "price");
+    }
+
+    public static void Stock_change(List<StockUnit> stocks) {
+        // Create a TimeSeries object for plotting
+        TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
+
+        for (int i = 1; i < stocks.size() - 1; i++) {
+            String date = stocks.get(i).getDate();
+
+            double first_val = stocks.get(i).getClose();
+            double second_val = stocks.get(i - 1).getClose();
+
+            double percentage_change = ((second_val / first_val) * 100) - 100;
+
+            if (percentage_change < 1.5 && percentage_change > -1.5) {
+                timeSeries.add(new Minute(Main_data_handler.convertToDate(date)), percentage_change);
+            }
+        }
+
+        // Plot the data
+        Main_data_handler.plotData(timeSeries, "NVDA percentage change", "Date", "Percentage change");
     }
 }
