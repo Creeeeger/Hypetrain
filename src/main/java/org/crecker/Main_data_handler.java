@@ -10,12 +10,17 @@ import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
-import org.jfree.data.time.Minute;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.plot.ValueMarker;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
+import java.util.List;
+import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.data.time.Minute;
+
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -24,7 +29,6 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
-import java.util.List;
 
 public class Main_data_handler {
     public static void main(String[] args) {
@@ -60,9 +64,6 @@ public class Main_data_handler {
     }
 
     public static void handleSuccess(TimeSeriesResponse response) throws IOException {
-        // Print out the stock units for debugging
-        System.out.println(Arrays.toString(response.getStockUnits().toArray()));
-
         // This generates some test data since we don't have unlimited API access
         File data = new File("NVDA.txt"); // Create a File object for the output file named "NVDA.txt"
 
@@ -94,30 +95,68 @@ public class Main_data_handler {
         }
 
         // Plot the data
-        plotData(timeSeries);
+        plotData(timeSeries, "NVDA Stock prices", "Date", "Price");
     }
 
-    public static void plotData(TimeSeries timeSeries) {
+    public static void plotData(TimeSeries timeSeries, String chart_name, String X_axis, String Y_axis) {
         // Wrap the TimeSeries in a TimeSeriesCollection, which implements XYDataset
         TimeSeriesCollection dataset = new TimeSeriesCollection();
         dataset.addSeries(timeSeries);
 
         // Create the chart with the dataset
         JFreeChart chart = ChartFactory.createTimeSeriesChart(
-                "NVDA Stock Prices", // Chart title
-                "Time", // X-axis Label
-                "Price", // Y-axis Label
+                chart_name, // Chart title
+                X_axis, // X-axis Label
+                Y_axis, // Y-axis Label
                 dataset, // The dataset (now a TimeSeriesCollection)
                 true, // Show legend
                 true, // Show tooltips
                 false // Show URLs
         );
 
-        ChartPanel chartPanel = new ChartPanel(chart);
-        chartPanel.setPreferredSize(new Dimension(800, 600));
+        // Customizing the plot
+        XYPlot plot = chart.getXYPlot();
 
+        // Add a light red shade below Y=0
+        plot.addRangeMarker(new IntervalMarker(Double.NEGATIVE_INFINITY, 0.0, new Color(255, 200, 200, 100)));
+
+        // Add a light green shade above Y=0
+        plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
+
+        // Add a black line at y = 0
+        ValueMarker zeroLine = new ValueMarker(0.0);
+        zeroLine.setPaint(Color.BLACK); // Set the color to black
+        zeroLine.setStroke(new BasicStroke(1.0f)); // Set the stroke for the line
+        plot.addRangeMarker(zeroLine);
+
+        // Enable zoom and pan features on the chart panel
+        ChartPanel chartPanel = new ChartPanel(chart);
+        chartPanel.setPreferredSize(new Dimension(1600, 600));
+        chartPanel.setMouseWheelEnabled(true); // Zoom with mouse wheel
+        chartPanel.setZoomAroundAnchor(true);  // Zoom on the point where the mouse is anchored
+        chartPanel.setRangeZoomable(true);     // Allow zooming on the Y-axis
+        chartPanel.setDomainZoomable(true);    // Allow zooming on the X-axis
+
+        // Add buttons for controlling the scale
+        JButton autoRangeButton = new JButton("Auto Range");
+        autoRangeButton.addActionListener(e -> chartPanel.restoreAutoBounds()); // Reset to original scale
+
+        JButton zoomInButton = new JButton("Zoom In");
+        zoomInButton.addActionListener(e -> chartPanel.zoomInBoth(0.5, 0.5)); // Zoom in by 50%
+
+        JButton zoomOutButton = new JButton("Zoom Out");
+        zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
+
+        JPanel controlPanel = new JPanel();
+        controlPanel.add(autoRangeButton);
+        controlPanel.add(zoomInButton);
+        controlPanel.add(zoomOutButton);
+
+        // Create the frame to display the chart
         JFrame frame = new JFrame("Stock Data");
-        frame.setContentPane(chartPanel);
+        frame.setLayout(new BorderLayout());
+        frame.add(chartPanel, BorderLayout.CENTER);
+        frame.add(controlPanel, BorderLayout.SOUTH); // Add control buttons to the frame
         frame.pack();
         frame.setVisible(true);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -130,7 +169,18 @@ public class Main_data_handler {
             return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(timestamp);
         } catch (ParseException e) {
             e.printStackTrace();
-            return new Date(); // Return current date if parsing fails
+            return new Date();
+        }
+    }
+
+    public static Date convertToDate_Simple(String timestamp) {
+        // Convert timestamp to Date
+        // Assuming timestamp format is "yyyy-MM-dd HH:mm:ss"
+        try {
+            return new SimpleDateFormat("yyyy-MM-dd").parse(timestamp);
+        } catch (ParseException e) {
+            e.printStackTrace();
+            return new Date();
         }
     }
 
