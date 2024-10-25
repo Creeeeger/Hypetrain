@@ -26,12 +26,19 @@ public class Notification {
         notificationFrame.setSize(400, 400);
         notificationFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         notificationFrame.setLocationRelativeTo(null);
+        notificationFrame.setAlwaysOnTop(true);
 
-        // Add content to the window
+        // Create the text area with content, enable line wrapping
         JTextArea textArea = new JTextArea(content);
         textArea.setEditable(false);
-        notificationFrame.add(new JScrollPane(textArea));
+        textArea.setLineWrap(true);         // Enable line wrapping
+        textArea.setWrapStyleWord(true);    // Wrap at word boundaries
 
+        // Add the text area to a scroll pane
+        JScrollPane scrollPane = new JScrollPane(textArea);
+        notificationFrame.add(scrollPane);
+
+        // Make the notification visible
         notificationFrame.setVisible(true);
     }
 

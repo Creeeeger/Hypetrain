@@ -7,7 +7,9 @@ import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
+import java.io.IOException;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class Main_UI extends JFrame {
@@ -330,7 +332,16 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            addNotification(String.valueOf(Math.random() * 100), String.valueOf(Math.random() * 100));
+            try {
+                List<Notification> notifications = data_tester.Main_data_puller();
+
+                for (Notification notification : notifications) {
+                    addNotification(notification.getTitle(), notification.getContent());
+                }
+
+            } catch (IOException ex) {
+                throw new RuntimeException(ex);
+            }
         }
     }
 }

@@ -8,16 +8,24 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.List;
 
 public class data_tester {
+    static List<StockUnit> inter_day_stocks;
+    static List<Notification> alerts;
+
     public static void main(String[] args) throws IOException {
         List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the stock data from the file (simulate real stock data)
         tester(stocks); //test method to test the stock data
 
         //further code to test on data comes here
         System.out.println("Data got loaded successfully!");
+    }
 
+    public static List<Notification> Main_data_puller() throws IOException {
+        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the stock data from the file (simulate real stock data)
+        return tester(stocks); //test method to test the stock data
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
@@ -97,9 +105,124 @@ public class data_tester {
                 .build();
     }
 
-    public static void tester(List<StockUnit> stocks) {
-       // Stock_value(stocks);
-        Stock_change(stocks);
+    public static List<Notification> tester(List<StockUnit> stocks) {
+        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(3000).getDate()));
+
+        alerts = get_alerts_from_stock(inter_day_stocks);
+
+        // Show the notifications (or process them in other ways)
+        for (Notification alert : alerts) {
+            alert.showNotification();
+        }
+
+        Stock_value(inter_day_stocks);
+        Stock_change(inter_day_stocks);
+
+        return alerts;
+    }
+
+    public static List<Notification> get_alerts_from_stock(List<StockUnit> stocks) {
+        List<Notification> alertsList = new ArrayList<>();
+
+        // Thresholds for detecting potential spikes or dips
+        double consistencyThreshold = 0.2;  // Minimum percentage change per minute
+        double toleranceThreshold = 0.05;   // Tolerance for minor fluctuations
+        int consecutiveCount = 1;           // Number of consecutive minute changes required to trigger an alert
+
+        int upCount = 0;    // Counter for consecutive upward movements
+        int downCount = 0;  // Counter for consecutive downward movements
+
+        // Loop through the stocks (minute-level data assumed)
+        for (int i = 1; i < stocks.size(); i++) {
+            String date = stocks.get(i).getDate();  // Get the date of the current stock entry
+            double currentClose = stocks.get(i).getClose();  // Get the current close price
+            double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
+
+            // Calculate percentage change between consecutive time points
+            double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
+
+            // Detect consistent upward movement (potential spike)
+            if (percentageChange >= consistencyThreshold) {
+                upCount++;  // Increment upward counter
+                downCount = 0;  // Reset downward counter
+            }
+            // Detect consistent downward movement (potential dip)
+            else if (percentageChange <= -consistencyThreshold) {
+                downCount++;  // Increment downward counter
+                upCount = 0;  // Reset upward counter
+            }
+            // Ignore minor fluctuations (inside the tolerance range)
+            else if (Math.abs(percentageChange) < toleranceThreshold) {
+                System.out.println("Minor change");
+            }
+            // Reset counts if the change is significant but doesn't meet spike/dip criteria
+            else {
+                upCount = 0;
+                downCount = 0;
+            }
+
+            // If we have enough consecutive upward movements, trigger a spike notification
+            if (upCount >= consecutiveCount) {
+                String title = "Potential Spike Detected!";
+                String content = String.format("Consistent upward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
+                        percentageChange, consecutiveCount, date, currentClose);
+                Notification alert = new Notification(title, content);
+                alertsList.add(alert);  // Add the spike notification to the list
+                upCount = 0;  // Reset the upward counter after the notification
+            }
+
+            // If we have enough consecutive downward movements, trigger a dip notification
+            if (downCount >= consecutiveCount) {
+                String title = "Potential Dip Detected!";
+                String content = String.format("Consistent downward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
+                        percentageChange, consecutiveCount, date, currentClose);
+                Notification alert = new Notification(title, content);
+                alertsList.add(alert);  // Add the dip notification to the list
+                downCount = 0;  // Reset the downward counter after the notification
+            }
+        }
+
+        // Return the list of notifications generated (spike/dip alerts)
+        return alertsList;
+    }
+
+    public static List<StockUnit> get_Inter_Day(List<StockUnit> stocks, Date last_date) {
+        List<StockUnit> inter_day_stocks = new ArrayList<>();
+
+        for (int i = 1; i < stocks.size(); i++) {
+            Date current_date = Main_data_handler.convertToDate_Simple(stocks.get(i).getDate());
+
+            if (current_date.equals(last_date)) {
+                double current_close = stocks.get(i).getClose();
+                double previous_close = stocks.get(i - 1).getClose();
+
+                // Check for a 10% dip or peak
+                if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
+                    // Replace the current close with the previous close
+                    current_close = previous_close;
+                }
+
+                // Create a new StockUnit with the modified close value
+                StockUnit newStock = new StockUnit.Builder()
+                        .open(stocks.get(i).getOpen())
+                        .high(stocks.get(i).getHigh())
+                        .low(stocks.get(i).getLow())
+                        .close(current_close)  // Use the updated close value
+                        .adjustedClose(stocks.get(i).getAdjustedClose())
+                        .volume(stocks.get(i).getVolume())
+                        .dividendAmount(stocks.get(i).getDividendAmount())
+                        .splitCoefficient(stocks.get(i).getSplitCoefficient())
+                        .time(stocks.get(i).getDate())
+                        .build();
+
+                // Replace the old stock entry with the new one
+                stocks.set(i, newStock);
+
+                // Add the new stock to the inter_day_stocks list
+                inter_day_stocks.add(newStock);
+            }
+        }
+        return inter_day_stocks;
     }
 
     public static void Stock_value(List<StockUnit> stocks) {

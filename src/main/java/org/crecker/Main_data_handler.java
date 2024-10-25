@@ -7,20 +7,19 @@ import com.crazzyghost.alphavantage.parameters.Interval;
 import com.crazzyghost.alphavantage.parameters.OutputSize;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
+import com.toedter.calendar.JDateChooser;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
-import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
-import java.util.List;
-import org.jfree.chart.plot.IntervalMarker;
-import org.jfree.data.time.Minute;
-
 import java.io.BufferedWriter;
 import java.io.File;
 import java.io.FileWriter;
@@ -29,8 +28,11 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.List;
 
 public class Main_data_handler {
+    public static JDateChooser dateChooser_to, dateChooser_from;
+
     public static void main(String[] args) {
         // Replace with your actual Alpha Vantage API key
         String apiKey = "0988PSIKXZ50IP2T";
@@ -148,9 +150,35 @@ public class Main_data_handler {
         zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
 
         JPanel controlPanel = new JPanel();
+        JLabel from = new JLabel("Date from: ");
+        dateChooser_from = new JDateChooser();  // Create the date chooser
+
+        JLabel to = new JLabel("Date to: ");
+        dateChooser_to = new JDateChooser();
+
+        controlPanel.add(from);
+        controlPanel.add(dateChooser_from);
+
+        controlPanel.add(to);
+        controlPanel.add(dateChooser_to);
+
         controlPanel.add(autoRangeButton);
         controlPanel.add(zoomInButton);
         controlPanel.add(zoomOutButton);
+
+        dateChooser_from.addPropertyChangeListener(evt -> {
+            Date date = dateChooser_from.getDate();
+            if (date != null) {
+                System.out.println(date);
+            }
+        });
+
+        dateChooser_to.addPropertyChangeListener(evt -> {
+            Date date = dateChooser_to.getDate();
+            if (date != null) {
+                System.out.println(date);
+            }
+        });
 
         // Create the frame to display the chart
         JFrame frame = new JFrame("Stock Data");
