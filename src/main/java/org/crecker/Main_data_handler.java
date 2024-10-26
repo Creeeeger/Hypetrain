@@ -35,7 +35,7 @@ public class Main_data_handler {
     public static JDateChooser dateChooser_to, dateChooser_from;
 
     public static void main(String[] args) {
-        // Replace with your actual Alpha Vantage API key
+        // Replace with your actual Alpha Vantage API key since this is a free key
         String apiKey = "0988PSIKXZ50IP2T";
 
         // Configure the API client
