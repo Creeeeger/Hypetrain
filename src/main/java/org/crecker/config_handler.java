@@ -151,6 +151,10 @@ public class config_handler {
             hype_strength.appendChild(doc.createTextNode("1.0"));
             root.appendChild(hype_strength);
 
+            Element symbols = doc.createElement("symbols");
+            symbols.appendChild(doc.createTextNode("[MSFT,java.awt.Color[r=221,g=160,b=221]],[NVDA,java.awt.Color[r=102,g=205,b=170]],[GOOGL,java.awt.Color[r=255,g=182,b=193]],[AAPL,java.awt.Color[r=135,g=206,b=250]],[TSLA,java.awt.Color[r=240,g=230,b=140]]"));
+            root.appendChild(symbols);
+
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
             // Use TransformerFactory to create a Transformer instance for converting the Document to XML format

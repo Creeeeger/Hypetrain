@@ -215,4 +215,10 @@ public class Main_data_handler {
     public static void handleFailure(AlphaVantageException error) {
         System.out.println("error" + error.getMessage());
     }
+
+    public static String sym_to_search(String input){
+        String symbol = "";
+
+        return symbol;
+    }
 }

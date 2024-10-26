@@ -23,7 +23,7 @@ public class Notification {
     public void showNotification() {
         // Create the notification window
         notificationFrame = new JFrame(title);
-        notificationFrame.setSize(400, 400);
+        notificationFrame.setSize(400, 200);
         notificationFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         notificationFrame.setLocationRelativeTo(null);
         notificationFrame.setAlwaysOnTop(true);
