@@ -163,7 +163,7 @@ public class data_tester {
 
             // If we have enough consecutive upward movements, trigger a spike notification
             if (upCount >= consecutiveCount) {
-                String title = "Potential Spike Detected!";
+                String title = String.format("Potential Spike Detected for %.2f%%!", percentageChange);
                 String content = String.format("Consistent upward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
                         percentageChange, consecutiveCount, date, currentClose);
                 Notification alert = new Notification(title, content);
@@ -173,7 +173,7 @@ public class data_tester {
 
             // If we have enough consecutive downward movements, trigger a dip notification
             if (downCount >= consecutiveCount) {
-                String title = "Potential Dip Detected!";
+                String title = String.format("Potential Dip Detected for %.2f%%!", percentageChange);
                 String content = String.format("Consistent downward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
                         percentageChange, consecutiveCount, date, currentClose);
                 Notification alert = new Notification(title, content);

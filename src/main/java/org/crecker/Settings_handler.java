@@ -11,11 +11,13 @@ public class Settings_handler extends JFrame {
     static JTextField volume_text, hype_text;
     int vol;
     float hyp;
+    String sym;
 
-    public Settings_handler(int vol, float hyp) {
+    public Settings_handler(int vol, float hyp, String sym) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
         this.hyp = hyp;
+        this.sym = sym;
 
         // Create a panel to hold the settings components
         settingsPanel = new JPanel();
@@ -72,7 +74,8 @@ public class Settings_handler extends JFrame {
 
                 String[][] values = {
                         {"volume", String.valueOf(vol)},
-                        {"hype_strength", String.valueOf(hyp)}
+                        {"hype_strength", String.valueOf(hyp)},
+                        {"symbols", sym}
                 };
 
                 config_handler.save_config(values);

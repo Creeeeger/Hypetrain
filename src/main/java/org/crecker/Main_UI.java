@@ -1,6 +1,8 @@
 package org.crecker;
 
 import javax.swing.*;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -15,11 +17,16 @@ import java.util.Map;
 public class Main_UI extends JFrame {
     static int vol;
     static float hyp;
+    static String sym, sym_to_add;
     static String[][] setting_data;
     static JPanel symbol_panel, chart_tool_panel, hype_panel;
     static JMenuBar menuBar;
-    static JMenu file, settings;
-    static JMenuItem load, save, exit, setting_handler;
+    static JTextField searchField;
+    static JButton removeButton, addButton;
+    static JMenu file, settings, hype_mode_menu;
+    static JMenuItem load, save, exit, setting_handler, activate_hype_mode;
+    static DefaultListModel<String> stockListModel;
+    static Map<String, Color> stockColors;
     private DefaultListModel<Notification> notificationListModel;
     private JList<Notification> notificationList;
     private Notification currentNotification; // Track currently opened notification
@@ -58,9 +65,11 @@ public class Main_UI extends JFrame {
             //hard coded!!!
             vol = Integer.parseInt(setting_data[0][1]);
             hyp = Float.parseFloat(setting_data[1][1]);
-            System.out.println(vol + " " + hyp); //Debug values
+            sym = setting_data[2][1];
 
-            Settings_handler gui_Setting = new Settings_handler(vol, hyp);
+            refresh(true,true,true,false);
+
+            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array());
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
@@ -71,8 +80,11 @@ public class Main_UI extends JFrame {
             setting_data = config_handler.load_config();
             vol = Integer.parseInt(setting_data[0][1]);
             hyp = Float.parseFloat(setting_data[1][1]);
-            System.out.println(vol + " " + hyp); //Debug values
+            sym = setting_data[2][1];
+            load_table(sym);
 
+            System.out.println(vol + " " + hyp + " " + sym); //Debug values
+            refresh(true,true,true,false);
             System.out.println("config loaded");
         }
     }
@@ -107,7 +119,10 @@ public class Main_UI extends JFrame {
         //hard coded!!!
         vol = Integer.parseInt(setting_data[0][1]);
         hyp = Float.parseFloat(setting_data[1][1]);
-        System.out.println(vol + " " + hyp); //Debug values
+        sym = setting_data[2][1];
+        refresh(true,true,true,true);
+
+        System.out.println(vol + " " + hyp + " " + sym); //Debug values
         System.out.println("Config reloaded!");
     }
 
@@ -117,27 +132,23 @@ public class Main_UI extends JFrame {
 
     }
 
-    private JPanel create_symbol_panel() {
+    public JPanel create_symbol_panel() {
         // Create a panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
         panel.setPreferredSize(new Dimension(150, 0)); // Set fixed width of 150px
 
         // Create a search field at the top
-        JTextField searchField = new JTextField();
+        searchField = new JTextField();
         searchField.setBorder(BorderFactory.createTitledBorder("Search"));
 
-        // Create a scrollable list of stock items
-        String[] stockItems = {"NVDA", "AAPL", "GOOGL", "TSLA", "MSFT"};
-        JList<String> stockList = new JList<>(stockItems);
+        // Create a scrollable list of stock items using DefaultListModel
+        stockListModel = new DefaultListModel<>();
+
+        JList<String> stockList = new JList<>(stockListModel);
         stockList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
         // Define fixed colors for each stock symbol using a HashMap
-        Map<String, Color> stockColors = new HashMap<>();
-        stockColors.put("NVDA", new Color(102, 205, 170)); // Medium Aquamarine
-        stockColors.put("AAPL", new Color(135, 206, 250)); // Light Sky Blue
-        stockColors.put("GOOGL", new Color(255, 182, 193)); // Light Pink
-        stockColors.put("TSLA", new Color(240, 230, 140)); // Khaki
-        stockColors.put("MSFT", new Color(221, 160, 221)); // Plum
+        stockColors = new HashMap<>();
 
         // Create a custom ListCellRenderer to apply fixed colors and round borders
         stockList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
@@ -165,14 +176,124 @@ public class Main_UI extends JFrame {
         // Add the stock list into a scroll pane
         JScrollPane scrollPane = new JScrollPane(stockList);
 
-        // Add the search field to the top and the scrollable stock list to the center of the panel
+        // Create the "-" button for removing selected items
+        removeButton = new JButton("-");
+        removeButton.addActionListener(e -> {
+            // Get the selected value
+            String selectedValue = stockList.getSelectedValue();
+            if (selectedValue != null) {
+                // Remove the selected value from the list model
+                stockColors.remove(selectedValue);
+                stockListModel.removeElement(selectedValue);
+
+                sym = create_sym_array(); //Create the symbol array
+            }
+        });
+
+        // Create a sub-panel for the button at the bottom
+        JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        buttonPanel.add(removeButton);
+
+        addButton = new JButton("+");
+        buttonPanel.add(addButton);
+        addButton.addActionListener( e -> {
+            //Get the search box
+            
+        });
+
+        // Add the search field to the top, the scrollable stock list to the center, and the button panel to the bottom
         panel.add(searchField, BorderLayout.NORTH);
         panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(buttonPanel, BorderLayout.SOUTH);
 
         // Optional: Add a border with title to the panel
         panel.setBorder(BorderFactory.createTitledBorder("Stock Symbols"));
 
+        searchField.getDocument().addDocumentListener(new event_change_search());
+
         return panel;
+    }
+
+    public static void load_table(String config){
+        // Split the string into individual entries
+        config = config.substring(1, config.length() - 1); // Remove outer brackets
+        String[] entries = config.split("],\\[");
+
+        // Create a 2D array to hold the stock symbol and corresponding Color object
+        Object[][] stockArray = new Object[entries.length][2]; // 2D array: [stockSymbol, Color]
+
+        // Iterate through each entry and populate the 2D array
+        for (int i = 0; i < entries.length; i++) {
+            // Split by "," to separate the stock symbol and color part
+            String[] parts = entries[i].split(",java.awt.Color\\[r=");
+            String stockSymbol = parts[0]; // Get the stock symbol
+            String colorString = parts[1]; // Get the color part (e.g., "102,g=205,b=170]")
+
+            // Parse the RGB values
+            String[] rgbParts = colorString.replace("]", "").split(",g=|,b=");
+            int r = Integer.parseInt(rgbParts[0]);
+            int g = Integer.parseInt(rgbParts[1]);
+            int b = Integer.parseInt(rgbParts[2]);
+
+            // Create a Color object from the RGB values
+            Color color = new Color(r, g, b);
+
+            // Add the stock symbol and color to the 2D array
+            stockArray[i][0] = stockSymbol;
+            stockArray[i][1] = color;
+        }
+
+        for (int i = 0; i < stockArray.length; i++) {
+            stockListModel.addElement(stockArray[i][0].toString());
+            stockColors.put(stockArray[i][0].toString(), (Color) stockArray[i][1]);
+        }
+    }
+
+    public static String create_sym_array(){
+        StringBuilder symBuilder = new StringBuilder();
+
+        for (Map.Entry<String, Color> entry : stockColors.entrySet()) {
+            String stockSymbol = entry.getKey(); // Get the key (stock symbol)
+            Color color = entry.getValue();      // Get the value (color)
+
+            symBuilder.append("[").append(stockSymbol).append(",").append(color).append("],");
+        }
+
+        // Remove the trailing comma if the StringBuilder is not empty
+        if (symBuilder.length() > 0) {
+            symBuilder.setLength(symBuilder.length() - 1); // Remove the last comma
+        }
+        System.out.println(symBuilder);
+        return symBuilder.toString();
+    }
+
+    public static class event_change_search implements DocumentListener{
+        @Override
+        public void insertUpdate(DocumentEvent e) {
+            sym_to_add = Main_data_handler.sym_to_search(searchField.getText());
+
+
+            sym = create_sym_array();
+        }
+
+        @Override
+        public void removeUpdate(DocumentEvent e) {
+            sym_to_add = Main_data_handler.sym_to_search(searchField.getText());
+
+
+            sym = create_sym_array();
+        }
+
+        @Override
+        public void changedUpdate(DocumentEvent e) {
+            sym_to_add = Main_data_handler.sym_to_search(searchField.getText());
+
+            sym = create_sym_array();
+        }
+    }
+
+    public static void add_Symbol(String symbol){
+
     }
 
     private JPanel create_chart_tool_panel() {
@@ -259,6 +380,7 @@ public class Main_UI extends JFrame {
         // Create menus
         file = new JMenu("File");
         settings = new JMenu("Settings");
+        hype_mode_menu = new JMenu("Hype mode");
 
         //JMenuItems
         load = new JMenuItem("Load the config (manually again)");
@@ -267,6 +389,8 @@ public class Main_UI extends JFrame {
 
         setting_handler = new JMenuItem("Open settings");
 
+        activate_hype_mode = new JMenuItem("Activate hype mode");
+
         //add it to the menus
         file.add(load);
         file.add(save);
@@ -274,23 +398,35 @@ public class Main_UI extends JFrame {
 
         settings.add(setting_handler);
 
+        hype_mode_menu.add(activate_hype_mode);
+
         // Add menus to the menu bar
         menuBar.add(file);
         menuBar.add(settings);
+        menuBar.add(hype_mode_menu);
 
         load.addActionListener(new event_Load());
         save.addActionListener(new event_save());
         exit.addActionListener(new event_exit());
         setting_handler.addActionListener(new event_settings());
+        activate_hype_mode.addActionListener(new event_activate_hype_mode());
 
         return menuBar;
+    }
+
+    public static class event_activate_hype_mode implements ActionListener{
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            System.out.println("Activating hype mode for auto stock scanning");
+
+        }
     }
 
     public static class event_settings implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(vol, hyp);
+            Settings_handler gui = new Settings_handler(vol, hyp, sym);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");
@@ -310,10 +446,13 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
+            System.out.println(sym);
             String[][] values = {
                     {"volume", String.valueOf(vol)},
-                    {"hype_strength", String.valueOf(hyp)}
+                    {"hype_strength", String.valueOf(hyp)},
+                    {"symbols", sym = create_sym_array()}
             };
+
             save_config(values);
         }
     }
