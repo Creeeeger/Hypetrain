@@ -1,7 +1,6 @@
 TODO
 --Symbols--
-- add search field logic
-- add symbol add logic
+- Add the api symbol search logic
 
 --Notifications--
 - create proper notifications
