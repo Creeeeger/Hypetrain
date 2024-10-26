@@ -226,4 +226,13 @@ public class Main_data_handler {
                 .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
                 .collect(Collectors.toList());
     }
+
+    public static void start_Hype_Mode(int Volume, float Hype) {
+        System.out.printf("Settings: %s Volume, %s Hype%n", Volume, Hype);
+        //!!!Add logic for hype mode
+    }
 }
+
+//TODO
+//!!!Add logic to add the real symbols from the api
+//!!!Add logic for hype mode

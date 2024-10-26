@@ -4,9 +4,7 @@ TODO
 
 --Notifications--
 - create proper notifications
-- add clear notification list
-- add sort notifications
-
+git 
 --Chart data--
 - display data of selected symbols
 - add tool to check gain

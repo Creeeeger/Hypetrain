@@ -110,11 +110,6 @@ public class data_tester {
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
-        // Show the notifications (or process them in other ways)
-        for (Notification alert : alerts) {
-            alert.showNotification();
-        }
-
         Stock_value(inter_day_stocks);
         Stock_change(inter_day_stocks);
 
@@ -153,7 +148,6 @@ public class data_tester {
             }
             // Ignore minor fluctuations (inside the tolerance range)
             else if (Math.abs(percentageChange) < toleranceThreshold) {
-                System.out.println("Minor change");
             }
             // Reset counts if the change is significant but doesn't meet spike/dip criteria
             else {
@@ -163,7 +157,7 @@ public class data_tester {
 
             // If we have enough consecutive upward movements, trigger a spike notification
             if (upCount >= consecutiveCount) {
-                String title = String.format("Potential Spike Detected for %.2f%%!", percentageChange);
+                String title = String.format("%.2f%% Spike!", percentageChange);
                 String content = String.format("Consistent upward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
                         percentageChange, consecutiveCount, date, currentClose);
                 Notification alert = new Notification(title, content);
@@ -173,7 +167,7 @@ public class data_tester {
 
             // If we have enough consecutive downward movements, trigger a dip notification
             if (downCount >= consecutiveCount) {
-                String title = String.format("Potential Dip Detected for %.2f%%!", percentageChange);
+                String title = String.format("%.2f%% Dip!", percentageChange);
                 String content = String.format("Consistent downward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
                         percentageChange, consecutiveCount, date, currentClose);
                 Notification alert = new Notification(title, content);

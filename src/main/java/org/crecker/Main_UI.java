@@ -10,10 +10,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
-import java.util.HashMap;
+import java.util.*;
 import java.util.List;
-import java.util.Map;
-import java.util.Random;
 
 public class Main_UI extends JFrame {
     static int vol;
@@ -24,8 +22,8 @@ public class Main_UI extends JFrame {
     static JMenuBar menuBar;
     static JTextField searchField;
     static JButton removeButton, addButton;
-    static JMenu file, settings, hype_mode_menu;
-    static JMenuItem load, save, exit, setting_handler, activate_hype_mode;
+    static JMenu file, settings, hype_mode_menu, Notifications;
+    static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
     private DefaultListModel<Notification> notificationListModel;
@@ -333,7 +331,7 @@ public class Main_UI extends JFrame {
 
     public JPanel create_hype_panel() {
         JPanel panel = new JPanel();
-        panel.setPreferredSize(new Dimension(200, 0)); // Set fixed width of 200px
+        panel.setPreferredSize(new Dimension(300, 0)); // Set fixed width of 200px
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
 
         JLabel notifications = new JLabel("Hype notifications");
@@ -402,44 +400,103 @@ public class Main_UI extends JFrame {
         file = new JMenu("File");
         settings = new JMenu("Settings");
         hype_mode_menu = new JMenu("Hype mode");
+        Notifications = new JMenu("Notifications");
 
-        //JMenuItems
+        //JMenuItems File
         load = new JMenuItem("Load the config (manually again)");
         save = new JMenuItem("Save the config");
         exit = new JMenuItem("Exit and don't save");
 
+        //Settings
         setting_handler = new JMenuItem("Open settings");
 
+        //Hype mode
         activate_hype_mode = new JMenuItem("Activate hype mode");
 
-        //add it to the menus
+        //Notifications
+        clear = new JMenuItem("Clear Notifications");
+        sort = new JMenuItem("Sort Notifications");
+
+        //add it to the menus File
         file.add(load);
         file.add(save);
         file.add(exit);
 
+        //Settings
         settings.add(setting_handler);
 
+        //HypeMode
         hype_mode_menu.add(activate_hype_mode);
+
+        //Notifications
+        Notifications.add(clear);
+        Notifications.add(sort);
 
         // Add menus to the menu bar
         menuBar.add(file);
         menuBar.add(settings);
         menuBar.add(hype_mode_menu);
+        menuBar.add(Notifications);
 
         load.addActionListener(new event_Load());
         save.addActionListener(new event_save());
         exit.addActionListener(new event_exit());
         setting_handler.addActionListener(new event_settings());
         activate_hype_mode.addActionListener(new event_activate_hype_mode());
+        clear.addActionListener(e -> notificationListModel.clear());
+        sort.addActionListener(new event_sort_notifications());
 
         return menuBar;
+    }
+
+    public class event_sort_notifications implements ActionListener{
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            // Convert the notification list model to a List for easier manipulation
+            List<Notification> notifications = new ArrayList<>();
+
+            for (int i = 0; i < notificationListModel.size(); i++) {
+                notifications.add(notificationListModel.getElementAt(i));
+            }
+
+            // Sort the notifications based on percentage change
+            notifications.sort((n1, n2) -> {
+                // Extract the percentage from each notification title
+                float percent1 = extractPercentage(n1.getTitle());
+                float percent2 = extractPercentage(n2.getTitle());
+
+                // Sort in descending order of percentage
+                return Float.compare(percent2, percent1);
+            });
+
+            // Clear the model and repopulate it with sorted notifications
+            notificationListModel.clear();
+            for (Notification notification : notifications) {
+                notificationListModel.addElement(notification);
+            }
+        }
+    }
+
+    // Helper method to extract percentage value from the notification title
+    public float extractPercentage(String title) {
+        // Assuming the format is like "12.34% Dip!", extract the part before the "%"
+        int percentIndex = title.indexOf("%");
+        if (percentIndex != -1) {
+            try {
+                // Parse the substring into a float value
+                return Float.parseFloat(title.substring(0, percentIndex));
+            } catch (NumberFormatException e) {
+                e.printStackTrace(); // Handle invalid format gracefully
+            }
+        }
+        return 0.0f; // Default to 0 if extraction fails
     }
 
     public static class event_activate_hype_mode implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
             System.out.println("Activating hype mode for auto stock scanning");
-
+            Main_data_handler.start_Hype_Mode(vol, hyp);
         }
     }
 
