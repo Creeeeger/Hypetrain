@@ -7,17 +7,20 @@ import java.awt.event.ActionListener;
 
 public class Settings_handler extends JFrame {
     public static JPanel settingsPanel;
-    static JLabel volume, hype, infos;
+    static JLabel volume, hype, infos, sort_label;
     static JTextField volume_text, hype_text;
+    static JCheckBox sort_checkBox;
     int vol;
     float hyp;
     String sym;
+    boolean sort;
 
-    public Settings_handler(int vol, float hyp, String sym) {
+    public Settings_handler(int vol, float hyp, String sym, boolean sort) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
         this.hyp = hyp;
         this.sym = sym;
+        this.sort = sort;
 
         // Create a panel to hold the settings components
         settingsPanel = new JPanel();
@@ -39,6 +42,10 @@ public class Settings_handler extends JFrame {
         hype = new JLabel();
         hype_text = new JTextField(String.valueOf(hyp), 5);
 
+        sort_label = new JLabel("Sort hype entries");
+        sort_checkBox = new JCheckBox();
+        sort_checkBox.setSelected(sort);
+
         // Add components to the settings panel with spacing
         settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between description and input field
@@ -47,6 +54,10 @@ public class Settings_handler extends JFrame {
         settingsPanel.add(hype);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(hype_text);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(sort_label);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(sort_checkBox);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
 
         // Create and configure the "Apply Settings" button
@@ -75,7 +86,8 @@ public class Settings_handler extends JFrame {
                 String[][] values = {
                         {"volume", String.valueOf(vol)},
                         {"hype_strength", String.valueOf(hyp)},
-                        {"symbols", sym}
+                        {"symbols", sym},
+                        {"sort", String.valueOf(sort_checkBox.isSelected())}
                 };
 
                 config_handler.save_config(values);

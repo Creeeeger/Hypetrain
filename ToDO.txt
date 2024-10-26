@@ -4,7 +4,7 @@ TODO
 
 --Notifications--
 - create proper notifications
-git 
+
 --Chart data--
 - display data of selected symbols
 - add tool to check gain
@@ -12,4 +12,4 @@ git
 - add hype mode to look automatically for stocks
 
 --Hype mode--
-- add the whole hype mode
+- add the hype code in the data handler

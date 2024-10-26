@@ -155,6 +155,10 @@ public class config_handler {
             symbols.appendChild(doc.createTextNode("[MSFT,java.awt.Color[r=221,g=160,b=221]],[NVDA,java.awt.Color[r=102,g=205,b=170]],[GOOGL,java.awt.Color[r=255,g=182,b=193]],[AAPL,java.awt.Color[r=135,g=206,b=250]],[TSLA,java.awt.Color[r=240,g=230,b=140]]"));
             root.appendChild(symbols);
 
+            Element sort = doc.createElement("sort");
+            sort.appendChild(doc.createTextNode("false"));
+            root.appendChild(sort);
+
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
             // Use TransformerFactory to create a Transformer instance for converting the Document to XML format

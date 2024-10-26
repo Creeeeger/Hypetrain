@@ -10,13 +10,14 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
-import java.util.*;
 import java.util.List;
+import java.util.*;
 
 public class Main_UI extends JFrame {
     static int vol;
     static float hyp;
     static String sym;
+    static boolean isSorted;
     static String[][] setting_data;
     static JPanel symbol_panel, chart_tool_panel, hype_panel;
     static JMenuBar menuBar;
@@ -65,10 +66,11 @@ public class Main_UI extends JFrame {
             vol = Integer.parseInt(setting_data[0][1]);
             hyp = Float.parseFloat(setting_data[1][1]);
             sym = setting_data[2][1];
+            isSorted = Boolean.parseBoolean(setting_data[3][1]);
 
             refresh(true, true, true, false);
 
-            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array());
+            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), isSorted);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
@@ -80,9 +82,10 @@ public class Main_UI extends JFrame {
             vol = Integer.parseInt(setting_data[0][1]);
             hyp = Float.parseFloat(setting_data[1][1]);
             sym = setting_data[2][1];
+            isSorted = Boolean.parseBoolean(setting_data[3][1]);
+
             load_table(sym);
 
-            System.out.println(vol + " " + hyp + " " + sym); //Debug values
             refresh(true, true, true, false);
             System.out.println("config loaded");
         }
@@ -119,16 +122,16 @@ public class Main_UI extends JFrame {
         vol = Integer.parseInt(setting_data[0][1]);
         hyp = Float.parseFloat(setting_data[1][1]);
         sym = setting_data[2][1];
+        isSorted = Boolean.parseBoolean(setting_data[3][1]);
+
         refresh(true, true, true, true);
 
-        System.out.println(vol + " " + hyp + " " + sym); //Debug values
         System.out.println("Config reloaded!");
     }
 
     public static void save_config(String[][] data) {
         config_handler.save_config(data);
         System.out.println("Config saved successfully");
-
     }
 
     public static void load_table(String config) {
@@ -347,6 +350,16 @@ public class Main_UI extends JFrame {
         notificationList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
+                if (isSorted) {
+                    sort_notifications();
+                }
+            }
+        });
+
+        // Add mouse listener to handle clicks
+        notificationList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) { // Open on double click
                     int index = notificationList.locationToIndex(e.getPoint());
                     if (index != -1) {
@@ -449,34 +462,6 @@ public class Main_UI extends JFrame {
         return menuBar;
     }
 
-    public class event_sort_notifications implements ActionListener{
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            // Convert the notification list model to a List for easier manipulation
-            List<Notification> notifications = new ArrayList<>();
-
-            for (int i = 0; i < notificationListModel.size(); i++) {
-                notifications.add(notificationListModel.getElementAt(i));
-            }
-
-            // Sort the notifications based on percentage change
-            notifications.sort((n1, n2) -> {
-                // Extract the percentage from each notification title
-                float percent1 = extractPercentage(n1.getTitle());
-                float percent2 = extractPercentage(n2.getTitle());
-
-                // Sort in descending order of percentage
-                return Float.compare(percent2, percent1);
-            });
-
-            // Clear the model and repopulate it with sorted notifications
-            notificationListModel.clear();
-            for (Notification notification : notifications) {
-                notificationListModel.addElement(notification);
-            }
-        }
-    }
-
     // Helper method to extract percentage value from the notification title
     public float extractPercentage(String title) {
         // Assuming the format is like "12.34% Dip!", extract the part before the "%"
@@ -492,6 +477,31 @@ public class Main_UI extends JFrame {
         return 0.0f; // Default to 0 if extraction fails
     }
 
+    public void sort_notifications() {
+        // Convert the notification list model to a List for easier manipulation
+        List<Notification> notifications = new ArrayList<>();
+
+        for (int i = 0; i < notificationListModel.size(); i++) {
+            notifications.add(notificationListModel.getElementAt(i));
+        }
+
+        // Sort the notifications based on percentage change
+        notifications.sort((n1, n2) -> {
+            // Extract the percentage from each notification title
+            float percent1 = extractPercentage(n1.getTitle());
+            float percent2 = extractPercentage(n2.getTitle());
+
+            // Sort in descending order of percentage
+            return Float.compare(percent2, percent1);
+        });
+
+        // Clear the model and repopulate it with sorted notifications
+        notificationListModel.clear();
+        for (Notification notification : notifications) {
+            notificationListModel.addElement(notification);
+        }
+    }
+
     public static class event_activate_hype_mode implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -504,7 +514,7 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(vol, hyp, sym);
+            Settings_handler gui = new Settings_handler(vol, hyp, sym, isSorted);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");
@@ -528,7 +538,8 @@ public class Main_UI extends JFrame {
             String[][] values = {
                     {"volume", String.valueOf(vol)},
                     {"hype_strength", String.valueOf(hyp)},
-                    {"symbols", sym = create_sym_array()}
+                    {"symbols", sym = create_sym_array()},
+                    {"sort", String.valueOf(isSorted)}
             };
 
             save_config(values);
@@ -541,6 +552,13 @@ public class Main_UI extends JFrame {
         public void actionPerformed(ActionEvent e) {
             System.out.println("Exit application");
             System.exit(0); // Exit the application
+        }
+    }
+
+    public class event_sort_notifications implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            sort_notifications();
         }
     }
 
