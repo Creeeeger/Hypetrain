@@ -13,11 +13,12 @@ import java.io.IOException;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Random;
 
 public class Main_UI extends JFrame {
     static int vol;
     static float hyp;
-    static String sym, sym_to_add;
+    static String sym;
     static String[][] setting_data;
     static JPanel symbol_panel, chart_tool_panel, hype_panel;
     static JMenuBar menuBar;
@@ -67,7 +68,7 @@ public class Main_UI extends JFrame {
             hyp = Float.parseFloat(setting_data[1][1]);
             sym = setting_data[2][1];
 
-            refresh(true,true,true,false);
+            refresh(true, true, true, false);
 
             Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array());
             gui_Setting.setVisible(true);
@@ -84,7 +85,7 @@ public class Main_UI extends JFrame {
             load_table(sym);
 
             System.out.println(vol + " " + hyp + " " + sym); //Debug values
-            refresh(true,true,true,false);
+            refresh(true, true, true, false);
             System.out.println("config loaded");
         }
     }
@@ -120,7 +121,7 @@ public class Main_UI extends JFrame {
         vol = Integer.parseInt(setting_data[0][1]);
         hyp = Float.parseFloat(setting_data[1][1]);
         sym = setting_data[2][1];
-        refresh(true,true,true,true);
+        refresh(true, true, true, true);
 
         System.out.println(vol + " " + hyp + " " + sym); //Debug values
         System.out.println("Config reloaded!");
@@ -132,18 +133,78 @@ public class Main_UI extends JFrame {
 
     }
 
+    public static void load_table(String config) {
+        // Split the string into individual entries
+        config = config.substring(1, config.length() - 1); // Remove outer brackets
+        String[] entries = config.split("],\\[");
+
+        // Create a 2D array to hold the stock symbol and corresponding Color object
+        Object[][] stockArray = new Object[entries.length][2]; // 2D array: [stockSymbol, Color]
+
+        // Iterate through each entry and populate the 2D array
+        for (int i = 0; i < entries.length; i++) {
+            // Split by "," to separate the stock symbol and color part
+            String[] parts = entries[i].split(",java.awt.Color\\[r=");
+            String stockSymbol = parts[0]; // Get the stock symbol
+            String colorString = parts[1]; // Get the color part (e.g., "102,g=205,b=170]")
+
+            // Parse the RGB values
+            String[] rgbParts = colorString.replace("]", "").split(",g=|,b=");
+            int r = Integer.parseInt(rgbParts[0]);
+            int g = Integer.parseInt(rgbParts[1]);
+            int b = Integer.parseInt(rgbParts[2]);
+
+            // Create a Color object from the RGB values
+            Color color = new Color(r, g, b);
+
+            // Add the stock symbol and color to the 2D array
+            stockArray[i][0] = stockSymbol;
+            stockArray[i][1] = color;
+        }
+
+        for (Object[] objects : stockArray) {
+            stockListModel.addElement(objects[0].toString());
+            stockColors.put(objects[0].toString(), (Color) objects[1]);
+        }
+    }
+
+    public static String create_sym_array() {
+        StringBuilder symBuilder = new StringBuilder();
+
+        for (Map.Entry<String, Color> entry : stockColors.entrySet()) {
+            String stockSymbol = entry.getKey(); // Get the key (stock symbol)
+            Color color = entry.getValue();      // Get the value (color)
+
+            symBuilder.append("[").append(stockSymbol).append(",").append(color).append("],");
+        }
+
+        // Remove the trailing comma if the StringBuilder is not empty
+        if (symBuilder.length() > 0) {
+            symBuilder.setLength(symBuilder.length() - 1); // Remove the last comma
+        }
+        System.out.println(symBuilder);
+        return symBuilder.toString();
+    }
+
     public JPanel create_symbol_panel() {
         // Create a panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
-        panel.setPreferredSize(new Dimension(150, 0)); // Set fixed width of 150px
+        panel.setPreferredSize(new Dimension(250, 0)); // Set fixed width of 150px
 
         // Create a search field at the top
         searchField = new JTextField();
         searchField.setBorder(BorderFactory.createTitledBorder("Search"));
 
+        // Create a list for possible search results
+        DefaultListModel<String> searchListModel = new DefaultListModel<>();
+        JList<String> searchList = new JList<>(searchListModel);
+        searchList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+        JScrollPane searchScrollPane = new JScrollPane(searchList);
+
+        searchScrollPane.setPreferredSize(new Dimension(125, 0));
+
         // Create a scrollable list of stock items using DefaultListModel
         stockListModel = new DefaultListModel<>();
-
         JList<String> stockList = new JList<>(stockListModel);
         stockList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
@@ -174,7 +235,7 @@ public class Main_UI extends JFrame {
         });
 
         // Add the stock list into a scroll pane
-        JScrollPane scrollPane = new JScrollPane(stockList);
+        JScrollPane stockScrollPane = new JScrollPane(stockList);
 
         // Create the "-" button for removing selected items
         removeButton = new JButton("-");
@@ -196,104 +257,64 @@ public class Main_UI extends JFrame {
 
         addButton = new JButton("+");
         buttonPanel.add(addButton);
-        addButton.addActionListener( e -> {
-            //Get the search box
-            
+        addButton.addActionListener(e -> {
+            String selectedSymbol = searchList.getSelectedValue();
+            if (selectedSymbol != null && !stockListModel.contains(selectedSymbol)) {
+                // Add the selected symbol to the stock list
+                stockListModel.addElement(selectedSymbol);
+                stockColors.put(selectedSymbol, generateRandomColor()); // Assign a random color or use another logic
+                sym = create_sym_array();
+            }
         });
 
         // Add the search field to the top, the scrollable stock list to the center, and the button panel to the bottom
         panel.add(searchField, BorderLayout.NORTH);
-        panel.add(scrollPane, BorderLayout.CENTER);
+        panel.add(stockScrollPane, BorderLayout.CENTER);
         panel.add(buttonPanel, BorderLayout.SOUTH);
+
+        // Add the search list for suggestions (optional)
+        panel.add(searchScrollPane, BorderLayout.EAST);
 
         // Optional: Add a border with title to the panel
         panel.setBorder(BorderFactory.createTitledBorder("Stock Symbols"));
 
-        searchField.getDocument().addDocumentListener(new event_change_search());
+        // Add a document listener to update the search list dynamically
+        searchField.getDocument().addDocumentListener(new DocumentListener() {
+            @Override
+            public void insertUpdate(DocumentEvent e) {
+                updateSearchList();
+            }
+
+            @Override
+            public void removeUpdate(DocumentEvent e) {
+                updateSearchList();
+            }
+
+            @Override
+            public void changedUpdate(DocumentEvent e) {
+                updateSearchList();
+            }
+
+            private void updateSearchList() {
+                String searchText = searchField.getText().trim();
+                searchListModel.clear();
+
+                if (!searchText.isEmpty()) {
+                    // Filter or search logic to populate searchListModel with matching symbols
+                    List<String> matchedSymbols = Main_data_handler.findMatchingSymbols(searchText); // Implement this method
+                    for (String symbol : matchedSymbols) {
+                        searchListModel.addElement(symbol);
+                    }
+                }
+            }
+        });
 
         return panel;
     }
 
-    public static void load_table(String config){
-        // Split the string into individual entries
-        config = config.substring(1, config.length() - 1); // Remove outer brackets
-        String[] entries = config.split("],\\[");
-
-        // Create a 2D array to hold the stock symbol and corresponding Color object
-        Object[][] stockArray = new Object[entries.length][2]; // 2D array: [stockSymbol, Color]
-
-        // Iterate through each entry and populate the 2D array
-        for (int i = 0; i < entries.length; i++) {
-            // Split by "," to separate the stock symbol and color part
-            String[] parts = entries[i].split(",java.awt.Color\\[r=");
-            String stockSymbol = parts[0]; // Get the stock symbol
-            String colorString = parts[1]; // Get the color part (e.g., "102,g=205,b=170]")
-
-            // Parse the RGB values
-            String[] rgbParts = colorString.replace("]", "").split(",g=|,b=");
-            int r = Integer.parseInt(rgbParts[0]);
-            int g = Integer.parseInt(rgbParts[1]);
-            int b = Integer.parseInt(rgbParts[2]);
-
-            // Create a Color object from the RGB values
-            Color color = new Color(r, g, b);
-
-            // Add the stock symbol and color to the 2D array
-            stockArray[i][0] = stockSymbol;
-            stockArray[i][1] = color;
-        }
-
-        for (int i = 0; i < stockArray.length; i++) {
-            stockListModel.addElement(stockArray[i][0].toString());
-            stockColors.put(stockArray[i][0].toString(), (Color) stockArray[i][1]);
-        }
-    }
-
-    public static String create_sym_array(){
-        StringBuilder symBuilder = new StringBuilder();
-
-        for (Map.Entry<String, Color> entry : stockColors.entrySet()) {
-            String stockSymbol = entry.getKey(); // Get the key (stock symbol)
-            Color color = entry.getValue();      // Get the value (color)
-
-            symBuilder.append("[").append(stockSymbol).append(",").append(color).append("],");
-        }
-
-        // Remove the trailing comma if the StringBuilder is not empty
-        if (symBuilder.length() > 0) {
-            symBuilder.setLength(symBuilder.length() - 1); // Remove the last comma
-        }
-        System.out.println(symBuilder);
-        return symBuilder.toString();
-    }
-
-    public static class event_change_search implements DocumentListener{
-        @Override
-        public void insertUpdate(DocumentEvent e) {
-            sym_to_add = Main_data_handler.sym_to_search(searchField.getText());
-
-
-            sym = create_sym_array();
-        }
-
-        @Override
-        public void removeUpdate(DocumentEvent e) {
-            sym_to_add = Main_data_handler.sym_to_search(searchField.getText());
-
-
-            sym = create_sym_array();
-        }
-
-        @Override
-        public void changedUpdate(DocumentEvent e) {
-            sym_to_add = Main_data_handler.sym_to_search(searchField.getText());
-
-            sym = create_sym_array();
-        }
-    }
-
-    public static void add_Symbol(String symbol){
-
+    private Color generateRandomColor() {
+        Random rand = new Random();
+        return new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
     }
 
     private JPanel create_chart_tool_panel() {
@@ -414,7 +435,7 @@ public class Main_UI extends JFrame {
         return menuBar;
     }
 
-    public static class event_activate_hype_mode implements ActionListener{
+    public static class event_activate_hype_mode implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
             System.out.println("Activating hype mode for auto stock scanning");

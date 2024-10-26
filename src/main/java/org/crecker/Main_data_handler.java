@@ -29,6 +29,7 @@ import java.text.SimpleDateFormat;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.List;
+import java.util.stream.Collectors;
 
 public class Main_data_handler {
     public static JDateChooser dateChooser_to, dateChooser_from;
@@ -216,9 +217,13 @@ public class Main_data_handler {
         System.out.println("error" + error.getMessage());
     }
 
-    public static String sym_to_search(String input){
-        String symbol = "";
+    public static List<String> findMatchingSymbols(String searchText) {
+        //!!!Add logic to add the real symbols from the api
+        List<String> allSymbols = List.of("AAPL", "GOOGL", "TSLA", "MSFT", "NVDA"); // Example stock symbols
 
-        return symbol;
+
+        return allSymbols.stream()
+                .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
+                .collect(Collectors.toList());
     }
 }

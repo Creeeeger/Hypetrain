@@ -2,5 +2,5 @@
 <config>
     <volume>1000</volume>
     <hype_strength>1.0</hype_strength>
-    <symbols>[MSFT,java.awt.Color[r=221,g=160,b=221]],[NVDA,java.awt.Color[r=102,g=205,b=170]],[GOOGL,java.awt.Color[r=255,g=182,b=193]],[TSLA,java.awt.Color[r=240,g=230,b=140]]</symbols>
+    <symbols>[MSFT,java.awt.Color[r=221,g=160,b=221]],[GOOGL,java.awt.Color[r=255,g=182,b=193]],[TSLA,java.awt.Color[r=240,g=230,b=140]]</symbols>
 </config>
