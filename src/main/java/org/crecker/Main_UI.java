@@ -1,5 +1,7 @@
 package org.crecker;
 
+import org.jfree.data.time.TimeSeries;
+
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
@@ -183,7 +185,6 @@ public class Main_UI extends JFrame {
         if (symBuilder.length() > 0) {
             symBuilder.setLength(symBuilder.length() - 1); // Remove the last comma
         }
-        System.out.println(symBuilder);
         return symBuilder.toString();
     }
 
@@ -389,8 +390,8 @@ public class Main_UI extends JFrame {
     }
 
     // Method to add a notification
-    public void addNotification(String title, String content) {
-        Notification newNotification = new Notification(title, content);
+    public void addNotification(String title, String content, TimeSeries timeSeries) {
+        Notification newNotification = new Notification(title, content, timeSeries);
         notificationListModel.addElement(newNotification);
     }
 
@@ -464,7 +465,6 @@ public class Main_UI extends JFrame {
 
     // Helper method to extract percentage value from the notification title
     public float extractPercentage(String title) {
-        // Assuming the format is like "12.34% Dip!", extract the part before the "%"
         int percentIndex = title.indexOf("%");
         if (percentIndex != -1) {
             try {
@@ -571,7 +571,7 @@ public class Main_UI extends JFrame {
                 List<Notification> notifications = data_tester.Main_data_puller();
 
                 for (Notification notification : notifications) {
-                    addNotification(notification.getTitle(), notification.getContent());
+                    addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries());
                 }
 
             } catch (IOException ex) {
