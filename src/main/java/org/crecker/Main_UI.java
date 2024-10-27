@@ -162,36 +162,40 @@ public class Main_UI extends JFrame {
 
     public static void load_table(String config) {
         // Split the string into individual entries
-        config = config.substring(1, config.length() - 1); // Remove outer brackets
-        String[] entries = config.split("],\\[");
+        try {
+            config = config.substring(1, config.length() - 1); // Remove outer brackets
+            String[] entries = config.split("],\\[");
 
-        // Create a 2D array to hold the stock symbol and corresponding Color object
-        Object[][] stockArray = new Object[entries.length][2]; // 2D array: [stockSymbol, Color]
+            // Create a 2D array to hold the stock symbol and corresponding Color object
+            Object[][] stockArray = new Object[entries.length][2]; // 2D array: [stockSymbol, Color]
 
-        // Iterate through each entry and populate the 2D array
-        for (int i = 0; i < entries.length; i++) {
-            // Split by "," to separate the stock symbol and color part
-            String[] parts = entries[i].split(",java.awt.Color\\[r=");
-            String stockSymbol = parts[0]; // Get the stock symbol
-            String colorString = parts[1]; // Get the color part (e.g., "102,g=205,b=170]")
+            // Iterate through each entry and populate the 2D array
+            for (int i = 0; i < entries.length; i++) {
+                // Split by "," to separate the stock symbol and color part
+                String[] parts = entries[i].split(",java.awt.Color\\[r=");
+                String stockSymbol = parts[0]; // Get the stock symbol
+                String colorString = parts[1]; // Get the color part (e.g., "102,g=205,b=170]")
 
-            // Parse the RGB values
-            String[] rgbParts = colorString.replace("]", "").split(",g=|,b=");
-            int r = Integer.parseInt(rgbParts[0]);
-            int g = Integer.parseInt(rgbParts[1]);
-            int b = Integer.parseInt(rgbParts[2]);
+                // Parse the RGB values
+                String[] rgbParts = colorString.replace("]", "").split(",g=|,b=");
+                int r = Integer.parseInt(rgbParts[0]);
+                int g = Integer.parseInt(rgbParts[1]);
+                int b = Integer.parseInt(rgbParts[2]);
 
-            // Create a Color object from the RGB values
-            Color color = new Color(r, g, b);
+                // Create a Color object from the RGB values
+                Color color = new Color(r, g, b);
 
-            // Add the stock symbol and color to the 2D array
-            stockArray[i][0] = stockSymbol;
-            stockArray[i][1] = color;
-        }
+                // Add the stock symbol and color to the 2D array
+                stockArray[i][0] = stockSymbol;
+                stockArray[i][1] = color;
+            }
 
-        for (Object[] objects : stockArray) {
-            stockListModel.addElement(objects[0].toString());
-            stockColors.put(objects[0].toString(), (Color) objects[1]);
+            for (Object[] objects : stockArray) {
+                stockListModel.addElement(objects[0].toString());
+                stockColors.put(objects[0].toString(), (Color) objects[1]);
+            }
+        } catch (Exception e) {
+            System.out.println("No elements saved before");
         }
     }
 
@@ -389,7 +393,7 @@ public class Main_UI extends JFrame {
             }
 
             private void updateSearchList() {
-                String searchText = searchField.getText().trim();
+                String searchText = searchField.getText().trim().toUpperCase();
                 searchListModel.clear();
 
                 if (!searchText.isEmpty()) {

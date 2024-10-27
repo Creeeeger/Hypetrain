@@ -24,16 +24,17 @@ package com.crazzyghost.alphavantage;
 
 /**
  * Exception class for the library
- * @since 1.0.0
+ *
  * @author Sylvester Sefa-Yeboah
+ * @since 1.0.0
  */
 public class AlphaVantageException extends RuntimeException {
 
-    public AlphaVantageException(){
+    public AlphaVantageException() {
         super();
     }
 
-    public AlphaVantageException(String msg){
+    public AlphaVantageException(String msg) {
         super(msg);
     }
 

@@ -22,20 +22,15 @@
  */
 package com.crazzyghost.alphavantage.exchangerate;
 
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-import com.crazzyghost.alphavantage.parser.Parser;
-
-/**
- * ExchangeRate Response
- *
- * @author Sylvester Sefa-Yeboah
- * @since 1.0.0
- */
 public class ExchangeRateResponse {
 
+    private final String errorMessage;
     private String fromCurrencyCode;
     private String fromCurrencyName;
     private String toCurrencyCode;
@@ -45,18 +40,17 @@ public class ExchangeRateResponse {
     private String timeZone;
     private Double bidPrice;
     private Double askPrice;
-    private final String errorMessage;
 
     private ExchangeRateResponse(
-        String fromCurrencyCode,
-        String fromCurrencyName,
-        String toCurrencyCode,
-        String toCurrencyName,
-        Double exchangeRate,
-        String lastRefreshed,
-        String timeZone,
-        Double bidPrice,
-        Double askPrice
+            String fromCurrencyCode,
+            String fromCurrencyName,
+            String toCurrencyCode,
+            String toCurrencyName,
+            Double exchangeRate,
+            String lastRefreshed,
+            String timeZone,
+            Double bidPrice,
+            Double askPrice
     ) {
         this.fromCurrencyCode = fromCurrencyCode;
         this.fromCurrencyName = fromCurrencyName;
@@ -70,53 +64,13 @@ public class ExchangeRateResponse {
         this.errorMessage = null;
     }
 
-    private ExchangeRateResponse(String errorMessage){
+    private ExchangeRateResponse(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
     public static ExchangeRateResponse of(Map<String, Object> stringObjectMap) {
         Parser<ExchangeRateResponse> parser = new ExchangeRateParser();
         return parser.parse(stringObjectMap);
-    }
-
-    public static class ExchangeRateParser extends Parser<ExchangeRateResponse> {
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public ExchangeRateResponse parse(Map<String, Object> stringObjectMap) {
-            List<String> keys = new ArrayList<>(stringObjectMap.keySet());
-            if (keys.isEmpty()) {
-                return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
-            } else {
-
-                Map<String, String> data;
-                try {
-                    data = (Map<String, String>) stringObjectMap.get(keys.get(0));
-                } catch (ClassCastException e) {
-                    return onParseError((String) stringObjectMap.get(keys.get(0)));
-                }
-
-                Double bidPrice = data.get("8. Bid Price").equals("-") ? null : Double.parseDouble(data.get("8. Bid Price"));
-                Double askPrice = data.get("9. Ask Price").equals("-") ? null : Double.parseDouble(data.get("9. Ask Price"));
-
-                return new ExchangeRateResponse(
-                        data.get("1. From_Currency Code"),
-                        data.get("2. From_Currency Name"),
-                        data.get("3. To_Currency Code"),
-                        data.get("4. To_Currency Name"),
-                        Double.parseDouble(data.get("5. Exchange Rate")),
-                        data.get("6. Last Refreshed"),
-                        data.get("7. Time Zone"),
-                        bidPrice,
-                        askPrice
-                );
-            }
-        }
-
-        @Override
-        public ExchangeRateResponse onParseError(String error) {
-            return new ExchangeRateResponse(error);
-        }
     }
 
     public String getErrorMessage() {
@@ -162,16 +116,56 @@ public class ExchangeRateResponse {
     @Override
     public String toString() {
         return "ExchangeRateResponse{" +
-            "fromCurrencyCode='" + fromCurrencyCode + '\'' +
-            ", fromCurrencyName='" + fromCurrencyName + '\'' +
-            ", toCurrencyCode='" + toCurrencyCode + '\'' +
-            ", toCurrencyName='" + toCurrencyName + '\'' +
-            ", exchangeRate=" + exchangeRate +
-            ", lastRefreshed='" + lastRefreshed + '\'' +
-            ", timeZone='" + timeZone + '\'' +
-            ", bidPrice='" + bidPrice + '\'' +
-            ", askPrice='" + askPrice+ '\'' +
-            ", errorMessage='" + errorMessage + '\'' +
-        '}';
+                "fromCurrencyCode='" + fromCurrencyCode + '\'' +
+                ", fromCurrencyName='" + fromCurrencyName + '\'' +
+                ", toCurrencyCode='" + toCurrencyCode + '\'' +
+                ", toCurrencyName='" + toCurrencyName + '\'' +
+                ", exchangeRate=" + exchangeRate +
+                ", lastRefreshed='" + lastRefreshed + '\'' +
+                ", timeZone='" + timeZone + '\'' +
+                ", bidPrice='" + bidPrice + '\'' +
+                ", askPrice='" + askPrice + '\'' +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
+    public static class ExchangeRateParser extends Parser<ExchangeRateResponse> {
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public ExchangeRateResponse parse(Map<String, Object> stringObjectMap) {
+            List<String> keys = new ArrayList<>(stringObjectMap.keySet());
+            if (keys.isEmpty()) {
+                return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
+            } else {
+
+                Map<String, String> data;
+                try {
+                    data = (Map<String, String>) stringObjectMap.get(keys.get(0));
+                } catch (ClassCastException e) {
+                    return onParseError((String) stringObjectMap.get(keys.get(0)));
+                }
+
+                Double bidPrice = data.get("8. Bid Price").equals("-") ? null : Double.parseDouble(data.get("8. Bid Price"));
+                Double askPrice = data.get("9. Ask Price").equals("-") ? null : Double.parseDouble(data.get("9. Ask Price"));
+
+                return new ExchangeRateResponse(
+                        data.get("1. From_Currency Code"),
+                        data.get("2. From_Currency Name"),
+                        data.get("3. To_Currency Code"),
+                        data.get("4. To_Currency Name"),
+                        Double.parseDouble(data.get("5. Exchange Rate")),
+                        data.get("6. Last Refreshed"),
+                        data.get("7. Time Zone"),
+                        bidPrice,
+                        askPrice
+                );
+            }
+        }
+
+        @Override
+        public ExchangeRateResponse onParseError(String error) {
+            return new ExchangeRateResponse(error);
+        }
     }
 }

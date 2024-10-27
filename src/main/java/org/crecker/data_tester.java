@@ -132,7 +132,7 @@ public class data_tester {
         int upCount = 0;    // Counter for consecutive upward movements
         int downCount = 0;  // Counter for consecutive downward movements
 
-        // Loop through the stocks (minute-level data assumed)
+        // Loop through the stock (minute-level data assumed)
         for (int i = 1; i < stocks.size(); i++) {
             double currentClose = stocks.get(i).getClose();  // Get the current close price
             double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price

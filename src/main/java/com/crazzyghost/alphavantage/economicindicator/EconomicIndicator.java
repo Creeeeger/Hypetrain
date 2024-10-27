@@ -61,13 +61,13 @@ public class EconomicIndicator implements Fetcher {
         config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new okhttp3.Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                if(failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
+                if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                if(response.isSuccessful()){
-                    try(ResponseBody body = response.body()){
+                if (response.isSuccessful()) {
+                    try (ResponseBody body = response.body()) {
                         EconomicIndicatorResponse economicIndicatorResponse = EconomicIndicatorResponse.of(Parser.parseJSON(body.string()));
                         if (economicIndicatorResponse.getErrorMessage() != null && failureCallback != null) {
                             failureCallback.onFailure(new AlphaVantageException(economicIndicatorResponse.getErrorMessage()));
@@ -77,7 +77,7 @@ public class EconomicIndicator implements Fetcher {
                         }
                     }
                 } else {
-                    if(failureCallback != null) {
+                    if (failureCallback != null) {
                         failureCallback.onFailure(new AlphaVantageException());
                     }
                 }
@@ -88,11 +88,11 @@ public class EconomicIndicator implements Fetcher {
     /**
      * Make a blocking synchronous http request to fetch the data.
      * This will be called by the {@link EconomicIndicator.RequestProxy#fetchSync()}.
-     *
+     * <p>
      * Using this method will overwrite any async callback
      *
-     * @since 1.7.0
      * @throws AlphaVantageException exception thrown
+     * @since 1.7.0
      */
     private EconomicIndicatorResponse fetchSync() throws AlphaVantageException {
 
@@ -103,7 +103,7 @@ public class EconomicIndicator implements Fetcher {
         okhttp3.OkHttpClient client = config.getOkHttpClient();
         try (Response response = client.newCall(UrlExtractor.extract(builder.build(), config.getKey())).execute()) {
             return EconomicIndicatorResponse.of(Parser.parseJSON(response.body().string()));
-        } catch(IOException e) {
+        } catch (IOException e) {
             throw new AlphaVantageException(e.getMessage());
         }
     }
@@ -156,19 +156,20 @@ public class EconomicIndicator implements Fetcher {
         return new NonFarmPayrollRequestProxy();
     }
 
-    public abstract class RequestProxy<Proxy extends  RequestProxy<?>> {
+    public abstract class RequestProxy<Proxy extends RequestProxy<?>> {
         protected EconomicIndicatorRequest.Builder<?> builder;
 
-        private RequestProxy() {}
+        private RequestProxy() {
+        }
 
         public Proxy onSuccess(SuccessCallback<EconomicIndicatorResponse> callback) {
             EconomicIndicator.this.successCallback = callback;
-            return (Proxy)this;
+            return (Proxy) this;
         }
 
         public Proxy onFailure(FailureCallback callback) {
             EconomicIndicator.this.failureCallback = callback;
-            return (Proxy)this;
+            return (Proxy) this;
         }
 
         public void fetch() {
@@ -195,8 +196,8 @@ public class EconomicIndicator implements Fetcher {
             builder = new RealGdpRequest.Builder();
         }
 
-        public RealGdpRequestProxy interval(Interval interval){
-            builder = ((RealGdpRequest.Builder)builder).interval(interval);
+        public RealGdpRequestProxy interval(Interval interval) {
+            builder = ((RealGdpRequest.Builder) builder).interval(interval);
             return this;
         }
     }
@@ -212,13 +213,13 @@ public class EconomicIndicator implements Fetcher {
             builder = new TreasuryYieldRequest.Builder();
         }
 
-        public TreasuryYieldRequestProxy interval(Interval interval){
-            builder = ((TreasuryYieldRequest.Builder)builder).interval(interval);
+        public TreasuryYieldRequestProxy interval(Interval interval) {
+            builder = ((TreasuryYieldRequest.Builder) builder).interval(interval);
             return this;
         }
 
-        public TreasuryYieldRequestProxy maturity(Maturity maturity){
-            builder = ((TreasuryYieldRequest.Builder)builder).maturity(maturity);
+        public TreasuryYieldRequestProxy maturity(Maturity maturity) {
+            builder = ((TreasuryYieldRequest.Builder) builder).maturity(maturity);
             return this;
         }
     }
@@ -228,8 +229,8 @@ public class EconomicIndicator implements Fetcher {
             builder = new FederalFundsRateRequest.Builder();
         }
 
-        public FederalFundsRateRequestProxy interval(Interval interval){
-            builder = ((FederalFundsRateRequest.Builder)builder).interval(interval);
+        public FederalFundsRateRequestProxy interval(Interval interval) {
+            builder = ((FederalFundsRateRequest.Builder) builder).interval(interval);
             return this;
         }
     }
@@ -239,8 +240,8 @@ public class EconomicIndicator implements Fetcher {
             builder = new CpiRequest.Builder();
         }
 
-        public CpiRequestProxy interval(Interval interval){
-            builder = ((CpiRequest.Builder)builder).interval(interval);
+        public CpiRequestProxy interval(Interval interval) {
+            builder = ((CpiRequest.Builder) builder).interval(interval);
             return this;
         }
     }

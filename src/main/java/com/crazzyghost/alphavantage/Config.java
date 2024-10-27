@@ -22,14 +22,15 @@
  */
 package com.crazzyghost.alphavantage;
 
+import okhttp3.OkHttpClient;
+
 import java.util.concurrent.TimeUnit;
 
-import okhttp3.OkHttpClient;
 /**
  * Allows you to set the library configuration parameters.
  *
- * @since 1.0.0
  * @author Sylvester Sefa-Yeboah
+ * @since 1.0.0
  */
 public class Config {
 
@@ -42,20 +43,7 @@ public class Config {
     private Config(Builder builder) {
         this.key = builder.key;
         this.timeOut = builder.timeOut;
-        this.httpClient = builder.httpClient == null ? defaultClient(builder.timeOut): builder.httpClient;
-    }
-
-    public int getTimeOut() {
-        return timeOut;
-    }
-
-
-    public String getKey() {
-        return key;
-    }
-
-    public OkHttpClient getOkHttpClient(){
-        return this.httpClient;
+        this.httpClient = builder.httpClient == null ? defaultClient(builder.timeOut) : builder.httpClient;
     }
 
     /**
@@ -63,8 +51,32 @@ public class Config {
      *
      * @return {@link Builder}
      */
-    public static Builder builder(){
+    public static Builder builder() {
         return new Builder();
+    }
+
+    /**
+     * Make sure the config is not null and is with an api key
+     *
+     * @param config config instance
+     *               Check if a config instance is null or has an empty key
+     * @since 1.4.0
+     */
+    public static void checkNotNullOrKeyEmpty(Config config) {
+        if (config == null) throw new AlphaVantageException("Config not set");
+        if (config.getKey() == null) throw new AlphaVantageException("API Key not set");
+    }
+
+    public int getTimeOut() {
+        return timeOut;
+    }
+
+    public String getKey() {
+        return key;
+    }
+
+    public OkHttpClient getOkHttpClient() {
+        return this.httpClient;
     }
 
     /**
@@ -73,24 +85,11 @@ public class Config {
      * @param timeOut connect timeout
      * @return a default HTTP client for fetching data
      */
-    private OkHttpClient defaultClient(int timeOut){
+    private OkHttpClient defaultClient(int timeOut) {
         return new OkHttpClient.Builder()
-            .connectTimeout(timeOut, TimeUnit.SECONDS)
-            .build();
+                .connectTimeout(timeOut, TimeUnit.SECONDS)
+                .build();
     }
-
-    /**
-     * Make sure the config is not null and is with an api key
-     *
-     * @since 1.4.0
-     * @param config config instance
-     * Check if a config instance is null or has an empty key
-     */
-    public static void checkNotNullOrKeyEmpty(Config config) {
-        if (config == null) throw new AlphaVantageException("Config not set");
-        if (config.getKey() == null) throw new AlphaVantageException("API Key not set");
-    }
-
 
     public static class Builder {
 
@@ -98,22 +97,22 @@ public class Config {
         private int timeOut;
         private OkHttpClient httpClient;
 
-        public Builder key(String key){
+        public Builder key(String key) {
             this.key = key;
             return this;
         }
 
-        public Builder timeOut(int timeOut){
+        public Builder timeOut(int timeOut) {
             this.timeOut = timeOut;
             return this;
         }
 
-        public Builder httpClient(OkHttpClient httpClient){
+        public Builder httpClient(OkHttpClient httpClient) {
             this.httpClient = httpClient;
             return this;
         }
 
-        public Config build(){
+        public Config build() {
             return new Config(this);
         }
     }
