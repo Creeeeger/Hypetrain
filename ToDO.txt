@@ -19,3 +19,6 @@ TODO
 --News--
 - Fetch the news properly
 - add a link to the article
+
+--Config--
+- import/export config option
