@@ -32,23 +32,32 @@ public class Settings_handler extends JFrame {
 
         // Informational label to guide the user
         infos = new JLabel("Select your settings and then press apply");
-        // Add the label to the panel
+        // Add the label to the panel and set its alignment to the left
+        infos.setAlignmentX(Component.LEFT_ALIGNMENT);
         settingsPanel.add(infos);
         // Add space between the label and the next component
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
-        volume = new JLabel();
+        volume = new JLabel("Volume:"); // Adding a label for clarity
+        volume.setAlignmentX(Component.LEFT_ALIGNMENT);
         volume_text = new JTextField(String.valueOf(vol), 15);
+        volume_text.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        hype = new JLabel();
+        hype = new JLabel("Hype:"); // Adding a label for clarity
+        hype.setAlignmentX(Component.LEFT_ALIGNMENT);
         hype_text = new JTextField(String.valueOf(hyp), 5);
+        hype_text.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         sort_label = new JLabel("Sort hype entries");
+        sort_label.setAlignmentX(Component.LEFT_ALIGNMENT);
         sort_checkBox = new JCheckBox();
         sort_checkBox.setSelected(sort);
+        sort_checkBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        keyLabel = new JLabel("API key");
+        keyLabel = new JLabel("API key:");
+        keyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         key_text = new JTextField(key);
+        key_text.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Add components to the settings panel with spacing
         settingsPanel.add(volume);
@@ -70,7 +79,7 @@ public class Settings_handler extends JFrame {
 
         // Create and configure the "Apply Settings" button
         JButton apply = new JButton("Apply Settings");
-        apply.setAlignmentX(Component.CENTER_ALIGNMENT); // Center the button in the panel
+        apply.setAlignmentX(Component.LEFT_ALIGNMENT); // Align the button to the left
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 20))); // Add space before the button
         settingsPanel.add(apply); // Add the button to the panel
 
