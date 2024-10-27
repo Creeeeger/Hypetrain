@@ -1,10 +1,21 @@
 TODO
 --Symbols--
-- Add the api symbol search logic
+- Add the api symbol search logic (symbol based on name)
+- finish get_available_symbols method (symbol based on volume)
 
 --Chart data--
-- add tool to check gain
-- add general data to the bottom
+- add tool to check gain (apple stocks be like)
+- add live updates to chart
 
 --Hype mode--
 - add the hype code in the data handler
+- improve early detection algorithm
+- create alerts from all kind of stocks
+- change the notification creation symbol logic to the actual symbol
+
+--Settings--
+- Align items on the left
+
+--News--
+- Fetch the news properly
+- add a link to the article

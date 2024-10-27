@@ -5,7 +5,6 @@ import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.IntervalMarker;
-import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
@@ -53,7 +52,6 @@ public class Main_UI extends JFrame {
 
     static List<StockUnit> stocks;
 
-
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
         setLayout(new BorderLayout());
@@ -73,6 +71,15 @@ public class Main_UI extends JFrame {
         add(hype_panel, BorderLayout.EAST);
     }
 
+    public static void setValues() {
+        setting_data = config_handler.load_config();
+        vol = Integer.parseInt(setting_data[0][1]);
+        hyp = Float.parseFloat(setting_data[1][1]);
+        sym = setting_data[2][1];
+        isSorted = Boolean.parseBoolean(setting_data[3][1]);
+        key = setting_data[4][1];
+    }
+
     public static void main(String[] args) {
         Main_UI gui = new Main_UI();
         gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -85,14 +92,7 @@ public class Main_UI extends JFrame {
         File config = new File("config.xml");
         if (!config.exists()) {
             config_handler.create_config();
-            setting_data = config_handler.load_config();
-
-            //hard coded!!!
-            vol = Integer.parseInt(setting_data[0][1]);
-            hyp = Float.parseFloat(setting_data[1][1]);
-            sym = setting_data[2][1];
-            isSorted = Boolean.parseBoolean(setting_data[3][1]);
-            key = setting_data[4][1];
+            setValues();
 
             if (!key.isEmpty()) {
                 Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
@@ -110,12 +110,7 @@ public class Main_UI extends JFrame {
 
         } else {
             System.out.println("Load config");
-            setting_data = config_handler.load_config();
-            vol = Integer.parseInt(setting_data[0][1]);
-            hyp = Float.parseFloat(setting_data[1][1]);
-            sym = setting_data[2][1];
-            isSorted = Boolean.parseBoolean(setting_data[3][1]);
-            key = setting_data[4][1];
+            setValues();
 
             if (!key.isEmpty()) {
                 Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
@@ -153,14 +148,7 @@ public class Main_UI extends JFrame {
     }
 
     public static void load_config() {
-        setting_data = config_handler.load_config();
-
-        //hard coded!!!
-        vol = Integer.parseInt(setting_data[0][1]);
-        hyp = Float.parseFloat(setting_data[1][1]);
-        sym = setting_data[2][1];
-        isSorted = Boolean.parseBoolean(setting_data[3][1]);
-        key = setting_data[4][1];
+        setValues();
 
         refresh(true, true, true, true);
 
@@ -234,6 +222,16 @@ public class Main_UI extends JFrame {
         fiftyTwoWkHighLabel.setText("52W H: " + String.format("%.2f", fiftyTwoWkHigh));
         fiftyTwoWkLowLabel.setText("52W L: " + String.format("%.2f", fiftyTwoWkLow));
         mktCapLabel.setText("Mkt Cap: " + String.format("%.2f", marketCap));
+    }
+
+    public static String[][] getValues() {
+        return new String[][]{
+                {"volume", String.valueOf(vol)},
+                {"hype_strength", String.valueOf(hyp)},
+                {"symbols", sym = create_sym_array()},
+                {"sort", String.valueOf(isSorted)},
+                {"key", key}
+        };
     }
 
     public JPanel create_symbol_panel() {
@@ -420,7 +418,10 @@ public class Main_UI extends JFrame {
 
     private Color generateRandomColor() {
         Random rand = new Random();
-        return new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
+        int red = rand.nextInt(128) + 128;   // Ensures red is between 128 and 255
+        int green = rand.nextInt(128) + 128; // Ensures green is between 128 and 255
+        int blue = rand.nextInt(128) + 128;  // Ensures blue is between 128 and 255
+        return new Color(red, green, blue);
     }
 
     public JPanel create_chart_tool_panel() {
@@ -440,6 +441,7 @@ public class Main_UI extends JFrame {
         twoWeeksButton = new JButton("2 Weeks");
         oneMonthButton = new JButton("1 Month");
 
+        //add day buttons
         buttonPanel.add(oneDayButton);
         buttonPanel.add(threeDaysButton);
         buttonPanel.add(oneWeekButton);
@@ -507,6 +509,7 @@ public class Main_UI extends JFrame {
         openLabel = new JLabel("Open: ");
         highLabel = new JLabel("High: ");
         lowLabel = new JLabel("Low: ");
+
         openHighLowPanel.add(openLabel);
         openHighLowPanel.add(highLabel);
         openHighLowPanel.add(lowLabel);
@@ -516,6 +519,7 @@ public class Main_UI extends JFrame {
         volumeLabel = new JLabel("Vol: ");
         peLabel = new JLabel("P/E: ");
         pegLabel = new JLabel("P/E/G: ");
+
         volumePEMktCapPanel.add(volumeLabel);
         volumePEMktCapPanel.add(peLabel);
         volumePEMktCapPanel.add(pegLabel);
@@ -552,70 +556,24 @@ public class Main_UI extends JFrame {
         // Clear the existing data in the TimeSeries
         timeSeries.clear();
 
-        switch (choice) { //switch the cases for the different time periods
-            case 1: { //1 day
-                // Populate the time series with stock data
-                for (int i = 0; i < 960; i++) {
-                    String timestamp = stocks.get(i).getDate();
-                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+        // Define an array to hold the iteration limits for each case
+        int[] limits = {960, 2880, 6720, 9600, 19200}; // Limits for cases 1 to 5
 
-                    // Add the data to the TimeSeries
-                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
-                }
-                break;
-            }
+        // Check if the choice is valid
+        if (choice < 1 || choice > 5) {
+            throw new RuntimeException("A case must be selected");
+        }
 
-            case 2: { //3 days
-                // Populate the time series with stock data
-                for (int i = 0; i < 2880; i++) {
-                    String timestamp = stocks.get(i).getDate();
-                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+        // Get the limit based on the choice
+        int limit = limits[choice - 1]; // Adjust for zero-based index
 
-                    // Add the data to the TimeSeries
-                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
-                }
-                break;
-            }
+        // Populate the time series with stock data
+        for (int i = 0; i < limit; i++) {
+            String timestamp = stocks.get(i).getDate();
+            double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
 
-            case 3: { //1 week
-                // Populate the time series with stock data
-                for (int i = 0; i < 6720; i++) {
-                    String timestamp = stocks.get(i).getDate();
-                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
-
-                    // Add the data to the TimeSeries
-                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
-                }
-                break;
-            }
-
-            case 4: { //2weeks
-                // Populate the time series with stock data
-                for (int i = 0; i < 9600; i++) {
-                    String timestamp = stocks.get(i).getDate();
-                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
-
-                    // Add the data to the TimeSeries
-                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
-                }
-                break;
-            }
-
-            case 5: { //1month
-                // Populate the time series with stock data
-                for (int i = 0; i < 19200; i++) {
-                    String timestamp = stocks.get(i).getDate();
-                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
-
-                    // Add the data to the TimeSeries
-                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
-                }
-                break;
-            }
-
-            default: { //error when no case is selected
-                throw new RuntimeException("A case must be selected");
-            }
+            // Add the data to the TimeSeries
+            timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
         }
 
         // Create a new chart with the updated title
@@ -648,14 +606,7 @@ public class Main_UI extends JFrame {
 
         // Customizing the plot
         XYPlot plot = chart.getXYPlot();
-        plot.addRangeMarker(new IntervalMarker(Double.NEGATIVE_INFINITY, 0.0, new Color(255, 200, 200, 100)));
         plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
-
-        // Add a black line at y = 0
-        ValueMarker zeroLine = new ValueMarker(0.0);
-        zeroLine.setPaint(Color.BLACK);
-        zeroLine.setStroke(new BasicStroke(1.0f));
-        plot.addRangeMarker(zeroLine);
 
         return new ChartPanel(chart);
     }
@@ -757,7 +708,7 @@ public class Main_UI extends JFrame {
         //JMenuItems File
         load = new JMenuItem("Load the config (manually again)");
         save = new JMenuItem("Save the config");
-        exit = new JMenuItem("Exit and don't save");
+        exit = new JMenuItem("Exit (saves)");
 
         //Settings
         setting_handler = new JMenuItem("Open settings");
@@ -872,16 +823,7 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            System.out.println(sym);
-            String[][] values = {
-                    {"volume", String.valueOf(vol)},
-                    {"hype_strength", String.valueOf(hyp)},
-                    {"symbols", sym = create_sym_array()},
-                    {"sort", String.valueOf(isSorted)},
-                    {"key", key}
-            };
-
-            save_config(values);
+            save_config(getValues());
         }
     }
 
@@ -889,6 +831,7 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
+            save_config(getValues()); //Save them in case user forgot
             System.out.println("Exit application");
             System.exit(0); // Exit the application
         }
@@ -921,4 +864,3 @@ public class Main_UI extends JFrame {
         }
     }
 }
-//TODO
