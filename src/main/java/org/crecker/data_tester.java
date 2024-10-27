@@ -223,39 +223,29 @@ public class data_tester {
     public static List<StockUnit> get_Inter_Day(List<StockUnit> stocks, Date last_date) {
         List<StockUnit> inter_day_stocks = new ArrayList<>();
 
-        for (int i = 0; i < stocks.size() - 1; i++) {
+        for (int i = 0; i < stocks.size(); i++) {
             Date current_date = Main_data_handler.convertToDate_Simple(stocks.get(i).getDate());
 
+            // Check if the current date matches the last date
             if (current_date.equals(last_date)) {
                 double current_close = stocks.get(i).getClose();
-                double previous_close = stocks.get(i - 1).getClose();
 
-                // Check for a 10% dip or peak
-                if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
-                    // Replace the current close with the previous close
-                    current_close = previous_close;
+                // Ensure there is a previous stock entry to compare with
+                if (i > 0) {
+                    double previous_close = stocks.get(i - 1).getClose();
+
+                    // Check for a 10% dip or peak
+                    if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
+                        // Replace the current close with the previous close
+                        stocks.get(i).setClose(previous_close); // Use the setter method
+                    }
                 }
 
-                // Create a new StockUnit with the modified close value
-                StockUnit newStock = new StockUnit.Builder()
-                        .open(stocks.get(i).getOpen())
-                        .high(stocks.get(i).getHigh())
-                        .low(stocks.get(i).getLow())
-                        .close(current_close)  // Use the updated close value
-                        .adjustedClose(stocks.get(i).getAdjustedClose())
-                        .volume(stocks.get(i).getVolume())
-                        .dividendAmount(stocks.get(i).getDividendAmount())
-                        .splitCoefficient(stocks.get(i).getSplitCoefficient())
-                        .time(stocks.get(i).getDate())
-                        .build();
-
-                // Replace the old stock entry with the new one
-                stocks.set(i, newStock);
-
-                // Add the new stock to the inter_day_stocks list
-                inter_day_stocks.add(newStock);
+                // Add the modified stock to the inter_day_stocks list
+                inter_day_stocks.add(stocks.get(i));
             }
         }
+
         return inter_day_stocks;
     }
 
