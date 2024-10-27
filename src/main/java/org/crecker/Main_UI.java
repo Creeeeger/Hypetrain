@@ -1,12 +1,13 @@
 package org.crecker;
 
+import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.data.time.Second;
+import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -36,7 +37,7 @@ public class Main_UI extends JFrame {
     static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort;
     static JTextField searchField;
     static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
-    static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton, threeMonthsButton, sixMonthsButton, oneYearButton;
+    static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
     static ChartPanel chartDisplay; // This will hold the chart
@@ -49,6 +50,8 @@ public class Main_UI extends JFrame {
     static DefaultListModel<News> NewsListModel;
     static JList<News> NewsList;
     static News CurrentNews;
+
+    static List<StockUnit> stocks;
 
 
     public Main_UI() {
@@ -284,17 +287,52 @@ public class Main_UI extends JFrame {
         stockList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) { // Prevent duplicate executions during list update
                 selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected stock symbol
-                System.out.println(selected_stock);
 
                 // Fetch stock data asynchronously
                 Main_data_handler.get_Info_Array(selected_stock, values -> {
 
                     // Update stock info labels only if values are not null
                     if (values != null && values.length == 9) {
+
+                        for (int i = 0; i < values.length; i++) {
+                            if (values[i] == null) { // Check if values[i] is null
+                                values[i] = 0.00; // Assign a default value
+                            }
+                        }
+
                         updateStockInfoLabels(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
                     } else {
                         System.out.println("Received null or incomplete data.");
                     }
+                });
+
+                //Fetch timeLine aSync
+                Main_data_handler.get_timeline(selected_stock, values -> {
+                    for (int i = 1; i < values.size() - 1; i++) {
+                        double current_close = values.get(i).getClose();
+                        double previous_close = values.get(i - 1).getClose();
+
+                        // Check for a 10% dip or peak
+                        if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
+                            // Replace the current close with the previous close
+                            current_close = previous_close;
+                        }
+
+                        // Modify the existing StockUnit rather than creating a new one to save memory
+                        values.set(i, new StockUnit.Builder()
+                                .open(values.get(i).getOpen())
+                                .high(values.get(i).getHigh())
+                                .low(values.get(i).getLow())
+                                .close(current_close)
+                                .adjustedClose(values.get(i).getAdjustedClose())
+                                .volume(values.get(i).getVolume())
+                                .dividendAmount(values.get(i).getDividendAmount())
+                                .splitCoefficient(values.get(i).getSplitCoefficient())
+                                .time(values.get(i).getDate())
+                                .build());
+                    }
+
+                    stocks = values;
 
                     // Refresh the chart data for the selected stock
                     refreshChartData(1);
@@ -401,18 +439,12 @@ public class Main_UI extends JFrame {
         oneWeekButton = new JButton("1 Week");
         twoWeeksButton = new JButton("2 Weeks");
         oneMonthButton = new JButton("1 Month");
-        threeMonthsButton = new JButton("3 Months");
-        sixMonthsButton = new JButton("6 Months");
-        oneYearButton = new JButton("1 Year");
 
         buttonPanel.add(oneDayButton);
         buttonPanel.add(threeDaysButton);
         buttonPanel.add(oneWeekButton);
         buttonPanel.add(twoWeeksButton);
         buttonPanel.add(oneMonthButton);
-        buttonPanel.add(threeMonthsButton);
-        buttonPanel.add(sixMonthsButton);
-        buttonPanel.add(oneYearButton);
 
         // Adding Action Listeners with lambda expressions
         oneDayButton.addActionListener(e -> refreshChartData(1));
@@ -420,9 +452,6 @@ public class Main_UI extends JFrame {
         oneWeekButton.addActionListener(e -> refreshChartData(3));
         twoWeeksButton.addActionListener(e -> refreshChartData(4));
         oneMonthButton.addActionListener(e -> refreshChartData(5));
-        threeMonthsButton.addActionListener(e -> refreshChartData(6));
-        sixMonthsButton.addActionListener(e -> refreshChartData(7));
-        oneYearButton.addActionListener(e -> refreshChartData(8));
 
         // Placeholder for JFreeChart (replace with actual chart code)
         JPanel chartPlaceholder = new JPanel(new BorderLayout());
@@ -523,53 +552,71 @@ public class Main_UI extends JFrame {
         // Clear the existing data in the TimeSeries
         timeSeries.clear();
 
-
-        //!!!Add the real chart logic to it
-        for (int i = 0; i < choice * 100; i++) {
-            // Add a new point to the time series for the last 10 seconds
-            timeSeries.add(new Second(new java.util.Date(System.currentTimeMillis() - i * 1000L)), Math.random() * 10);
-        }
-
-
         switch (choice) { //switch the cases for the different time periods
-            case 1: {
+            case 1: { //1 day
+                // Populate the time series with stock data
+                for (int i = 0; i < 960; i++) {
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
 
+                    // Add the data to the TimeSeries
+                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                }
                 break;
             }
-            case 2: {
 
+            case 2: { //3 days
+                // Populate the time series with stock data
+                for (int i = 0; i < 2880; i++) {
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+
+                    // Add the data to the TimeSeries
+                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                }
                 break;
             }
-            case 3: {
 
+            case 3: { //1 week
+                // Populate the time series with stock data
+                for (int i = 0; i < 6720; i++) {
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+
+                    // Add the data to the TimeSeries
+                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                }
                 break;
             }
-            case 4: {
 
+            case 4: { //2weeks
+                // Populate the time series with stock data
+                for (int i = 0; i < 9600; i++) {
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+
+                    // Add the data to the TimeSeries
+                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                }
                 break;
             }
-            case 5: {
 
+            case 5: { //1month
+                // Populate the time series with stock data
+                for (int i = 0; i < 19200; i++) {
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+
+                    // Add the data to the TimeSeries
+                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                }
                 break;
             }
-            case 6: {
 
-                break;
-            }
-            case 7: {
-
-                break;
-            }
-            case 8: {
-
-                break;
-            }
-            default: {
-                break;
+            default: { //error when no case is selected
+                throw new RuntimeException("A case must be selected");
             }
         }
-
-        //updateStockInfoLabels(); //!!!add the stock detail later after extracting
 
         // Create a new chart with the updated title
         ChartPanel newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
@@ -875,4 +922,3 @@ public class Main_UI extends JFrame {
     }
 }
 //TODO
-//!!!Add the real chart logic to it to the chart panel

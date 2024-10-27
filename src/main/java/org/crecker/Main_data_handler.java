@@ -28,10 +28,8 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
 import java.util.List;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
@@ -77,6 +75,25 @@ public class Main_data_handler {
 
         // Initialize the Alpha Vantage API
         AlphaVantage.api().init(cfg);
+    }
+
+    public static void get_timeline(String symbol_name, TimelineCallback callback) {
+        List<StockUnit> stocks = new ArrayList<>(); // Directly use a List<StockUnit>
+
+        AlphaVantage.api()
+                .timeSeries()
+                .intraday()
+                .forSymbol(symbol_name)
+                .interval(Interval.ONE_MIN)
+                .outputSize(OutputSize.FULL)
+                .onSuccess(e -> {
+                    TimeSeriesResponse response = (TimeSeriesResponse) e;
+                    stocks.addAll(response.getStockUnits()); // Populate the list
+
+                    callback.onTimeLineFetched(stocks); // Call the callback with the stocks list
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
     }
 
     public static void get_Info_Array(String symbol_name, DataCallback callback) {
@@ -299,6 +316,10 @@ public class Main_data_handler {
 
     public interface DataCallback {
         void onDataFetched(Double[] values);
+    }
+
+    public interface TimelineCallback {
+        void onTimeLineFetched(List<StockUnit> stocks);
     }
 }
 
