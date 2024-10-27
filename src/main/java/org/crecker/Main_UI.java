@@ -1,6 +1,14 @@
 package org.crecker;
 
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.chart.plot.ValueMarker;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -18,20 +26,29 @@ import java.util.*;
 public class Main_UI extends JFrame {
     static int vol;
     static float hyp;
-    static String sym;
     static boolean isSorted;
+    static String sym;
+    static String selected_stock = "Select a stock"; //selected_stock is the stock to show in the chart bar
     static String[][] setting_data;
-    static JPanel symbol_panel, chart_tool_panel, hype_panel;
+    static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JMenuBar menuBar;
-    static JTextField searchField;
-    static JButton removeButton, addButton;
     static JMenu file, settings, hype_mode_menu, Notifications;
     static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort;
+    static JTextField searchField;
+    static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton, threeMonthsButton, sixMonthsButton, oneYearButton;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
-    private DefaultListModel<Notification> notificationListModel;
-    private JList<Notification> notificationList;
-    private Notification currentNotification; // Track currently opened notification
+    static ChartPanel chartDisplay; // This will hold the chart
+    static TimeSeries timeSeries; // Your time series data
+
+    static DefaultListModel<Notification> notificationListModel;
+    static JList<Notification> notificationList;
+    static Notification currentNotification; // Track currently opened notification
+
+    static DefaultListModel<News> NewsListModel;
+    static JList<News> NewsList;
+    static News CurrentNews;
+
 
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
@@ -55,7 +72,7 @@ public class Main_UI extends JFrame {
     public static void main(String[] args) {
         Main_UI gui = new Main_UI();
         gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        gui.setSize(1000, 800); // Width and height of the window
+        gui.setSize(1900, 1000); // Width and height of the window
         gui.setVisible(true);
         gui.setTitle("Hype train");
 
@@ -229,6 +246,9 @@ public class Main_UI extends JFrame {
             if (isSelected) {
                 label.setBackground(fixedColor); // Keep the fixed color
                 label.setForeground(Color.WHITE); // Change text color on selection
+                selected_stock = value; //assign the symbol to the variable to extract it
+
+                refreshChartData(1); //add the initial company chart to the screen
             } else {
                 label.setForeground(Color.BLACK); // Default text color when not selected
             }
@@ -319,18 +339,243 @@ public class Main_UI extends JFrame {
         return new Color(rand.nextInt(256), rand.nextInt(256), rand.nextInt(256));
     }
 
-    private JPanel create_chart_tool_panel() {
-        JPanel panel = new JPanel(new BorderLayout());
+    public JPanel create_chart_tool_panel() {
+        JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Display stock courses in a text area
-        JTextArea stockCourses = new JTextArea("Stock Course Information...\nSelect a stock to view details.");
-        stockCourses.setEditable(false); // Make the text area read-only
-        JScrollPane scrollPane = new JScrollPane(stockCourses);
+        // First Row - Chart and News
+        JPanel firstRowPanel = new JPanel(new BorderLayout());
 
-        panel.add(scrollPane, BorderLayout.CENTER);
-        panel.setBorder(BorderFactory.createTitledBorder("Stock Chats"));
+        // Left side of the first row - Chart Panel with Buttons above
+        chartPanel = new JPanel(new BorderLayout());
 
-        return panel;
+        // Buttons for time range selection (Day, Week, Month)
+        JPanel buttonPanel = new JPanel();
+        oneDayButton = new JButton("1 Day");
+        threeDaysButton = new JButton("3 Days");
+        oneWeekButton = new JButton("1 Week");
+        twoWeeksButton = new JButton("2 Weeks");
+        oneMonthButton = new JButton("1 Month");
+        threeMonthsButton = new JButton("3 Months");
+        sixMonthsButton = new JButton("6 Months");
+        oneYearButton = new JButton("1 Year");
+
+        buttonPanel.add(oneDayButton);
+        buttonPanel.add(threeDaysButton);
+        buttonPanel.add(oneWeekButton);
+        buttonPanel.add(twoWeeksButton);
+        buttonPanel.add(oneMonthButton);
+        buttonPanel.add(threeMonthsButton);
+        buttonPanel.add(sixMonthsButton);
+        buttonPanel.add(oneYearButton);
+
+        // Adding Action Listeners with lambda expressions
+        oneDayButton.addActionListener(e -> refreshChartData(1));
+        threeDaysButton.addActionListener(e -> refreshChartData(2));
+        oneWeekButton.addActionListener(e -> refreshChartData(3));
+        twoWeeksButton.addActionListener(e -> refreshChartData(4));
+        oneMonthButton.addActionListener(e -> refreshChartData(5));
+        threeMonthsButton.addActionListener(e -> refreshChartData(6));
+        sixMonthsButton.addActionListener(e -> refreshChartData(7));
+        oneYearButton.addActionListener(e -> refreshChartData(8));
+
+        // Placeholder for JFreeChart (replace with actual chart code)
+        JPanel chartPlaceholder = new JPanel(new BorderLayout());
+        chartPlaceholder.setBorder(BorderFactory.createLineBorder(Color.BLACK));
+        chartPlaceholder.setPreferredSize(new Dimension(600, 400));
+
+        // Initialize the chart
+        timeSeries = new TimeSeries(selected_stock + " price");
+        chartDisplay = createChart(timeSeries, selected_stock + " price Chart");
+
+        // Add a titled border to the chart panel
+        chartPanel.setBorder(BorderFactory.createTitledBorder("Stock price Chart"));
+        chartPanel.add(buttonPanel, BorderLayout.NORTH);
+        chartPanel.add(chartPlaceholder, BorderLayout.CENTER);
+        chartPanel.add(chartDisplay);
+
+        // Right side of the first row - Company News
+        // Initialize the News list model
+        NewsListModel = new DefaultListModel<>();
+        NewsList = new JList<>(NewsListModel);
+        NewsList.setVisibleRowCount(10); // Set the visible row count
+        NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Add mouse listener to handle clicks
+        NewsList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) { // Open on double click
+                    int index = NewsList.locationToIndex(e.getPoint());
+                    if (index != -1) {
+                        News clickedNews = NewsListModel.getElementAt(index);
+                        openNews(clickedNews);
+                    }
+                }
+            }
+        });
+
+        JScrollPane newsScrollPane = new JScrollPane(NewsList);
+        newsScrollPane.setPreferredSize(new Dimension(200, 400));
+
+        // Add a titled border to the news section
+        newsScrollPane.setBorder(BorderFactory.createTitledBorder("Company News"));
+
+        // Add chartPanel (80%) and newsScrollPane (20%) to the firstRowPanel
+        firstRowPanel.add(chartPanel, BorderLayout.CENTER);
+        firstRowPanel.add(newsScrollPane, BorderLayout.EAST);
+
+        // Second Row - Lists of stock information
+        JPanel secondRowPanel = new JPanel(new GridLayout(1, 4));
+
+        // First column - Open, High, Low
+        JPanel openHighLowPanel = new JPanel(new GridLayout(3, 1));
+        JLabel openLabel = new JLabel("Open: ");
+        JLabel highLabel = new JLabel("High: ");
+        JLabel lowLabel = new JLabel("Low: ");
+
+        openHighLowPanel.add(openLabel);
+        openHighLowPanel.add(highLabel);
+        openHighLowPanel.add(lowLabel);
+
+        // Second column - Volume, P/E, Market Cap
+        JPanel volumePEMktCapPanel = new JPanel(new GridLayout(3, 1));
+        JLabel volumeLabel = new JLabel("Vol: ");
+        JLabel peLabel = new JLabel("P/E: ");
+        JLabel mktCapLabel = new JLabel("Mkt Cap: ");
+
+        volumePEMktCapPanel.add(volumeLabel);
+        volumePEMktCapPanel.add(peLabel);
+        volumePEMktCapPanel.add(mktCapLabel);
+
+        // Third column - 52W High, 52W Low, Avg Volume
+        JPanel rangeAndAvgVolPanel = new JPanel(new GridLayout(3, 1));
+        JLabel fiftyTwoWkHighLabel = new JLabel("52W H: ");
+        JLabel fiftyTwoWkLowLabel = new JLabel("52W L: ");
+        JLabel avgVolumeLabel = new JLabel("Avg Vol: ");
+
+        rangeAndAvgVolPanel.add(fiftyTwoWkHighLabel);
+        rangeAndAvgVolPanel.add(fiftyTwoWkLowLabel);
+        rangeAndAvgVolPanel.add(avgVolumeLabel);
+
+        // Fourth column - Yield, Beta, EPS
+        JPanel yieldBetaEpsPanel = new JPanel(new GridLayout(3, 1));
+        JLabel yieldLabel = new JLabel("Yield: ");
+        JLabel betaLabel = new JLabel("Beta: ");
+        JLabel epsLabel = new JLabel("EPS: ");
+
+        yieldBetaEpsPanel.add(yieldLabel);
+        yieldBetaEpsPanel.add(betaLabel);
+        yieldBetaEpsPanel.add(epsLabel);
+
+        // Add all columns to the secondRowPanel
+        secondRowPanel.add(openHighLowPanel);
+        secondRowPanel.add(volumePEMktCapPanel);
+        secondRowPanel.add(rangeAndAvgVolPanel);
+        secondRowPanel.add(yieldBetaEpsPanel);
+
+        // Add a titled border to the stock info section
+        secondRowPanel.setBorder(BorderFactory.createTitledBorder("Stock Information"));
+
+        // Add first and second rows to the main panel
+        mainPanel.add(firstRowPanel, BorderLayout.CENTER);
+        mainPanel.add(secondRowPanel, BorderLayout.SOUTH);
+
+        return mainPanel;
+    }
+
+    public void refreshChartData(int choice) {
+        //Create a new time series
+        timeSeries = new TimeSeries(selected_stock + " price");
+
+        // Clear the existing data in the TimeSeries
+        timeSeries.clear();
+
+
+        //!!!Add the real chart logic to it
+        for (int i = 0; i < choice * 100; i++) {
+            // Add a new point to the time series for the last 10 seconds
+            timeSeries.add(new Second(new java.util.Date(System.currentTimeMillis() - i * 1000L)), Math.random() * 10);
+        }
+
+
+        switch (choice) { //switch the cases for the different time periods
+            case 1: {
+
+                break;
+            }
+            case 2: {
+
+                break;
+            }
+            case 3: {
+
+                break;
+            }
+            case 4: {
+
+                break;
+            }
+            case 5: {
+
+                break;
+            }
+            case 6: {
+
+                break;
+            }
+            case 7: {
+
+                break;
+            }
+            case 8: {
+
+                break;
+            }
+            default: {
+                break;
+            }
+        }
+
+        // Create a new chart with the updated title
+        ChartPanel newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
+
+        // Remove the old chart
+        chartPanel.remove(chartDisplay); // Remove the old chart
+        chartDisplay = newChartDisplay; // Update the reference to the new chart
+        chartPanel.add(chartDisplay, BorderLayout.CENTER); // Add the new chart
+
+        chartPanel.revalidate(); // Refresh the panel
+        chartPanel.repaint(); // Repaint the panel to show new chart
+    }
+
+    private ChartPanel createChart(TimeSeries timeSeries, String chartName) {
+        // Wrap the TimeSeries in a TimeSeriesCollection
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        dataset.addSeries(timeSeries);
+
+        // Create the chart with the dataset
+        JFreeChart chart = ChartFactory.createTimeSeriesChart(
+                chartName, // Chart title
+                "Date", // X-axis Label
+                "Price", // Y-axis Label
+                dataset, // The dataset
+                true, // Show legend
+                true, // Show tooltips
+                false // Show URLs
+        );
+
+        // Customizing the plot
+        XYPlot plot = chart.getXYPlot();
+        plot.addRangeMarker(new IntervalMarker(Double.NEGATIVE_INFINITY, 0.0, new Color(255, 200, 200, 100)));
+        plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
+
+        // Add a black line at y = 0
+        ValueMarker zeroLine = new ValueMarker(0.0);
+        zeroLine.setPaint(Color.BLACK);
+        zeroLine.setStroke(new BasicStroke(1.0f));
+        plot.addRangeMarker(zeroLine);
+
+        return new ChartPanel(chart);
     }
 
     public JPanel create_hype_panel() {
@@ -354,13 +599,7 @@ public class Main_UI extends JFrame {
                 if (isSorted) {
                     sort_notifications();
                 }
-            }
-        });
 
-        // Add mouse listener to handle clicks
-        notificationList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
                 if (e.getClickCount() == 2) { // Open on double click
                     int index = notificationList.locationToIndex(e.getPoint());
                     if (index != -1) {
@@ -390,7 +629,7 @@ public class Main_UI extends JFrame {
     }
 
     // Method to add a notification
-    public void addNotification(String title, String content, TimeSeries timeSeries) {
+    public void addNotification(String title, String content, TimeSeries timeSeries) { //Method to add a new notification to the panel
         Notification newNotification = new Notification(title, content, timeSeries);
         notificationListModel.addElement(newNotification);
     }
@@ -404,6 +643,23 @@ public class Main_UI extends JFrame {
         // Show the new notification
         notification.showNotification();
         currentNotification = notification; // Update the current notification reference
+    }
+
+    // Method to add a News
+    public void addNews(String title, String content) { //Method to add News to the panel
+        News newNews = new News(title, content);
+        NewsListModel.addElement(newNews);
+    }
+
+    // Open News and close previous one
+    private void openNews(News news) {
+        // Close the currently opened News if it exists
+        if (CurrentNews != null) {
+            CurrentNews.closeNews();
+        }
+
+        news.showNews();
+        CurrentNews = news;
     }
 
     // Create the menu bar
@@ -571,8 +827,10 @@ public class Main_UI extends JFrame {
                 List<Notification> notifications = data_tester.Main_data_puller();
 
                 for (Notification notification : notifications) {
-                    addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries());
+                    addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries()); //add notification sample
                 }
+
+                addNews(String.valueOf(Math.random() * 10), String.valueOf(Math.random() * 10)); //add news sample
 
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
@@ -580,3 +838,5 @@ public class Main_UI extends JFrame {
         }
     }
 }
+//TODO
+//!!!Add the real chart logic to it
