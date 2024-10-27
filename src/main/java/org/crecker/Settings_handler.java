@@ -7,20 +7,21 @@ import java.awt.event.ActionListener;
 
 public class Settings_handler extends JFrame {
     public static JPanel settingsPanel;
-    static JLabel volume, hype, infos, sort_label;
-    static JTextField volume_text, hype_text;
+    static JLabel volume, hype, infos, sort_label, keyLabel;
+    static JTextField volume_text, hype_text, key_text;
     static JCheckBox sort_checkBox;
     int vol;
     float hyp;
-    String sym;
+    String sym, key;
     boolean sort;
 
-    public Settings_handler(int vol, float hyp, String sym, boolean sort) {
+    public Settings_handler(int vol, float hyp, String sym, boolean sort, String key) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
         this.hyp = hyp;
         this.sym = sym;
         this.sort = sort;
+        this.key = key;
 
         // Create a panel to hold the settings components
         settingsPanel = new JPanel();
@@ -46,6 +47,9 @@ public class Settings_handler extends JFrame {
         sort_checkBox = new JCheckBox();
         sort_checkBox.setSelected(sort);
 
+        keyLabel = new JLabel("API key");
+        key_text = new JTextField(key);
+
         // Add components to the settings panel with spacing
         settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between description and input field
@@ -58,6 +62,10 @@ public class Settings_handler extends JFrame {
         settingsPanel.add(sort_label);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(sort_checkBox);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(keyLabel);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(key_text);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
 
         // Create and configure the "Apply Settings" button
@@ -87,7 +95,8 @@ public class Settings_handler extends JFrame {
                         {"volume", String.valueOf(vol)},
                         {"hype_strength", String.valueOf(hyp)},
                         {"symbols", sym},
-                        {"sort", String.valueOf(sort_checkBox.isSelected())}
+                        {"sort", String.valueOf(sort_checkBox.isSelected())},
+                        {"key", key_text.getText()}
                 };
 
                 config_handler.save_config(values);

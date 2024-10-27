@@ -159,6 +159,10 @@ public class config_handler {
             sort.appendChild(doc.createTextNode("false"));
             root.appendChild(sort);
 
+            Element key = doc.createElement("key");
+            key.appendChild(doc.createTextNode("0988PSIKXZ50IP2T")); //Stock free key
+            root.appendChild(key);
+
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
             // Use TransformerFactory to create a Transformer instance for converting the Document to XML format

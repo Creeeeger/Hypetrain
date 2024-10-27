@@ -27,7 +27,7 @@ public class Main_UI extends JFrame {
     static int vol;
     static float hyp;
     static boolean isSorted;
-    static String sym;
+    static String sym, key;
     static String selected_stock = "Select a stock"; //selected_stock is the stock to show in the chart bar
     static String[][] setting_data;
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
@@ -35,7 +35,7 @@ public class Main_UI extends JFrame {
     static JMenu file, settings, hype_mode_menu, Notifications;
     static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort;
     static JTextField searchField;
-    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, avgVolumeLabel;
+    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
     static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton, threeMonthsButton, sixMonthsButton, oneYearButton;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
@@ -77,6 +77,8 @@ public class Main_UI extends JFrame {
         gui.setVisible(true);
         gui.setTitle("Hype train");
 
+        updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the stock data section
+
         File config = new File("config.xml");
         if (!config.exists()) {
             config_handler.create_config();
@@ -87,10 +89,17 @@ public class Main_UI extends JFrame {
             hyp = Float.parseFloat(setting_data[1][1]);
             sym = setting_data[2][1];
             isSorted = Boolean.parseBoolean(setting_data[3][1]);
+            key = setting_data[4][1];
+
+            if (!key.isEmpty()) {
+                Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
+            } else {
+                throw new RuntimeException("You need to add a key in the settings menu!!");
+            }
 
             refresh(true, true, true, false);
 
-            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), isSorted);
+            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), isSorted, key);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
@@ -103,11 +112,18 @@ public class Main_UI extends JFrame {
             hyp = Float.parseFloat(setting_data[1][1]);
             sym = setting_data[2][1];
             isSorted = Boolean.parseBoolean(setting_data[3][1]);
+            key = setting_data[4][1];
+
+            if (!key.isEmpty()) {
+                Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
+            } else {
+                throw new RuntimeException("You need to add a key in the settings menu!!");
+            }
 
             load_table(sym);
 
             refresh(true, true, true, false);
-            System.out.println("config loaded");
+            System.out.println("Config loaded!");
         }
     }
 
@@ -131,8 +147,6 @@ public class Main_UI extends JFrame {
             Settings_handler.settingsPanel.revalidate();
             Settings_handler.settingsPanel.repaint();
         }
-
-        System.out.println("Refreshed");
     }
 
     public static void load_config() {
@@ -143,6 +157,7 @@ public class Main_UI extends JFrame {
         hyp = Float.parseFloat(setting_data[1][1]);
         sym = setting_data[2][1];
         isSorted = Boolean.parseBoolean(setting_data[3][1]);
+        key = setting_data[4][1];
 
         refresh(true, true, true, true);
 
@@ -206,6 +221,18 @@ public class Main_UI extends JFrame {
         return symBuilder.toString();
     }
 
+    public static void updateStockInfoLabels(double open, double high, double low, double volume, double peRatio, double pegRatio, double fiftyTwoWkHigh, double fiftyTwoWkLow, double marketCap) {
+        openLabel.setText("Open: " + String.format("%.2f", open));
+        highLabel.setText("High: " + String.format("%.2f", high));
+        lowLabel.setText("Low: " + String.format("%.2f", low));
+        volumeLabel.setText("Vol: " + String.format("%.0f", volume));
+        peLabel.setText("P/E: " + String.format("%.2f", peRatio));
+        pegLabel.setText("P/E/G: " + String.format("%.0f", pegRatio));
+        fiftyTwoWkHighLabel.setText("52W H: " + String.format("%.2f", fiftyTwoWkHigh));
+        fiftyTwoWkLowLabel.setText("52W L: " + String.format("%.2f", fiftyTwoWkLow));
+        mktCapLabel.setText("Mkt Cap: " + String.format("%.2f", marketCap));
+    }
+
     public JPanel create_symbol_panel() {
         // Create a panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
@@ -245,16 +272,34 @@ public class Main_UI extends JFrame {
 
             // Handle selection styling without changing the background color
             if (isSelected) {
-                label.setBackground(fixedColor); // Keep the fixed color
                 label.setForeground(Color.WHITE); // Change text color on selection
-                selected_stock = value; //assign the symbol to the variable to extract it
-
-                refreshChartData(1); //add the initial company chart to the screen
             } else {
                 label.setForeground(Color.BLACK); // Default text color when not selected
             }
 
             return label;
+        });
+
+        // Add a ListSelectionListener to handle stock selection events
+        stockList.addListSelectionListener(e -> {
+            if (!e.getValueIsAdjusting()) { // Prevent duplicate executions during list update
+                selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected stock symbol
+                System.out.println(selected_stock);
+
+                // Fetch stock data asynchronously
+                Main_data_handler.get_Info_Array(selected_stock, values -> {
+
+                    // Update stock info labels only if values are not null
+                    if (values != null && values.length == 9) {
+                        updateStockInfoLabels(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
+                    } else {
+                        System.out.println("Received null or incomplete data.");
+                    }
+
+                    // Refresh the chart data for the selected stock
+                    refreshChartData(1);
+                });
+            }
         });
 
         // Add the stock list into a scroll pane
@@ -437,23 +482,24 @@ public class Main_UI extends JFrame {
         openHighLowPanel.add(highLabel);
         openHighLowPanel.add(lowLabel);
 
-        // Second column - Volume, P/E, Market Cap
+        // Second column - Volume, P/E, P/E/G
         JPanel volumePEMktCapPanel = new JPanel(new GridLayout(3, 1));
         volumeLabel = new JLabel("Vol: ");
         peLabel = new JLabel("P/E: ");
-        mktCapLabel = new JLabel("Mkt Cap: ");
+        pegLabel = new JLabel("P/E/G: ");
         volumePEMktCapPanel.add(volumeLabel);
         volumePEMktCapPanel.add(peLabel);
-        volumePEMktCapPanel.add(mktCapLabel);
+        volumePEMktCapPanel.add(pegLabel);
 
-        // Third column - 52W High, 52W Low, Avg Volume
+        // Third column - 52W High, 52W Low, MKT CAP
         JPanel rangeAndAvgVolPanel = new JPanel(new GridLayout(3, 1));
         fiftyTwoWkHighLabel = new JLabel("52W H: ");
         fiftyTwoWkLowLabel = new JLabel("52W L: ");
-        avgVolumeLabel = new JLabel("Avg Vol: ");
+        mktCapLabel = new JLabel("Mkt Cap: ");
+
         rangeAndAvgVolPanel.add(fiftyTwoWkHighLabel);
         rangeAndAvgVolPanel.add(fiftyTwoWkLowLabel);
-        rangeAndAvgVolPanel.add(avgVolumeLabel);
+        rangeAndAvgVolPanel.add(mktCapLabel);
 
         // Add all columns to the secondRowPanel
         secondRowPanel.add(openHighLowPanel);
@@ -468,18 +514,6 @@ public class Main_UI extends JFrame {
         mainPanel.add(secondRowPanel, BorderLayout.SOUTH);
 
         return mainPanel;
-    }
-
-    public void updateStockInfoLabels(double open, double high, double low, double volume, double peRatio, double marketCap, double fiftyTwoWkHigh, double fiftyTwoWkLow, double avgVolume) {
-        openLabel.setText("Open: " + String.format("%.2f", open));
-        highLabel.setText("High: " + String.format("%.2f", high));
-        lowLabel.setText("Low: " + String.format("%.2f", low));
-        volumeLabel.setText("Vol: " + String.format("%.0f", volume));
-        peLabel.setText("P/E: " + String.format("%.2f", peRatio));
-        mktCapLabel.setText("Mkt Cap: " + String.format("%.2f", marketCap));
-        fiftyTwoWkHighLabel.setText("52W H: " + String.format("%.2f", fiftyTwoWkHigh));
-        fiftyTwoWkLowLabel.setText("52W L: " + String.format("%.2f", fiftyTwoWkLow));
-        avgVolumeLabel.setText("Avg Vol: " + String.format("%.0f", avgVolume));
     }
 
     public void refreshChartData(int choice) {
@@ -771,7 +805,7 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(vol, hyp, sym, isSorted);
+            Settings_handler gui = new Settings_handler(vol, hyp, sym, isSorted, key);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");
@@ -796,7 +830,8 @@ public class Main_UI extends JFrame {
                     {"volume", String.valueOf(vol)},
                     {"hype_strength", String.valueOf(hyp)},
                     {"symbols", sym = create_sym_array()},
-                    {"sort", String.valueOf(isSorted)}
+                    {"sort", String.valueOf(isSorted)},
+                    {"key", key}
             };
 
             save_config(values);
@@ -841,4 +876,3 @@ public class Main_UI extends JFrame {
 }
 //TODO
 //!!!Add the real chart logic to it to the chart panel
-//!!!add the stock detail later after extracting
