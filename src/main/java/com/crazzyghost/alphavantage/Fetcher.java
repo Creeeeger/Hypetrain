@@ -26,12 +26,14 @@ package com.crazzyghost.alphavantage;
  * Defines an interface for pulling data from the API source.
  * A fetch operation can either fail or succeed
  *
- * @since 1.0.0
  * @author Sylvester Sefa-Yeboah
+ * @since 1.0.0
  */
 public interface Fetcher {
 
-    /** Perform a fetch operation */
+    /**
+     * Perform a fetch operation
+     */
     void fetch();
 
     /**
@@ -48,7 +50,9 @@ public interface Fetcher {
         void onSuccess(V response);
     }
 
-    /** Callback when the fetch operation fails */
+    /**
+     * Callback when the fetch operation fails
+     */
     interface FailureCallback {
         /**
          * Call this method with an exception when the fetch operation fails

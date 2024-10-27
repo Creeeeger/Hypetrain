@@ -22,17 +22,16 @@
  */
 package com.crazzyghost.alphavantage.exchangerate;
 
-import java.io.IOException;
-
 import com.crazzyghost.alphavantage.AlphaVantageException;
 import com.crazzyghost.alphavantage.Config;
 import com.crazzyghost.alphavantage.Fetcher;
 import com.crazzyghost.alphavantage.UrlExtractor;
 import com.crazzyghost.alphavantage.parser.Parser;
-
 import okhttp3.Call;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+
+import java.io.IOException;
 
 /**
  * Access to Exchange Rate Data
@@ -47,7 +46,7 @@ public final class ExchangeRate implements Fetcher {
     private Fetcher.SuccessCallback<ExchangeRateResponse> successCallback;
     private Fetcher.FailureCallback failureCallback;
 
-    public ExchangeRate(Config config){
+    public ExchangeRate(Config config) {
         this.config = config;
         this.builder = new ExchangeRateRequest.Builder();
     }
@@ -68,7 +67,7 @@ public final class ExchangeRate implements Fetcher {
      * @param callback successful fetch handler
      * @return current instance of {@link ExchangeRateResponse}
      */
-    public ExchangeRate onSuccess(SuccessCallback<ExchangeRateResponse> callback){
+    public ExchangeRate onSuccess(SuccessCallback<ExchangeRateResponse> callback) {
         this.successCallback = callback;
         return this;
     }
@@ -79,34 +78,32 @@ public final class ExchangeRate implements Fetcher {
      * @param callback failed fetch handler
      * @return current instance of {@link ExchangeRateResponse}
      */
-    public ExchangeRate onFailure(FailureCallback callback){
+    public ExchangeRate onFailure(FailureCallback callback) {
         this.failureCallback = callback;
         return this;
     }
 
-
     /**
      * Make a blocking synchronous http request to fetch the data.
-     * 
+     * <p>
      * Using this method will overwrite any async callback
      *
-     * @since 1.5.0
      * @throws AlphaVantageException exception thrown
+     * @since 1.5.0
      */
     public ExchangeRateResponse fetchSync() throws AlphaVantageException {
-        
+
         Config.checkNotNullOrKeyEmpty(config);
-        
+
         this.successCallback = null;
         this.failureCallback = null;
         okhttp3.OkHttpClient client = config.getOkHttpClient();
 
         try (Response response = client.newCall(UrlExtractor.extract(builder.build(), config.getKey())).execute()) {
             return ExchangeRateResponse.of(Parser.parseJSON(response.body().string()));
-        } catch(IOException e) {
+        } catch (IOException e) {
             throw new AlphaVantageException(e.getMessage());
-        }        
-
+        }
     }
 
     @Override
@@ -117,13 +114,13 @@ public final class ExchangeRate implements Fetcher {
         config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new okhttp3.Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                if(failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
+                if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
             }
 
             @Override
             public void onResponse(Call call, Response response) throws IOException {
-                if(response.isSuccessful()){
-                    try(ResponseBody body = response.body()){
+                if (response.isSuccessful()) {
+                    try (ResponseBody body = response.body()) {
                         ExchangeRateResponse exchangeResponse = ExchangeRateResponse.of(Parser.parseJSON(body.string()));
                         if (exchangeResponse.getErrorMessage() != null && failureCallback != null) {
                             failureCallback.onFailure(new AlphaVantageException(exchangeResponse.getErrorMessage()));
@@ -133,7 +130,7 @@ public final class ExchangeRate implements Fetcher {
                         }
                     }
                 } else {
-                    if(failureCallback != null) {
+                    if (failureCallback != null) {
                         failureCallback.onFailure(new AlphaVantageException());
                     }
                 }

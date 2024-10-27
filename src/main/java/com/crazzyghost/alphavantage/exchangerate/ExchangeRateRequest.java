@@ -24,44 +24,34 @@ package com.crazzyghost.alphavantage.exchangerate;
 
 import com.crazzyghost.alphavantage.parameters.Function;
 
-/**
- * Exchange Rate Request
- *
- * @author Sylvester Sefa-Yeboah
- * @since 1.0.0
- */
 public class ExchangeRateRequest {
 
-    private final Function function;
-    private final String from_currency;
-    private final String to_currency;
-
-    private ExchangeRateRequest(Builder builder){
-        this.function = builder.function;
-        this.from_currency = builder.fromCurrency;
-        this.to_currency = builder.toCurrency;
+    private ExchangeRateRequest(Builder builder) {
+        Function function = builder.function;
+        String from_currency = builder.fromCurrency;
+        String to_currency = builder.toCurrency;
     }
 
-    public static class Builder{
-        private Function function;
+    public static class Builder {
+        private final Function function;
         private String fromCurrency;
         private String toCurrency;
 
-        public Builder(){
+        public Builder() {
             this.function = Function.CURRENCY_EXCHANGE_RATE;
         }
 
-        public Builder fromCurrency(String fromCurrency){
+        public Builder fromCurrency(String fromCurrency) {
             this.fromCurrency = fromCurrency;
             return this;
         }
 
-        public Builder toCurrency(String toCurrency){
+        public Builder toCurrency(String toCurrency) {
             this.toCurrency = toCurrency;
             return this;
         }
 
-        public ExchangeRateRequest build(){
+        public ExchangeRateRequest build() {
             return new ExchangeRateRequest(this);
         }
 

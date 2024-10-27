@@ -22,42 +22,43 @@
  */
 package com.crazzyghost.alphavantage;
 
-import java.lang.reflect.Field;
-
 import okhttp3.Request;
+
+import java.lang.reflect.Field;
 
 
 /**
- * Extracts a valid url from a request object. The request object should contain valid 
+ * Extracts a valid url from a request object. The request object should contain valid
  * api endpoint parameters
  *
- * @since 1.0.0
  * @author Sylvester Sefa-Yeboah
+ * @since 1.0.0
  */
-public class UrlExtractor{
+public class UrlExtractor {
 
-    private UrlExtractor(){}
-    
+    private UrlExtractor() {
+    }
+
     /**
      * Get an API url from a request object
      *
      * @param object a request object with the valid API parameters
      * @return valid API url
      */
-    public static String extract(Object object){
+    public static String extract(Object object) {
 
         //url
         StringBuilder stringBuilder = new StringBuilder();
 
         Class<?> cls = object.getClass();
-        while(cls != null){
+        while (cls != null) {
             //access all fields in object
             Field[] fields = cls.getDeclaredFields();
-            for(Field field : fields){
+            for (Field field : fields) {
                 field.setAccessible(true);
                 try {
                     //extract non-null and non-synthetic fields
-                    if (!field.isSynthetic() && field.get(object) != null){
+                    if (!field.isSynthetic() && field.get(object) != null) {
                         stringBuilder.append(field.getName().toLowerCase())
                                 .append("=");
                         String value = (field.get(object)).toString();
@@ -78,10 +79,10 @@ public class UrlExtractor{
      * Build an http request with the parameters and the api key
      *
      * @param request any endpoint request object
-     * @param apiKey Alphavantage API key
+     * @param apiKey  Alphavantage API key
      * @return
      */
-    public static Request extract(Object request, String apiKey){
+    public static Request extract(Object request, String apiKey) {
         return new Request.Builder().url(Config.BASE_URL + UrlExtractor.extract(request) + apiKey).build();
     }
 }

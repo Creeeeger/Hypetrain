@@ -7,9 +7,11 @@ import com.crazzyghost.alphavantage.fundamentaldata.response.CompanyOverview;
 import com.crazzyghost.alphavantage.fundamentaldata.response.CompanyOverviewResponse;
 import com.crazzyghost.alphavantage.parameters.Interval;
 import com.crazzyghost.alphavantage.parameters.OutputSize;
+import com.crazzyghost.alphavantage.stock.response.StockResponse;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
+import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -90,7 +92,7 @@ public class Main_data_handler {
                     TimeSeriesResponse response = (TimeSeriesResponse) e;
                     stocks.addAll(response.getStockUnits()); // Populate the list
 
-                    callback.onTimeLineFetched(stocks); // Call the callback with the stocks list
+                    callback.onTimeLineFetched(stocks); // Call the callback with the stock list
                 })
                 .onFailure(Main_data_handler::handleFailure)
                 .fetch();
@@ -225,6 +227,20 @@ public class Main_data_handler {
         chartPanel.setDomainZoomable(true);    // Allow zooming on the X-axis
 
         // Add buttons for controlling the scale
+        JPanel controlPanel = getjPanel(chartPanel);
+
+        // Create the frame to display the chart
+        JFrame frame = new JFrame("Stock Data");
+        frame.setLayout(new BorderLayout());
+        frame.add(chartPanel, BorderLayout.CENTER);
+        frame.add(controlPanel, BorderLayout.SOUTH); // Add control buttons to the frame
+        frame.pack();
+        frame.setVisible(true);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    @NotNull
+    private static JPanel getjPanel(ChartPanel chartPanel) {
         JButton autoRangeButton = new JButton("Auto Range");
         autoRangeButton.addActionListener(e -> chartPanel.restoreAutoBounds()); // Reset to original scale
 
@@ -239,15 +255,7 @@ public class Main_data_handler {
         controlPanel.add(autoRangeButton);
         controlPanel.add(zoomInButton);
         controlPanel.add(zoomOutButton);
-
-        // Create the frame to display the chart
-        JFrame frame = new JFrame("Stock Data");
-        frame.setLayout(new BorderLayout());
-        frame.add(chartPanel, BorderLayout.CENTER);
-        frame.add(controlPanel, BorderLayout.SOUTH); // Add control buttons to the frame
-        frame.pack();
-        frame.setVisible(true);
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        return controlPanel;
     }
 
     public static Date convertToDate(String timestamp) {
@@ -291,10 +299,23 @@ public class Main_data_handler {
     }
 
     public static List<String> findMatchingSymbols(String searchText) {
-        //!!!Add logic to add the real symbols from the api
-        List<String> allSymbols = List.of("AAPL", "GOOGL", "TSLA", "MSFT", "NVDA"); // Example stock symbols
+        List<String> allSymbols = new ArrayList<>();
 
+        AlphaVantage.api()
+                .stocks()
+                .setSymbol(searchText)
+                .onSuccess(e -> {
+                    List<StockResponse.StockMatch> list = e.getMatches();
 
+                    for (StockResponse.StockMatch stockResponse : list) {
+                        allSymbols.add(stockResponse.getSymbol());
+                    }
+                })
+
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+
+        // Filter the results based on searchText
         return allSymbols.stream()
                 .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
                 .collect(Collectors.toList());
@@ -308,10 +329,22 @@ public class Main_data_handler {
     }
 
     //!!!finish get_available_symbols method
-    public static String[] get_available_symbols(int volume) { //Method in construction for receiving trade-able symbols for amount of volume
-        String[] symbols = new String[10];
+    public static List<String> get_available_symbols(int volume) { // Method for receiving trade-able symbols for amount of volume
+        List<String> symbols = new ArrayList<>(); // Initialize an ArrayList to hold the symbols
 
-        return symbols;
+        AlphaVantage.api()
+                .stocks()
+                .forVolume(volume)
+                .onSuccess(e -> {
+                    List<StockResponse.StockMatch> results = e.getMatches();
+                    for (StockResponse.StockMatch match : results) {
+                        symbols.add(match.getSymbol()); // Add each symbol to the ArrayList
+                    }
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+
+        return symbols; // Return the ArrayList of symbols
     }
 
     public interface DataCallback {

@@ -40,3 +40,5 @@ TODO
 
                     stocks = values;
                     -----> check the new async loading option
+
+   ---> test out new search api 
