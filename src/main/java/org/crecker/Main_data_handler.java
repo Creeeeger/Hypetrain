@@ -7,7 +7,6 @@ import com.crazzyghost.alphavantage.parameters.Interval;
 import com.crazzyghost.alphavantage.parameters.OutputSize;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
-import com.toedter.calendar.JDateChooser;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -33,7 +32,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
-    public static JDateChooser dateChooser_to, dateChooser_from;
     //!!!Change to symbol from function later on
     public static String symbol = "NVDA";
 
@@ -144,7 +142,6 @@ public class Main_data_handler {
 
         // Enable zoom and pan features on the chart panel
         ChartPanel chartPanel = new ChartPanel(chart);
-        chartPanel.setPreferredSize(new Dimension(1600, 600));
         chartPanel.setMouseWheelEnabled(true); // Zoom with mouse wheel
         chartPanel.setZoomAroundAnchor(true);  // Zoom on the point where the mouse is anchored
         chartPanel.setRangeZoomable(true);     // Allow zooming on the Y-axis
@@ -161,35 +158,10 @@ public class Main_data_handler {
         zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
 
         JPanel controlPanel = new JPanel();
-        JLabel from = new JLabel("Date from: ");
-        dateChooser_from = new JDateChooser();  // Create the date chooser
-
-        JLabel to = new JLabel("Date to: ");
-        dateChooser_to = new JDateChooser();
-
-        controlPanel.add(from);
-        controlPanel.add(dateChooser_from);
-
-        controlPanel.add(to);
-        controlPanel.add(dateChooser_to);
 
         controlPanel.add(autoRangeButton);
         controlPanel.add(zoomInButton);
         controlPanel.add(zoomOutButton);
-
-        dateChooser_from.addPropertyChangeListener(evt -> {
-            Date date = dateChooser_from.getDate();
-            if (date != null) {
-                System.out.println(date);
-            }
-        });
-
-        dateChooser_to.addPropertyChangeListener(evt -> {
-            Date date = dateChooser_to.getDate();
-            if (date != null) {
-                System.out.println(date);
-            }
-        });
 
         // Create the frame to display the chart
         JFrame frame = new JFrame("Stock Data");
@@ -253,10 +225,20 @@ public class Main_data_handler {
 
     public static void start_Hype_Mode(int Volume, float Hype) {
         System.out.printf("Settings: %s Volume, %s Hype%n", Volume, Hype);
+        int price_per_stock = 1; //!!!Update to real price
+        int amt_to_buy = Volume / price_per_stock;
         //!!!Add logic for hype mode
+    }
+
+    //!!!finish get_available_symbols method
+    public static String[] get_available_symbols(int volume) { //Method in construction for receiving trade-able symbols for amount of volume
+        String[] symbols = new String[10];
+
+        return symbols;
     }
 }
 
 //TODO
 //!!!Add logic to add the real symbols from the api
 //!!!Add logic for hype mode
+//!!!finish get_available_symbols method

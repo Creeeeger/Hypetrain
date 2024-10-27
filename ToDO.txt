@@ -3,10 +3,8 @@ TODO
 - Add the api symbol search logic
 
 --Chart data--
-- display data of selected symbols
 - add tool to check gain
 - add general data to the bottom
-- add hype mode to look automatically for stocks
 
 --Hype mode--
 - add the hype code in the data handler
