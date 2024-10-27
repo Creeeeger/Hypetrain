@@ -35,6 +35,7 @@ public class Main_UI extends JFrame {
     static JMenu file, settings, hype_mode_menu, Notifications;
     static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort;
     static JTextField searchField;
+    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, avgVolumeLabel;
     static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton, threeMonthsButton, sixMonthsButton, oneYearButton;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
@@ -429,49 +430,35 @@ public class Main_UI extends JFrame {
 
         // First column - Open, High, Low
         JPanel openHighLowPanel = new JPanel(new GridLayout(3, 1));
-        JLabel openLabel = new JLabel("Open: ");
-        JLabel highLabel = new JLabel("High: ");
-        JLabel lowLabel = new JLabel("Low: ");
-
+        openLabel = new JLabel("Open: ");
+        highLabel = new JLabel("High: ");
+        lowLabel = new JLabel("Low: ");
         openHighLowPanel.add(openLabel);
         openHighLowPanel.add(highLabel);
         openHighLowPanel.add(lowLabel);
 
         // Second column - Volume, P/E, Market Cap
         JPanel volumePEMktCapPanel = new JPanel(new GridLayout(3, 1));
-        JLabel volumeLabel = new JLabel("Vol: ");
-        JLabel peLabel = new JLabel("P/E: ");
-        JLabel mktCapLabel = new JLabel("Mkt Cap: ");
-
+        volumeLabel = new JLabel("Vol: ");
+        peLabel = new JLabel("P/E: ");
+        mktCapLabel = new JLabel("Mkt Cap: ");
         volumePEMktCapPanel.add(volumeLabel);
         volumePEMktCapPanel.add(peLabel);
         volumePEMktCapPanel.add(mktCapLabel);
 
         // Third column - 52W High, 52W Low, Avg Volume
         JPanel rangeAndAvgVolPanel = new JPanel(new GridLayout(3, 1));
-        JLabel fiftyTwoWkHighLabel = new JLabel("52W H: ");
-        JLabel fiftyTwoWkLowLabel = new JLabel("52W L: ");
-        JLabel avgVolumeLabel = new JLabel("Avg Vol: ");
-
+        fiftyTwoWkHighLabel = new JLabel("52W H: ");
+        fiftyTwoWkLowLabel = new JLabel("52W L: ");
+        avgVolumeLabel = new JLabel("Avg Vol: ");
         rangeAndAvgVolPanel.add(fiftyTwoWkHighLabel);
         rangeAndAvgVolPanel.add(fiftyTwoWkLowLabel);
         rangeAndAvgVolPanel.add(avgVolumeLabel);
-
-        // Fourth column - Yield, Beta, EPS
-        JPanel yieldBetaEpsPanel = new JPanel(new GridLayout(3, 1));
-        JLabel yieldLabel = new JLabel("Yield: ");
-        JLabel betaLabel = new JLabel("Beta: ");
-        JLabel epsLabel = new JLabel("EPS: ");
-
-        yieldBetaEpsPanel.add(yieldLabel);
-        yieldBetaEpsPanel.add(betaLabel);
-        yieldBetaEpsPanel.add(epsLabel);
 
         // Add all columns to the secondRowPanel
         secondRowPanel.add(openHighLowPanel);
         secondRowPanel.add(volumePEMktCapPanel);
         secondRowPanel.add(rangeAndAvgVolPanel);
-        secondRowPanel.add(yieldBetaEpsPanel);
 
         // Add a titled border to the stock info section
         secondRowPanel.setBorder(BorderFactory.createTitledBorder("Stock Information"));
@@ -481,6 +468,18 @@ public class Main_UI extends JFrame {
         mainPanel.add(secondRowPanel, BorderLayout.SOUTH);
 
         return mainPanel;
+    }
+
+    public void updateStockInfoLabels(double open, double high, double low, double volume, double peRatio, double marketCap, double fiftyTwoWkHigh, double fiftyTwoWkLow, double avgVolume) {
+        openLabel.setText("Open: " + String.format("%.2f", open));
+        highLabel.setText("High: " + String.format("%.2f", high));
+        lowLabel.setText("Low: " + String.format("%.2f", low));
+        volumeLabel.setText("Vol: " + String.format("%.0f", volume));
+        peLabel.setText("P/E: " + String.format("%.2f", peRatio));
+        mktCapLabel.setText("Mkt Cap: " + String.format("%.2f", marketCap));
+        fiftyTwoWkHighLabel.setText("52W H: " + String.format("%.2f", fiftyTwoWkHigh));
+        fiftyTwoWkLowLabel.setText("52W L: " + String.format("%.2f", fiftyTwoWkLow));
+        avgVolumeLabel.setText("Avg Vol: " + String.format("%.0f", avgVolume));
     }
 
     public void refreshChartData(int choice) {
@@ -535,6 +534,8 @@ public class Main_UI extends JFrame {
                 break;
             }
         }
+
+        //updateStockInfoLabels(); //!!!add the stock detail later after extracting
 
         // Create a new chart with the updated title
         ChartPanel newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
@@ -839,4 +840,5 @@ public class Main_UI extends JFrame {
     }
 }
 //TODO
-//!!!Add the real chart logic to it
+//!!!Add the real chart logic to it to the chart panel
+//!!!add the stock detail later after extracting
