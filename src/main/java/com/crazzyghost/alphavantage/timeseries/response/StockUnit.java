@@ -3,15 +3,15 @@ package com.crazzyghost.alphavantage.timeseries.response;
 
 public class StockUnit {
 
-    private double open;
-    private double high;
-    private double low;
+    private final double open;
+    private final double high;
+    private final double low;
     private double close;
-    private double adjustedClose;
-    private long volume;
-    private double dividendAmount;
-    private double splitCoefficient;
-    private String dateTime;
+    private final double adjustedClose;
+    private final long volume;
+    private final double dividendAmount;
+    private final double splitCoefficient;
+    private final String dateTime;
 
 
     private StockUnit(Builder builder) {
@@ -24,68 +24,6 @@ public class StockUnit {
         this.dividendAmount = builder.dividendAmount;
         this.splitCoefficient = builder.splitCoefficient;
         this.dateTime = builder.dateTime;
-    }
-
-
-    public static class Builder{
-
-        double open;
-        double high;
-        double low;
-        double close;
-        double adjustedClose;
-        long volume;
-        double dividendAmount;
-        double splitCoefficient;
-        String dateTime;
-
-        public Builder open(double open){
-            this.open = open;
-            return this;
-        }
-
-        public Builder high(double high){
-            this.high = high;
-            return this;
-        }
-        public Builder low(double low){
-            this.low = low;
-            return this;
-        }
-
-        public Builder close(double close){
-            this.close = close;
-            return this;
-        }
-        public Builder adjustedClose(double close){
-            this.adjustedClose = close;
-            return this;
-        }
-
-        public Builder dividendAmount(double dividendAmount){
-            this.dividendAmount = dividendAmount;
-            return this;
-        }
-
-        public Builder volume(long volume){
-            this.volume = volume;
-            return this;
-        }
-
-        public Builder splitCoefficient(double splitCoefficient){
-            this.splitCoefficient = splitCoefficient;
-            return this;
-        }
-
-        public Builder time(String dateTime){
-            this.dateTime = dateTime;
-            return this;
-        }
-
-
-        public StockUnit build(){
-            return new StockUnit(this);
-        }
     }
 
     public double getOpen() {
@@ -102,6 +40,11 @@ public class StockUnit {
 
     public double getClose() {
         return close;
+    }
+
+    // Setter for the close value
+    public void setClose(double close) {
+        this.close = close;
     }
 
     public double getAdjustedClose() {
@@ -137,5 +80,68 @@ public class StockUnit {
                 ", splitCoefficient=" + splitCoefficient +
                 ", date=" + dateTime +
                 '}';
+    }
+
+    public static class Builder {
+
+        double open;
+        double high;
+        double low;
+        double close;
+        double adjustedClose;
+        long volume;
+        double dividendAmount;
+        double splitCoefficient;
+        String dateTime;
+
+        public Builder open(double open) {
+            this.open = open;
+            return this;
+        }
+
+        public Builder high(double high) {
+            this.high = high;
+            return this;
+        }
+
+        public Builder low(double low) {
+            this.low = low;
+            return this;
+        }
+
+        public Builder close(double close) {
+            this.close = close;
+            return this;
+        }
+
+        public Builder adjustedClose(double close) {
+            this.adjustedClose = close;
+            return this;
+        }
+
+        public Builder dividendAmount(double dividendAmount) {
+            this.dividendAmount = dividendAmount;
+            return this;
+        }
+
+        public Builder volume(long volume) {
+            this.volume = volume;
+            return this;
+        }
+
+        public Builder splitCoefficient(double splitCoefficient) {
+            this.splitCoefficient = splitCoefficient;
+            return this;
+        }
+
+        public Builder time(String dateTime) {
+            this.dateTime = dateTime;
+            return this;
+        }
+
+
+        public StockUnit build() {
+            return new StockUnit(this);
+        }
     }
 }

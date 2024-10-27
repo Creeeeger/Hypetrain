@@ -306,28 +306,17 @@ public class Main_UI extends JFrame {
 
                 //Fetch timeLine aSync
                 Main_data_handler.get_timeline(selected_stock, values -> {
-                    for (int i = 1; i < values.size() - 1; i++) {
+                    for (int i = 1; i < values.size(); i++) {
                         double current_close = values.get(i).getClose();
+
+                        // Ensure there is a previous stock entry to compare with
                         double previous_close = values.get(i - 1).getClose();
 
                         // Check for a 10% dip or peak
                         if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
-                            // Replace the current close with the previous close
-                            current_close = previous_close;
+                            // Replace the current close with the previous close using the setter method
+                            values.get(i).setClose(previous_close);
                         }
-
-                        // Modify the existing StockUnit rather than creating a new one to save memory
-                        values.set(i, new StockUnit.Builder()
-                                .open(values.get(i).getOpen())
-                                .high(values.get(i).getHigh())
-                                .low(values.get(i).getLow())
-                                .close(current_close)
-                                .adjustedClose(values.get(i).getAdjustedClose())
-                                .volume(values.get(i).getVolume())
-                                .dividendAmount(values.get(i).getDividendAmount())
-                                .splitCoefficient(values.get(i).getSplitCoefficient())
-                                .time(values.get(i).getDate())
-                                .build());
                     }
 
                     stocks = values;
