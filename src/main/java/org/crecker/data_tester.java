@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
@@ -17,6 +18,7 @@ public class data_tester {
 
     public static void main(String[] args) throws IOException {
         List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the stock data from the file (simulate real stock data)
+
         tester(stocks); //test method to test the stock data
 
         //further code to test on data comes here
@@ -70,6 +72,9 @@ public class data_tester {
             stockUnits.add(stockUnit);
         }
 
+        // Reverse the list to get the stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
+        Collections.reverse(stockUnits);
+
         return stockUnits;
     }
 
@@ -106,7 +111,7 @@ public class data_tester {
     }
 
     public static List<Notification> tester(List<StockUnit> stocks) {
-        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(3000).getDate()));
+        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(17000).getDate()));
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
@@ -129,7 +134,6 @@ public class data_tester {
 
         // Loop through the stocks (minute-level data assumed)
         for (int i = 1; i < stocks.size(); i++) {
-            String date = stocks.get(i).getDate();  // Get the date of the current stock entry
             double currentClose = stocks.get(i).getClose();  // Get the current close price
             double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
 
@@ -155,23 +159,59 @@ public class data_tester {
                 downCount = 0;
             }
 
+            //!!!fix the graph logic later for live view
             // If we have enough consecutive upward movements, trigger a spike notification
             if (upCount >= consecutiveCount) {
-                String title = String.format("%.2f%% Spike!", percentageChange);
-                String content = String.format("Consistent upward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
-                        percentageChange, consecutiveCount, date, currentClose);
-                Notification alert = new Notification(title, content);
-                alertsList.add(alert);  // Add the spike notification to the list
+                TimeSeries timeSeries = new TimeSeries("View window of change");
+
+                try {
+                    // Check if we have enough previous data points to generate the view window
+                    if (i >= 15) {
+                        for (int j = -15; j < 5; j++) {
+                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
+                        }
+                    } else {
+                        // Handle the case where there's not enough data for a full window
+                        for (int j = -i; j < 5; j++) {  // Start from the available data
+                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
+                        }
+                    }
+
+                    // Add the spike notification to the list
+                    alertsList.add(Main_data_handler.create_Notification(true, Main_data_handler.symbol, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));
+
+                } catch (Exception e) {
+                    System.err.println("Error while generating spike notification: " + e.getMessage());
+                    e.printStackTrace();  // Optionally log the full stack trace
+                }
+
                 upCount = 0;  // Reset the upward counter after the notification
             }
 
             // If we have enough consecutive downward movements, trigger a dip notification
             if (downCount >= consecutiveCount) {
-                String title = String.format("%.2f%% Dip!", percentageChange);
-                String content = String.format("Consistent downward movement of %.2f%% over %d minutes as of %s. Closing price: %.2f",
-                        percentageChange, consecutiveCount, date, currentClose);
-                Notification alert = new Notification(title, content);
-                alertsList.add(alert);  // Add the dip notification to the list
+                TimeSeries timeSeries = new TimeSeries("View window of change");
+
+                try {
+                    // Check if we have enough previous data points to generate the view window
+                    if (i >= 15) {
+                        for (int j = -15; j < 5; j++) {
+                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
+                        }
+
+                    } else {
+                        // Handle the case where there's not enough data for a full window
+                        for (int j = -i; j < 5; j++) {  // Start from the available data
+                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
+                        }
+                    }
+
+                    alertsList.add(Main_data_handler.create_Notification(false, Main_data_handler.symbol, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));  // Add the spike notification to the list
+
+                } catch (Exception e) {
+                    System.err.println("Error while generating spike notification: " + e.getMessage());
+                    e.printStackTrace();  // Optionally log the full stack trace
+                }
                 downCount = 0;  // Reset the downward counter after the notification
             }
         }
@@ -183,7 +223,7 @@ public class data_tester {
     public static List<StockUnit> get_Inter_Day(List<StockUnit> stocks, Date last_date) {
         List<StockUnit> inter_day_stocks = new ArrayList<>();
 
-        for (int i = 1; i < stocks.size(); i++) {
+        for (int i = 0; i < stocks.size() - 1; i++) {
             Date current_date = Main_data_handler.convertToDate_Simple(stocks.get(i).getDate());
 
             if (current_date.equals(last_date)) {
@@ -240,16 +280,17 @@ public class data_tester {
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
 
-        for (int i = 1; i < stocks.size() - 1; i++) {
+        for (int i = 1; i < stocks.size(); i++) {
             String date = stocks.get(i).getDate();
 
-            double first_val = stocks.get(i).getClose();
-            double second_val = stocks.get(i - 1).getClose();
+            double currentClose = stocks.get(i).getClose();  // Get the current close price
+            double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
 
-            double percentage_change = ((second_val / first_val) * 100) - 100;
+            // Calculate percentage change between consecutive time points
+            double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
 
-            if (percentage_change < 1.5 && percentage_change > -1.5) {
-                timeSeries.add(new Minute(Main_data_handler.convertToDate(date)), percentage_change);
+            if (percentageChange < 1.5 && percentageChange > -1.5) {
+                timeSeries.add(new Minute(Main_data_handler.convertToDate(date)), percentageChange);
             }
         }
 
@@ -257,3 +298,6 @@ public class data_tester {
         Main_data_handler.plotData(timeSeries, "NVDA percentage change", "Date", "Percentage change");
     }
 }
+
+//TODO
+//!!!fix the graph logic later for live view

@@ -2,9 +2,6 @@ TODO
 --Symbols--
 - Add the api symbol search logic
 
---Notifications--
-- create proper notifications
-
 --Chart data--
 - display data of selected symbols
 - add tool to check gain

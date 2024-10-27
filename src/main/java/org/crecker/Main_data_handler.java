@@ -27,12 +27,15 @@ import java.io.IOException;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
     public static JDateChooser dateChooser_to, dateChooser_from;
+    //!!!Change to symbol from function later on
+    public static String symbol = "NVDA";
 
     public static void main(String[] args) {
         // Replace with your actual Alpha Vantage API key since this is a free key
@@ -52,7 +55,7 @@ public class Main_data_handler {
         AlphaVantage.api()
                 .timeSeries()
                 .intraday()
-                .forSymbol("NVDA")
+                .forSymbol(symbol)
                 .interval(Interval.ONE_MIN)
                 .outputSize(OutputSize.FULL)
                 .onSuccess(e -> {
@@ -68,25 +71,16 @@ public class Main_data_handler {
 
     public static void handleSuccess(TimeSeriesResponse response) throws IOException {
         // This generates some test data since we don't have unlimited API access
-        File data = new File("NVDA.txt"); // Create a File object for the output file named "NVDA.txt"
-
-        // Check if the file already exists
-        if (!data.exists()) {
-            // If the file does not exist, create a new file
-            data.createNewFile(); // May throw IOException if it fails
-        }
-
-        // Initialize BufferedWriter to write to the file
-        BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(data)); // Create a BufferedWriter to write to the file
-        bufferedWriter.write(Arrays.toString(response.getStockUnits().toArray())); // Write the stock units data to the file as a string
-        bufferedWriter.flush(); // Flush the writer to ensure all data is written to the file
+        BufferedWriter bufferedWriter = getBufferedWriter(response); //in reversed format (new to old)
         bufferedWriter.close(); // Close the BufferedWriter to free system resources
 
         // Create a TimeSeries object for plotting
-        TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
+        TimeSeries timeSeries = new TimeSeries(response.getMetaData().getSymbol().toUpperCase() + " Stock Price");
 
         // Get stock units
         List<StockUnit> stocks = response.getStockUnits();
+
+        Collections.reverse(stocks); //reverse (old to new)
 
         // Populate the time series with stock data
         for (StockUnit stock : stocks) {
@@ -98,7 +92,23 @@ public class Main_data_handler {
         }
 
         // Plot the data
-        plotData(timeSeries, "NVDA Stock prices", "Date", "Price");
+        plotData(timeSeries, response.getMetaData().getSymbol().toUpperCase() + " Stock prices", "Date", "Price");
+    }
+
+    private static BufferedWriter getBufferedWriter(TimeSeriesResponse response) throws IOException {
+        File data = new File(response.getMetaData().getSymbol().toUpperCase() + ".txt"); // Create a File object for the output file named "NVDA.txt"
+
+        // Check if the file already exists
+        if (!data.exists()) {
+            // If the file does not exist, create a new file
+            data.createNewFile(); // May throw IOException if it fails
+        }
+
+        // Initialize BufferedWriter to write to the file
+        BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(data)); // Create a BufferedWriter to write to the file
+        bufferedWriter.write(Arrays.toString(response.getStockUnits().toArray())); // Write the stock units data to the file as a string
+        bufferedWriter.flush(); // Flush the writer to ensure all data is written to the file
+        return bufferedWriter;
     }
 
     public static void plotData(TimeSeries timeSeries, String chart_name, String X_axis, String Y_axis) {
@@ -204,7 +214,7 @@ public class Main_data_handler {
 
     public static Date convertToDate_Simple(String timestamp) {
         // Convert timestamp to Date
-        // Assuming timestamp format is "yyyy-MM-dd HH:mm:ss"
+        // Assuming timestamp format is "yyyy-MM-dd HH:mm:ss" to "yyyy-MM-dd" date
         try {
             return new SimpleDateFormat("yyyy-MM-dd").parse(timestamp);
         } catch (ParseException e) {
@@ -213,8 +223,22 @@ public class Main_data_handler {
         }
     }
 
+    public static Notification create_Notification(boolean spike, String company, double percentage, TimeSeries timeSeries, double close, Date date) {
+        String title, content;
+        if (spike) {
+            title = String.format("%.2f%% spike for %s", percentage, company);
+            content = String.format("Consistent upward movement of %.2f%%, Price: %.2f, Date: %s", percentage, close, date);
+
+        } else {
+            title = String.format("%.2f%% dip for %s", percentage, company);
+            content = String.format("Consistent downward movement of %.2f%%, Price: %.2f, Date: %s", percentage, close, date);
+        }
+
+        return new Notification(title, content, timeSeries);
+    }
+
     public static void handleFailure(AlphaVantageException error) {
-        System.out.println("error" + error.getMessage());
+        System.out.println("error: " + error.getMessage());
     }
 
     public static List<String> findMatchingSymbols(String searchText) {
