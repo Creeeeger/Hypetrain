@@ -13,9 +13,6 @@ TODO
 - create alerts from all kind of stocks
 - change the notification creation symbol logic to the actual symbol
 
---Settings--
-- Align items on the left
-
 --News--
 - Fetch the news properly
 - add a link to the article
@@ -24,6 +21,8 @@ TODO
 - import/export config option
 
 
+
+--Testing--
                 //Fetch timeLine aSync
                 Main_data_handler.get_timeline(selected_stock, values -> {
                     for (int i = 1; i < values.size(); i++) {
