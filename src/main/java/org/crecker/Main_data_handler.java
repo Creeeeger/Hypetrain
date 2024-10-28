@@ -298,27 +298,30 @@ public class Main_data_handler {
         System.out.println("error: " + error.getMessage());
     }
 
-    public static List<String> findMatchingSymbols(String searchText) {
+    public static void findMatchingSymbols(String searchText, SymbolSearchCallback callback) {
         List<String> allSymbols = new ArrayList<>();
 
         AlphaVantage.api()
                 .stocks()
-                .setSymbol(searchText)
+                .setKeywords(searchText)
                 .onSuccess(e -> {
                     List<StockResponse.StockMatch> list = e.getMatches();
 
                     for (StockResponse.StockMatch stockResponse : list) {
                         allSymbols.add(stockResponse.getSymbol());
                     }
+                    // Filter and invoke the callback on success
+                    List<String> filteredSymbols = allSymbols.stream()
+                            .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
+                            .collect(Collectors.toList());
+                    callback.onSuccess(filteredSymbols);
                 })
-
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(failure -> {
+                    // Handle failure and invoke the failure callback
+                    Main_data_handler.handleFailure(failure);
+                    callback.onFailure(new RuntimeException("API call failed"));
+                })
                 .fetch();
-
-        // Filter the results based on searchText
-        return allSymbols.stream()
-                .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
-                .collect(Collectors.toList());
     }
 
     public static void start_Hype_Mode(int Volume, float Hype) {
@@ -332,17 +335,17 @@ public class Main_data_handler {
     public static List<String> get_available_symbols(int volume) { // Method for receiving trade-able symbols for amount of volume
         List<String> symbols = new ArrayList<>(); // Initialize an ArrayList to hold the symbols
 
-        AlphaVantage.api()
-                .stocks()
-                .forVolume(volume)
-                .onSuccess(e -> {
-                    List<StockResponse.StockMatch> results = e.getMatches();
-                    for (StockResponse.StockMatch match : results) {
-                        symbols.add(match.getSymbol()); // Add each symbol to the ArrayList
-                    }
-                })
-                .onFailure(Main_data_handler::handleFailure)
-                .fetch();
+//        AlphaVantage.api()
+//                .stocks()
+//                .forVolume(volume)
+//                .onSuccess(e -> {
+//                    List<StockResponse.StockMatch> results = e.getMatches();
+//                    for (StockResponse.StockMatch match : results) {
+//                        symbols.add(match.getSymbol()); // Add each symbol to the ArrayList
+//                    }
+//                })
+//                .onFailure(Main_data_handler::handleFailure)
+//                .fetch();
 
         return symbols; // Return the ArrayList of symbols
     }
@@ -354,9 +357,14 @@ public class Main_data_handler {
     public interface TimelineCallback {
         void onTimeLineFetched(List<StockUnit> stocks);
     }
+
+    public interface SymbolSearchCallback {
+        void onSuccess(List<String> symbols);
+
+        void onFailure(Exception e);
+    }
 }
 
 //TODO
-//!!!Add logic to add the real symbols from the api
 //!!!Add logic for hype mode
-//!!!finish get_available_symbols method
+//!!!finish get_available_symbols method for volume filtering

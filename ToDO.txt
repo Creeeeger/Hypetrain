@@ -1,6 +1,5 @@
 TODO
 --Symbols--
-- Add the api symbol search logic (symbol based on name)
 - finish get_available_symbols method (symbol based on volume)
 
 --Chart data--
@@ -40,5 +39,3 @@ TODO
 
                     stocks = values;
                     -----> check the new async loading option
-
-   ---> test out new search api 

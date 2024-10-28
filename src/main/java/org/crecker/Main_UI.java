@@ -151,6 +151,7 @@ public class Main_UI extends JFrame {
         setValues();
 
         refresh(true, true, true, true);
+        Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
 
         System.out.println("Config reloaded!");
     }
@@ -397,11 +398,26 @@ public class Main_UI extends JFrame {
                 searchListModel.clear();
 
                 if (!searchText.isEmpty()) {
-                    // Filter or search logic to populate searchListModel with matching symbols
-                    List<String> matchedSymbols = Main_data_handler.findMatchingSymbols(searchText); // Implement this method
-                    for (String symbol : matchedSymbols) {
-                        searchListModel.addElement(symbol);
-                    }
+                    // Use the async findMatchingSymbols method with a callback
+                    Main_data_handler.findMatchingSymbols(searchText, new Main_data_handler.SymbolSearchCallback() {
+                        @Override
+                        public void onSuccess(List<String> matchedSymbols) {
+                            // Ensure the UI update happens on the Event Dispatch Thread (EDT)
+                            SwingUtilities.invokeLater(() -> {
+                                for (String symbol : matchedSymbols) {
+                                    searchListModel.addElement(symbol);
+                                }
+                            });
+                        }
+
+                        @Override
+                        public void onFailure(Exception e) {
+                            // Handle the error, e.g., show a message or log the error
+                            SwingUtilities.invokeLater(() -> {
+                                System.err.println("Failed to load symbols: " + e.getMessage());
+                            });
+                        }
+                    });
                 }
             }
         });
