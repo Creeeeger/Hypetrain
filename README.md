@@ -13,9 +13,9 @@
 - Time history about a stock
 - Add your custom symbols to your watch list
 - Have an insight into the stock before you buy over the notification window
-- Re-use the config when using on another machine
+- Re-use the config when using on another machine (import / export config)
 - get notified when the hype comes in
-- set in settings your volume to only check for stocks where you can buy full volume
+- set in settings your volume to only check for stocks where you can buy full volume to make maximum profit
 
 ---
 
