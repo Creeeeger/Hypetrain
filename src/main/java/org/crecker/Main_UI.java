@@ -20,6 +20,8 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.*;
 
@@ -33,7 +35,7 @@ public class Main_UI extends JFrame {
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JMenuBar menuBar;
     static JMenu file, settings, hype_mode_menu, Notifications;
-    static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort;
+    static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort, import_c, export_c;
     static JTextField searchField;
     static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
     static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
@@ -716,6 +718,8 @@ public class Main_UI extends JFrame {
 
         //JMenuItems File
         load = new JMenuItem("Load the config (manually again)");
+        import_c = new JMenuItem("Import config");
+        export_c = new JMenuItem("Export config");
         save = new JMenuItem("Save the config");
         exit = new JMenuItem("Exit (saves)");
 
@@ -731,6 +735,8 @@ public class Main_UI extends JFrame {
 
         //add it to the menus File
         file.add(load);
+        file.add(import_c);
+        file.add(export_c);
         file.add(save);
         file.add(exit);
 
@@ -753,6 +759,8 @@ public class Main_UI extends JFrame {
         load.addActionListener(new event_Load());
         save.addActionListener(new event_save());
         exit.addActionListener(new event_exit());
+        import_c.addActionListener(new event_import());
+        export_c.addActionListener(new event_export());
         setting_handler.addActionListener(new event_settings());
         activate_hype_mode.addActionListener(new event_activate_hype_mode());
         clear.addActionListener(e -> notificationListModel.clear());
@@ -797,6 +805,74 @@ public class Main_UI extends JFrame {
         notificationListModel.clear();
         for (Notification notification : notifications) {
             notificationListModel.addElement(notification);
+        }
+    }
+
+    public static class event_import implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            // Create a JFileChooser for importing files
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Import Configuration");
+
+            // Show the open dialog (for choosing a file)
+            int userSelection = fileChooser.showOpenDialog(null);
+
+            // If a file was selected
+            if (userSelection == JFileChooser.APPROVE_OPTION) {
+                File selectedFile = fileChooser.getSelectedFile();
+
+                // Define the target file in the root directory with the name "config.xml"
+                File configFile = new File("config.xml");
+
+                try {
+                    // Copy and rename the file, overwriting if it exists
+                    Files.copy(selectedFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+                    load_config();
+
+                    JOptionPane.showMessageDialog(null, "Configuration imported and saved as config.xml successfully!");
+
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(null, "Error processing configuration file: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            }
+        }
+    }
+
+    public static class event_export implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            // Define the source file (config.xml in the root directory)
+            File configFile = new File("config.xml");
+
+            // Check if the config file exists
+            if (!configFile.exists()) {
+                JOptionPane.showMessageDialog(null, "config.xml not found in the project root!");
+                return;
+            }
+
+            // Create a JFileChooser for exporting files
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Export Configuration");
+
+            // Show the save dialog (for saving the file)
+            int userSelection = fileChooser.showSaveDialog(null);
+
+            // If the user approves file selection
+            if (userSelection == JFileChooser.APPROVE_OPTION) {
+                File selectedFile = fileChooser.getSelectedFile();
+
+                try {
+                    // Copy the config.xml to the selected directory, overwriting if necessary
+                    Files.copy(configFile.toPath(), selectedFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+                    JOptionPane.showMessageDialog(null, "Configuration exported successfully!");
+                } catch (IOException ex) {
+                    JOptionPane.showMessageDialog(null, "Error exporting configuration file: " + ex.getMessage());
+                    ex.printStackTrace();
+                }
+            }
         }
     }
 

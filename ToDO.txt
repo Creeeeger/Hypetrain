@@ -16,9 +16,6 @@ TODO
 - Fetch the news properly
 - add a link to the article
 
---Config--
-- import/export config option
-
 
 
 --Testing--
@@ -38,4 +35,6 @@ TODO
                     }
 
                     stocks = values;
-                    -----> check the new async loading option
+                    -----> check the new async loading option for the timeline
+
+---> test the symbol searching logic again
