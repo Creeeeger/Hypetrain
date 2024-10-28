@@ -99,5 +99,7 @@ public enum Function {
     DURABLES,
     UNEMPLOYMENT,
     NONFARM_PAYROLL,
-    SYMBOL_SEARCH,
+
+    SYMBOL_SEARCH, //Stock search
+    NEWS_SENTIMENT //news search
 }

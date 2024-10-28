@@ -58,7 +58,7 @@ public final class TimeSeries implements Fetcher{
     }
 
     /**
-     * Access monthly stock time series data
+     * Access monthly Stock time series data
      * @return {@link MonthlyRequestProxy} instance
      */
     public MonthlyRequestProxy monthly(){
@@ -67,7 +67,7 @@ public final class TimeSeries implements Fetcher{
     }
 
      /**
-     * Access weekly stock time series data
+     * Access weekly Stock time series data
      * @return {@link WeeklyRequestProxy} instance
      */
     public WeeklyRequestProxy weekly(){
@@ -76,7 +76,7 @@ public final class TimeSeries implements Fetcher{
     }
 
      /**
-     * Access daily stock time series data
+     * Access daily Stock time series data
      * @return {@link DailyRequestProxy} instance
      */
     public DailyRequestProxy daily(){
@@ -85,7 +85,7 @@ public final class TimeSeries implements Fetcher{
     }
 
      /**
-     * Access intraday stock time series data
+     * Access intraday Stock time series data
      * @return {@link IntraDayRequestProxy} instance
      */
     public IntraDayRequestProxy intraday(){
@@ -93,7 +93,7 @@ public final class TimeSeries implements Fetcher{
     }
 
      /**
-     * Access monthly stock time series data
+     * Access monthly Stock time series data
      * @return {@link GlobalQuoteRequestProxy} instance
      */
     public GlobalQuoteRequestProxy quote(){

@@ -30,7 +30,7 @@ public class Main_UI extends JFrame {
     static float hyp;
     static boolean isSorted;
     static String sym, key;
-    static String selected_stock = "Select a stock"; //selected_stock is the stock to show in the chart bar
+    static String selected_stock = "Select a Stock"; //selected_stock is the Stock to show in the chart bar
     static String[][] setting_data;
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JMenuBar menuBar;
@@ -89,7 +89,7 @@ public class Main_UI extends JFrame {
         gui.setVisible(true);
         gui.setTitle("Hype train");
 
-        updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the stock data section
+        updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the Stock data section
 
         File config = new File("config.xml");
         if (!config.exists()) {
@@ -169,14 +169,14 @@ public class Main_UI extends JFrame {
             config = config.substring(1, config.length() - 1); // Remove outer brackets
             String[] entries = config.split("],\\[");
 
-            // Create a 2D array to hold the stock symbol and corresponding Color object
+            // Create a 2D array to hold the Stock symbol and corresponding Color object
             Object[][] stockArray = new Object[entries.length][2]; // 2D array: [stockSymbol, Color]
 
             // Iterate through each entry and populate the 2D array
             for (int i = 0; i < entries.length; i++) {
-                // Split by "," to separate the stock symbol and color part
+                // Split by "," to separate the Stock symbol and color part
                 String[] parts = entries[i].split(",java.awt.Color\\[r=");
-                String stockSymbol = parts[0]; // Get the stock symbol
+                String stockSymbol = parts[0]; // Get the Stock symbol
                 String colorString = parts[1]; // Get the color part (e.g., "102,g=205,b=170]")
 
                 // Parse the RGB values
@@ -188,7 +188,7 @@ public class Main_UI extends JFrame {
                 // Create a Color object from the RGB values
                 Color color = new Color(r, g, b);
 
-                // Add the stock symbol and color to the 2D array
+                // Add the Stock symbol and color to the 2D array
                 stockArray[i][0] = stockSymbol;
                 stockArray[i][1] = color;
             }
@@ -206,7 +206,7 @@ public class Main_UI extends JFrame {
         StringBuilder symBuilder = new StringBuilder();
 
         for (Map.Entry<String, Color> entry : stockColors.entrySet()) {
-            String stockSymbol = entry.getKey(); // Get the key (stock symbol)
+            String stockSymbol = entry.getKey(); // Get the key (Stock symbol)
             Color color = entry.getValue();      // Get the value (color)
 
             symBuilder.append("[").append(stockSymbol).append(",").append(color).append("],");
@@ -258,12 +258,12 @@ public class Main_UI extends JFrame {
 
         searchScrollPane.setPreferredSize(new Dimension(125, 0));
 
-        // Create a scrollable list of stock items using DefaultListModel
+        // Create a scrollable list of Stock items using DefaultListModel
         stockListModel = new DefaultListModel<>();
         JList<String> stockList = new JList<>(stockListModel);
         stockList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
-        // Define fixed colors for each stock symbol using a HashMap
+        // Define fixed colors for each Stock symbol using a HashMap
         stockColors = new HashMap<>();
 
         // Create a custom ListCellRenderer to apply fixed colors and round borders
@@ -288,15 +288,15 @@ public class Main_UI extends JFrame {
             return label;
         });
 
-        // Add a ListSelectionListener to handle stock selection events
+        // Add a ListSelectionListener to handle Stock selection events
         stockList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) { // Prevent duplicate executions during list update
-                selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected stock symbol
+                selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected Stock symbol
 
-                // Fetch stock data asynchronously
+                // Fetch Stock data asynchronously
                 Main_data_handler.get_Info_Array(selected_stock, values -> {
 
-                    // Update stock info labels only if values are not null
+                    // Update Stock info labels only if values are not null
                     if (values != null && values.length == 9) {
 
                         for (int i = 0; i < values.length; i++) {
@@ -316,7 +316,7 @@ public class Main_UI extends JFrame {
                     for (int i = 1; i < values.size(); i++) {
                         double current_close = values.get(i).getClose();
 
-                        // Ensure there is a previous stock entry to compare with
+                        // Ensure there is a previous Stock entry to compare with
                         double previous_close = values.get(i - 1).getClose();
 
                         // Check for a 10% dip or peak
@@ -328,13 +328,23 @@ public class Main_UI extends JFrame {
 
                     stocks = values;
 
-                    // Refresh the chart data for the selected stock
+                    // Refresh the chart data for the selected Stock
                     refreshChartData(1);
+                });
+
+                Main_data_handler.receive_News(selected_stock, values -> {
+                    //Get the news for a company
+                    NewsListModel.clear();
+
+                    for (com.crazzyghost.alphavantage.news.response.NewsResponse.NewsItem value : values) {
+                        System.out.println(value.getTitle());
+                        addNews(value.getTitle(), value.getSummary(), value.getUrl());
+                    }
                 });
             }
         });
 
-        // Add the stock list into a scroll pane
+        // Add the Stock list into a scroll pane
         JScrollPane stockScrollPane = new JScrollPane(stockList);
 
         // Create the "-" button for removing selected items
@@ -360,14 +370,14 @@ public class Main_UI extends JFrame {
         addButton.addActionListener(e -> {
             String selectedSymbol = searchList.getSelectedValue();
             if (selectedSymbol != null && !stockListModel.contains(selectedSymbol)) {
-                // Add the selected symbol to the stock list
+                // Add the selected symbol to the Stock list
                 stockListModel.addElement(selectedSymbol);
                 stockColors.put(selectedSymbol, generateRandomColor()); // Assign a random color or use another logic
                 sym = create_sym_array();
             }
         });
 
-        // Add the search field to the top, the scrollable stock list to the center, and the button panel to the bottom
+        // Add the search field to the top, the scrollable Stock list to the center, and the button panel to the bottom
         panel.add(searchField, BorderLayout.NORTH);
         panel.add(stockScrollPane, BorderLayout.CENTER);
         panel.add(buttonPanel, BorderLayout.SOUTH);
@@ -415,9 +425,7 @@ public class Main_UI extends JFrame {
                         @Override
                         public void onFailure(Exception e) {
                             // Handle the error, e.g., show a message or log the error
-                            SwingUtilities.invokeLater(() -> {
-                                System.err.println("Failed to load symbols: " + e.getMessage());
-                            });
+                            SwingUtilities.invokeLater(() -> System.err.println("Failed to load symbols: " + e.getMessage()));
                         }
                     });
                 }
@@ -512,7 +520,7 @@ public class Main_UI extends JFrame {
         firstRowPanel.add(chartPanel, BorderLayout.CENTER);
         firstRowPanel.add(newsScrollPane, BorderLayout.EAST);
 
-        // Second Row - Lists of stock information
+        // Second Row - Lists of Stock information
         JPanel secondRowPanel = new JPanel(new GridLayout(1, 4));
 
         // First column - Open, High, Low
@@ -550,7 +558,7 @@ public class Main_UI extends JFrame {
         secondRowPanel.add(volumePEMktCapPanel);
         secondRowPanel.add(rangeAndAvgVolPanel);
 
-        // Add a titled border to the stock info section
+        // Add a titled border to the Stock info section
         secondRowPanel.setBorder(BorderFactory.createTitledBorder("Stock Information"));
 
         // Add first and second rows to the main panel
@@ -578,13 +586,17 @@ public class Main_UI extends JFrame {
         // Get the limit based on the choice
         int limit = limits[choice - 1]; // Adjust for zero-based index
 
-        // Populate the time series with stock data
-        for (int i = 0; i < limit; i++) {
-            String timestamp = stocks.get(i).getDate();
-            double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+        try {
+            // Populate the time series with Stock data
+            for (int i = 0; i < limit; i++) {
+                String timestamp = stocks.get(i).getDate();
+                double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
 
-            // Add the data to the TimeSeries
-            timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                // Add the data to the TimeSeries
+                timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+            }
+        } catch (Exception e) {
+            System.out.println("No data received: " + e.getMessage());
         }
 
         // Create a new chart with the updated title
@@ -690,8 +702,8 @@ public class Main_UI extends JFrame {
     }
 
     // Method to add a News
-    public void addNews(String title, String content) { //Method to add News to the panel
-        News newNews = new News(title, content);
+    public void addNews(String title, String content, String url) { //Method to add News to the panel
+        News newNews = new News(title, content, url);
         NewsListModel.addElement(newNews);
     }
 
@@ -879,7 +891,7 @@ public class Main_UI extends JFrame {
     public static class event_activate_hype_mode implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
-            System.out.println("Activating hype mode for auto stock scanning");
+            System.out.println("Activating hype mode for auto Stock scanning");
             Main_data_handler.start_Hype_Mode(vol, hyp);
         }
     }
@@ -941,7 +953,7 @@ public class Main_UI extends JFrame {
                     addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries()); //add notification sample
                 }
 
-                addNews(String.valueOf(Math.random() * 10), String.valueOf(Math.random() * 10)); //add news sample
+                addNews("what an event", "with some content", "https://www.google.com/"); //add news sample
 
             } catch (IOException ex) {
                 throw new RuntimeException(ex);

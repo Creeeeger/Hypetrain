@@ -17,7 +17,6 @@ TODO
 - add a link to the article
 
 
-
 --Testing--
                 //Fetch timeLine aSync
                 Main_data_handler.get_timeline(selected_stock, values -> {
@@ -38,3 +37,5 @@ TODO
                     -----> check the new async loading option for the timeline
 
 ---> test the symbol searching logic again
+
+---> test the news section
