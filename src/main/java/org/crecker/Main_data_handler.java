@@ -327,7 +327,7 @@ public class Main_data_handler {
                 .News()
                 .setTickers(Symbol)
                 .setSort("LATEST")
-                .setLimit(15)
+                .setLimit(12)
                 .onSuccess(e -> callback.onNewsReceived(e.getNewsItems()))
                 .onFailure(Main_data_handler::handleFailure)
                 .fetch();
