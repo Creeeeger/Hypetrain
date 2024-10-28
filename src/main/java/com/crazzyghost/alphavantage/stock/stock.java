@@ -23,13 +23,8 @@ public final class stock implements Fetcher {
         this.builder = new StockRequest.Builder();
     }
 
-    public stock setSymbol(String Symbol) {
-        this.builder.forSymbol(Symbol);
-        return this;
-    }
-
-    public stock forVolume(int Volume) {
-        this.builder.forVolume(Volume);
+    public stock setKeywords(String keywords) {
+        this.builder.forKeywords(keywords);
         return this;
     }
 

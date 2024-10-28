@@ -59,8 +59,7 @@ public class UrlExtractor {
                 try {
                     //extract non-null and non-synthetic fields
                     if (!field.isSynthetic() && field.get(object) != null) {
-                        stringBuilder.append(field.getName().toLowerCase())
-                                .append("=");
+                        stringBuilder.append(field.getName().toLowerCase()).append("=");
                         String value = (field.get(object)).toString();
                         stringBuilder.append(value).append("&");
                     }
@@ -70,9 +69,7 @@ public class UrlExtractor {
             }
             cls = cls.getSuperclass();
         }
-
         return stringBuilder.append("apikey=").toString();
-
     }
 
     /**
@@ -83,6 +80,7 @@ public class UrlExtractor {
      * @return
      */
     public static Request extract(Object request, String apiKey) {
+        System.out.println(Config.BASE_URL + UrlExtractor.extract(request) + apiKey + " debug: URL");
         return new Request.Builder().url(Config.BASE_URL + UrlExtractor.extract(request) + apiKey).build();
     }
 }

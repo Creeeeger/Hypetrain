@@ -5,20 +5,17 @@ import com.crazzyghost.alphavantage.parameters.Function;
 public class StockRequest {
 
     protected Function function;
-    protected String symbol;
-    protected int volume;
+    protected String keywords;
 
     protected StockRequest(Builder builder) {
-        this.symbol = builder.symbol;
+        this.keywords = builder.keywords;
         this.function = builder.function;
-        this.volume = builder.volume;
     }
 
     public static class Builder {
 
         public Function function;
-        protected String symbol;
-        protected int volume;
+        protected String keywords;
 
         public Builder() {
             this.function = Function.SYMBOL_SEARCH;
@@ -29,13 +26,8 @@ public class StockRequest {
             return this;
         }
 
-        public Builder forSymbol(String symbol) {
-            this.symbol = symbol;
-            return this;
-        }
-
-        public Builder forVolume(int volume) {
-            this.volume = volume;
+        public Builder forKeywords(String keywords) {
+            this.keywords = keywords;
             return this;
         }
 
