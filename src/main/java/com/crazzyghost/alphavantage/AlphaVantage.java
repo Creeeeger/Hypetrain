@@ -28,8 +28,9 @@ import com.crazzyghost.alphavantage.exchangerate.ExchangeRate;
 import com.crazzyghost.alphavantage.forex.Forex;
 import com.crazzyghost.alphavantage.fundamentaldata.FundamentalData;
 import com.crazzyghost.alphavantage.indicator.Indicator;
+import com.crazzyghost.alphavantage.news.News;
 import com.crazzyghost.alphavantage.sector.Sector;
-import com.crazzyghost.alphavantage.stock.stock;
+import com.crazzyghost.alphavantage.stock.Stock;
 import com.crazzyghost.alphavantage.technicalindicator.TechnicalIndicator;
 import com.crazzyghost.alphavantage.timeseries.TimeSeries;
 
@@ -154,7 +155,13 @@ public class AlphaVantage {
         return new EconomicIndicator(config);
     }
 
-    public stock stocks() {
-        return new stock(config);
+    //Stock symbols
+    public Stock Stocks() {
+        return new Stock(config);
+    }
+
+    //News symbols
+    public News News() {
+        return new News(config);
     }
 }

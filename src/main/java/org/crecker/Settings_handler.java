@@ -28,7 +28,7 @@ public class Settings_handler extends JFrame {
         // Set the layout of the panel to BoxLayout, which arranges components vertically
         settingsPanel.setLayout(new BoxLayout(settingsPanel, BoxLayout.Y_AXIS));
         // Add a titled border to the panel for clarity
-        settingsPanel.setBorder(BorderFactory.createTitledBorder("Settings for stock management"));
+        settingsPanel.setBorder(BorderFactory.createTitledBorder("Settings for Stock management"));
 
         // Informational label to guide the user
         infos = new JLabel("Select your settings and then press apply");

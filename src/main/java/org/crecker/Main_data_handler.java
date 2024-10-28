@@ -5,6 +5,7 @@ import com.crazzyghost.alphavantage.AlphaVantageException;
 import com.crazzyghost.alphavantage.Config;
 import com.crazzyghost.alphavantage.fundamentaldata.response.CompanyOverview;
 import com.crazzyghost.alphavantage.fundamentaldata.response.CompanyOverviewResponse;
+import com.crazzyghost.alphavantage.news.response.NewsResponse;
 import com.crazzyghost.alphavantage.parameters.Interval;
 import com.crazzyghost.alphavantage.parameters.OutputSize;
 import com.crazzyghost.alphavantage.stock.response.StockResponse;
@@ -35,9 +36,6 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
-    //!!!Change to symbol from function later on
-    public static String symbol = "NVDA";
-
     public static void main(String[] args) {
         // Replace with your actual Alpha Vantage API key since this is a free key
         String apiKey = "2NN1RGFV3V34ORCZ"; //SIKE NEW KEY
@@ -54,7 +52,7 @@ public class Main_data_handler {
         AlphaVantage.api()
                 .timeSeries()
                 .intraday()
-                .forSymbol(symbol)
+                .forSymbol("NVDA")
                 .interval(Interval.ONE_MIN)
                 .outputSize(OutputSize.FULL)
                 .onSuccess(e -> {
@@ -92,7 +90,7 @@ public class Main_data_handler {
                     TimeSeriesResponse response = (TimeSeriesResponse) e;
                     stocks.addAll(response.getStockUnits()); // Populate the list
 
-                    callback.onTimeLineFetched(stocks); // Call the callback with the stock list
+                    callback.onTimeLineFetched(stocks); // Call the callback with the Stock list
                 })
                 .onFailure(Main_data_handler::handleFailure)
                 .fetch();
@@ -154,12 +152,12 @@ public class Main_data_handler {
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries(response.getMetaData().getSymbol().toUpperCase() + " Stock Price");
 
-        // Get stock units
+        // Get Stock units
         List<StockUnit> stocks = response.getStockUnits();
 
         Collections.reverse(stocks); //reverse (old to new)
 
-        // Populate the time series with stock data
+        // Populate the time series with Stock data
         for (StockUnit stock : stocks) {
             String timestamp = stock.getDate();
             double closingPrice = stock.getClose(); // Assuming getClose() returns closing price
@@ -183,7 +181,7 @@ public class Main_data_handler {
 
         // Initialize BufferedWriter to write to the file
         BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(data)); // Create a BufferedWriter to write to the file
-        bufferedWriter.write(Arrays.toString(response.getStockUnits().toArray())); // Write the stock units data to the file as a string
+        bufferedWriter.write(Arrays.toString(response.getStockUnits().toArray())); // Write the Stock units data to the file as a string
         bufferedWriter.flush(); // Flush the writer to ensure all data is written to the file
         return bufferedWriter;
     }
@@ -302,7 +300,7 @@ public class Main_data_handler {
         List<String> allSymbols = new ArrayList<>();
 
         AlphaVantage.api()
-                .stocks()
+                .Stocks()
                 .setKeywords(searchText)
                 .onSuccess(e -> {
                     List<StockResponse.StockMatch> list = e.getMatches();
@@ -321,6 +319,17 @@ public class Main_data_handler {
                     Main_data_handler.handleFailure(failure);
                     callback.onFailure(new RuntimeException("API call failed"));
                 })
+                .fetch();
+    }
+
+    public static void receive_News(String Symbol, ReceiveNewsCallback callback) {
+        AlphaVantage.api()
+                .News()
+                .setTickers(Symbol)
+                .setSort("LATEST")
+                .setLimit(15)
+                .onSuccess(e -> callback.onNewsReceived(e.getNewsItems()))
+                .onFailure(Main_data_handler::handleFailure)
                 .fetch();
     }
 
@@ -350,6 +359,7 @@ public class Main_data_handler {
         return symbols; // Return the ArrayList of symbols
     }
 
+    //Interfaces
     public interface DataCallback {
         void onDataFetched(Double[] values);
     }
@@ -362,6 +372,10 @@ public class Main_data_handler {
         void onSuccess(List<String> symbols);
 
         void onFailure(Exception e);
+    }
+
+    public interface ReceiveNewsCallback {
+        void onNewsReceived(List<NewsResponse.NewsItem> news);
     }
 }
 

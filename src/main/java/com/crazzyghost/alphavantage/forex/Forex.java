@@ -56,7 +56,7 @@ public final class Forex implements Fetcher {
     }
 
     /**
-     * Access monthly stock time series data
+     * Access monthly Stock time series data
      *
      * @return {@link WeeklyRequestProxy} instance
      */
@@ -65,7 +65,7 @@ public final class Forex implements Fetcher {
     }
 
     /**
-     * Access monthly stock time series data
+     * Access monthly Stock time series data
      *
      * @return {@link DailyRequestProxy} instance
      */
@@ -74,7 +74,7 @@ public final class Forex implements Fetcher {
     }
 
     /**
-     * Access monthly stock time series data
+     * Access monthly Stock time series data
      *
      * @return {@link IntraDayRequestProxy} instance
      */
@@ -83,7 +83,7 @@ public final class Forex implements Fetcher {
     }
 
     /**
-     * Access monthly stock time series data
+     * Access monthly Stock time series data
      *
      * @return {@link MonthlyRequestProxy} instance
      */

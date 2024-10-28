@@ -33,10 +33,6 @@ public class Notification {
         return timeSeries;
     }
 
-    public JFrame getNotificationFrame() { //get the frame I don't know why but still then we got it
-        return notificationFrame;
-    }
-
     public void showNotification() {
         // Create the notification window
         notificationFrame = new JFrame(title);

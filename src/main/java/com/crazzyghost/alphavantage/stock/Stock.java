@@ -12,28 +12,28 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
-public final class stock implements Fetcher {
+public final class Stock implements Fetcher {
     private final Config config;
     private final StockRequest.Builder builder;
     private SuccessCallback<StockResponse> successCallback;
     private FailureCallback failureCallback;
 
-    public stock(Config config) {
+    public Stock(Config config) {
         this.config = config;
         this.builder = new StockRequest.Builder();
     }
 
-    public stock setKeywords(String keywords) {
+    public Stock setKeywords(String keywords) {
         this.builder.forKeywords(keywords);
         return this;
     }
 
-    public stock onSuccess(SuccessCallback<StockResponse> callback) {
+    public Stock onSuccess(SuccessCallback<StockResponse> callback) {
         this.successCallback = callback;
         return this;
     }
 
-    public stock onFailure(FailureCallback callback) {
+    public Stock onFailure(FailureCallback callback) {
         this.failureCallback = callback;
         return this;
     }

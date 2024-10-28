@@ -1,16 +1,36 @@
 package org.crecker;
 
+import org.jetbrains.annotations.NotNull;
+
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.net.URI;
 
 public class News {
+
     private final String title;
     private final String content;
+    private final String url;
     private JFrame NewsFrame; // Frame for the News
 
-    public News(String title, String content) {
+    public News(String title, String content, String url) {
         this.title = title;
         this.content = content;
+        this.url = url;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getContent() {
+        return content;
+    }
+
+    public String getUrl() {
+        return url;
     }
 
     public void showNews() {
@@ -20,6 +40,9 @@ public class News {
         NewsFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         NewsFrame.setLocationRelativeTo(null);
         NewsFrame.setAlwaysOnTop(true);
+
+        // Create the clickable URL as a JLabel with HTML
+        JLabel urlLabel = getURL();
 
         // Create the text area with content, enable line wrapping
         JTextArea textArea = new JTextArea(content);
@@ -34,10 +57,34 @@ public class News {
         JPanel mainPanel = new JPanel();
         mainPanel.setLayout(new BorderLayout());
 
-        // Add the scroll pane with the text area to the top of the panel
-        mainPanel.add(scrollPane, BorderLayout.NORTH);
+        // Add the clickable link (URL) to the top
+        mainPanel.add(urlLabel, BorderLayout.NORTH);
+
+        // Add the scroll pane with the text area below the URL
+        mainPanel.add(scrollPane, BorderLayout.CENTER);
+
+        // Add the main panel to the frame
         NewsFrame.add(mainPanel);
         NewsFrame.setVisible(true);
+    }
+
+    @NotNull
+    private JLabel getURL() {
+        JLabel urlLabel = new JLabel("<html><a href=''>" + url + "</a></html>");
+        urlLabel.setCursor(new Cursor(Cursor.HAND_CURSOR));
+
+        // Add a click listener to open the link in a browser
+        urlLabel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                try {
+                    Desktop.getDesktop().browse(new URI(url));
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }
+        });
+        return urlLabel;
     }
 
     public void closeNews() {

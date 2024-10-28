@@ -17,17 +17,17 @@ public class data_tester {
     static List<Notification> alerts;
 
     public static void main(String[] args) throws IOException {
-        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the stock data from the file (simulate real stock data)
+        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
 
-        tester(stocks); //test method to test the stock data
+        tester(stocks); //test method to test the Stock data
 
         //further code to test on data comes here
         System.out.println("Data got loaded successfully!");
     }
 
     public static List<Notification> Main_data_puller() throws IOException {
-        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the stock data from the file (simulate real stock data)
-        return tester(stocks); //test method to test the stock data
+        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
+        return tester(stocks); //test method to test the Stock data
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
@@ -72,7 +72,7 @@ public class data_tester {
             stockUnits.add(stockUnit);
         }
 
-        // Reverse the list to get the stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
+        // Reverse the list to get the Stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
         Collections.reverse(stockUnits);
 
         return stockUnits;
@@ -82,7 +82,7 @@ public class data_tester {
         // Remove "StockUnit{" from the beginning of the string
         stockUnitString = stockUnitString.replace("StockUnit{", "").trim();
 
-        // Split the stock unit attributes by commas
+        // Split the Stock unit attributes by commas
         String[] attributes = stockUnitString.split(", ");
 
         // Parse each attribute
@@ -132,7 +132,7 @@ public class data_tester {
         int upCount = 0;    // Counter for consecutive upward movements
         int downCount = 0;  // Counter for consecutive downward movements
 
-        // Loop through the stock (minute-level data assumed)
+        // Loop through the Stock (minute-level data assumed)
         for (int i = 1; i < stocks.size(); i++) {
             double currentClose = stocks.get(i).getClose();  // Get the current close price
             double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
@@ -178,7 +178,7 @@ public class data_tester {
                     }
 
                     // Add the spike notification to the list
-                    alertsList.add(Main_data_handler.create_Notification(true, Main_data_handler.symbol, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));
+                    alertsList.add(Main_data_handler.create_Notification(true, Main_UI.selected_stock, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));
 
                 } catch (Exception e) {
                     System.err.println("Error while generating spike notification: " + e.getMessage());
@@ -206,7 +206,7 @@ public class data_tester {
                         }
                     }
 
-                    alertsList.add(Main_data_handler.create_Notification(false, Main_data_handler.symbol, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));  // Add the spike notification to the list
+                    alertsList.add(Main_data_handler.create_Notification(false, Main_UI.selected_stock, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));  // Add the spike notification to the list
 
                 } catch (Exception e) {
                     System.err.println("Error while generating spike notification: " + e.getMessage());
@@ -230,7 +230,7 @@ public class data_tester {
             if (current_date.equals(last_date)) {
                 double current_close = stocks.get(i).getClose();
 
-                // Ensure there is a previous stock entry to compare with
+                // Ensure there is a previous Stock entry to compare with
                 if (i > 0) {
                     double previous_close = stocks.get(i - 1).getClose();
 
@@ -241,7 +241,7 @@ public class data_tester {
                     }
                 }
 
-                // Add the modified stock to the inter_day_stocks list
+                // Add the modified Stock to the inter_day_stocks list
                 inter_day_stocks.add(stocks.get(i));
             }
         }
@@ -253,7 +253,7 @@ public class data_tester {
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
 
-        // Populate the time series with stock data
+        // Populate the time series with Stock data
         for (StockUnit stock : stocks) {
             String timestamp = stock.getDate();
             double closingPrice = stock.getClose(); // Assuming getClose() returns closing price
