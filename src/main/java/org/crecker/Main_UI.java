@@ -333,13 +333,13 @@ public class Main_UI extends JFrame {
                 });
 
                 Main_data_handler.receive_News(selected_stock, values -> {
-                    //Get the news for a company
-                    NewsListModel.clear();
-
-                    for (com.crazzyghost.alphavantage.news.response.NewsResponse.NewsItem value : values) {
-                        System.out.println(value.getTitle());
-                        addNews(value.getTitle(), value.getSummary(), value.getUrl());
-                    }
+                    // Clear the news list and update UI in the Event Dispatch Thread
+                    SwingUtilities.invokeLater(() -> {
+                        NewsListModel.clear();
+                        for (com.crazzyghost.alphavantage.news.response.NewsResponse.NewsItem value : values) {
+                            addNews(value.getTitle(), value.getSummary(), value.getUrl());
+                        }
+                    });
                 });
             }
         });
