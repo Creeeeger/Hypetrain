@@ -25,11 +25,6 @@ public class data_tester {
         System.out.println("Data got loaded successfully!");
     }
 
-    public static List<Notification> Main_data_puller() throws IOException {
-        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
-        return tester(stocks); //test method to test the Stock data
-    }
-
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
         // Read the entire file content as a single string
         BufferedReader bufferedReader = new BufferedReader(new FileReader(filePath));
@@ -111,7 +106,7 @@ public class data_tester {
     }
 
     public static List<Notification> tester(List<StockUnit> stocks) {
-        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(17000).getDate()));
+        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(5000).getDate()));
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
@@ -119,6 +114,35 @@ public class data_tester {
         Stock_change(inter_day_stocks);
 
         return alerts;
+    }
+
+    public static List<StockUnit> get_Inter_Day(List<StockUnit> stocks, Date last_date) {
+        List<StockUnit> inter_day_stocks = new ArrayList<>();
+
+        for (int i = 0; i < stocks.size(); i++) {
+            Date current_date = Main_data_handler.convertToDate_Simple(stocks.get(i).getDate());
+
+            // Check if the current date matches the last date
+            if (current_date.equals(last_date)) {
+                double current_close = stocks.get(i).getClose();
+
+                // Ensure there is a previous Stock entry to compare with
+                if (i > 0) {
+                    double previous_close = stocks.get(i - 1).getClose();
+
+                    // Check for a 10% dip or peak
+                    if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
+                        // Replace the current close with the previous close
+                        stocks.get(i).setClose(previous_close); // Use the setter method
+                    }
+                }
+
+                // Add the modified Stock to the inter_day_stocks list
+                inter_day_stocks.add(stocks.get(i));
+            }
+        }
+
+        return inter_day_stocks;
     }
 
     public static List<Notification> get_alerts_from_stock(List<StockUnit> stocks) {
@@ -220,36 +244,7 @@ public class data_tester {
         return alertsList;
     }
 
-    public static List<StockUnit> get_Inter_Day(List<StockUnit> stocks, Date last_date) {
-        List<StockUnit> inter_day_stocks = new ArrayList<>();
-
-        for (int i = 0; i < stocks.size(); i++) {
-            Date current_date = Main_data_handler.convertToDate_Simple(stocks.get(i).getDate());
-
-            // Check if the current date matches the last date
-            if (current_date.equals(last_date)) {
-                double current_close = stocks.get(i).getClose();
-
-                // Ensure there is a previous Stock entry to compare with
-                if (i > 0) {
-                    double previous_close = stocks.get(i - 1).getClose();
-
-                    // Check for a 10% dip or peak
-                    if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
-                        // Replace the current close with the previous close
-                        stocks.get(i).setClose(previous_close); // Use the setter method
-                    }
-                }
-
-                // Add the modified Stock to the inter_day_stocks list
-                inter_day_stocks.add(stocks.get(i));
-            }
-        }
-
-        return inter_day_stocks;
-    }
-
-    public static void Stock_value(List<StockUnit> stocks) {
+    public static void Stock_value(List<StockUnit> stocks) { //plot the stock value
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
 
@@ -266,7 +261,7 @@ public class data_tester {
         Main_data_handler.plotData(timeSeries, "NVDA price change", "Date", "price");
     }
 
-    public static void Stock_change(List<StockUnit> stocks) {
+    public static void Stock_change(List<StockUnit> stocks) { //plot the stock percentage change
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
 
@@ -286,6 +281,11 @@ public class data_tester {
 
         // Plot the data
         Main_data_handler.plotData(timeSeries, "NVDA percentage change", "Date", "Percentage change");
+    }
+
+    public static List<Notification> Main_data_puller() throws IOException { //get stock notifications
+        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
+        return tester(stocks); //test method to test the Stock data
     }
 }
 
