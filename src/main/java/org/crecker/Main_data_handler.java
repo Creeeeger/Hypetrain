@@ -36,8 +36,7 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
-    public static void main(String[] args) {
-        // Replace with your actual Alpha Vantage API key since this is a free key
+    public static void main(String[] args) { //use the method to generate lists for training the algorithm
         String apiKey = "2NN1RGFV3V34ORCZ"; //SIKE NEW KEY
 
         // Configure the API client
@@ -61,84 +60,6 @@ public class Main_data_handler {
                     } catch (IOException ex) {
                         throw new RuntimeException(ex);
                     }
-                })
-                .onFailure(Main_data_handler::handleFailure)
-                .fetch();
-    }
-
-    public static void InitAPi(String token) {
-        // Configure the API client
-        Config cfg = Config.builder()
-                .key(token)
-                .timeOut(10) // Timeout in seconds
-                .build();
-
-        // Initialize the Alpha Vantage API
-        AlphaVantage.api().init(cfg);
-    }
-
-    public static void get_timeline(String symbol_name, TimelineCallback callback) {
-        List<StockUnit> stocks = new ArrayList<>(); // Directly use a List<StockUnit>
-
-        AlphaVantage.api()
-                .timeSeries()
-                .intraday()
-                .forSymbol(symbol_name)
-                .interval(Interval.ONE_MIN)
-                .outputSize(OutputSize.FULL)
-                .onSuccess(e -> {
-                    TimeSeriesResponse response = (TimeSeriesResponse) e;
-                    stocks.addAll(response.getStockUnits()); // Populate the list
-
-                    callback.onTimeLineFetched(stocks); // Call the callback with the Stock list
-                })
-                .onFailure(Main_data_handler::handleFailure)
-                .fetch();
-    }
-
-    public static void get_Info_Array(String symbol_name, DataCallback callback) {
-        Double[] data = new Double[9];
-
-        // Fetch fundamental data
-        AlphaVantage.api()
-                .fundamentalData()
-                .companyOverview()
-                .forSymbol(symbol_name)
-                .onSuccess(e -> {
-                    CompanyOverviewResponse overview_response = (CompanyOverviewResponse) e;
-                    CompanyOverview response = overview_response.getOverview();
-
-                    if (response != null) {
-                        data[4] = response.getPERatio();
-                        data[5] = response.getPEGRatio();
-                        data[6] = response.getFiftyTwoWeekHigh();
-                        data[7] = response.getFiftyTwoWeekLow();
-                        data[8] = Double.valueOf(response.getMarketCapitalization());
-                    } else {
-                        System.out.println("Company overview response is null.");
-                    }
-                })
-                .onFailure(Main_data_handler::handleFailure)
-                .fetch();
-
-        AlphaVantage.api()
-                .timeSeries()
-                .quote()
-                .forSymbol(symbol_name)
-                .onSuccess(e -> {
-                    QuoteResponse response = (QuoteResponse) e;
-
-                    if (response != null) {
-                        data[0] = response.getOpen();
-                        data[1] = response.getHigh();
-                        data[2] = response.getLow();
-                        data[3] = response.getVolume();
-                    } else {
-                        System.out.println("Quote response is null.");
-                    }
-
-                    // Call the callback with the fetched data
-                    callback.onDataFetched(data);
                 })
                 .onFailure(Main_data_handler::handleFailure)
                 .fetch();
@@ -254,6 +175,86 @@ public class Main_data_handler {
         controlPanel.add(zoomInButton);
         controlPanel.add(zoomOutButton);
         return controlPanel;
+    }
+
+
+    //Start of main code
+    public static void InitAPi(String token) {
+        // Configure the API client
+        Config cfg = Config.builder()
+                .key(token)
+                .timeOut(10) // Timeout in seconds
+                .build();
+
+        // Initialize the Alpha Vantage API
+        AlphaVantage.api().init(cfg);
+    }
+
+    public static void get_timeline(String symbol_name, TimelineCallback callback) {
+        List<StockUnit> stocks = new ArrayList<>(); // Directly use a List<StockUnit>
+
+        AlphaVantage.api()
+                .timeSeries()
+                .intraday()
+                .forSymbol(symbol_name)
+                .interval(Interval.ONE_MIN)
+                .outputSize(OutputSize.FULL)
+                .onSuccess(e -> {
+                    TimeSeriesResponse response = (TimeSeriesResponse) e;
+                    stocks.addAll(response.getStockUnits()); // Populate the list
+
+                    callback.onTimeLineFetched(stocks); // Call the callback with the Stock list
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+    }
+
+    public static void get_Info_Array(String symbol_name, DataCallback callback) {
+        Double[] data = new Double[9];
+
+        // Fetch fundamental data
+        AlphaVantage.api()
+                .fundamentalData()
+                .companyOverview()
+                .forSymbol(symbol_name)
+                .onSuccess(e -> {
+                    CompanyOverviewResponse overview_response = (CompanyOverviewResponse) e;
+                    CompanyOverview response = overview_response.getOverview();
+
+                    if (response != null) {
+                        data[4] = response.getPERatio();
+                        data[5] = response.getPEGRatio();
+                        data[6] = response.getFiftyTwoWeekHigh();
+                        data[7] = response.getFiftyTwoWeekLow();
+                        data[8] = Double.valueOf(response.getMarketCapitalization());
+                    } else {
+                        System.out.println("Company overview response is null.");
+                    }
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+
+        AlphaVantage.api()
+                .timeSeries()
+                .quote()
+                .forSymbol(symbol_name)
+                .onSuccess(e -> {
+                    QuoteResponse response = (QuoteResponse) e;
+
+                    if (response != null) {
+                        data[0] = response.getOpen();
+                        data[1] = response.getHigh();
+                        data[2] = response.getLow();
+                        data[3] = response.getVolume();
+                    } else {
+                        System.out.println("Quote response is null.");
+                    }
+
+                    // Call the callback with the fetched data
+                    callback.onDataFetched(data);
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
     }
 
     public static Date convertToDate(String timestamp) {
