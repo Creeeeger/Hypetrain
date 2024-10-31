@@ -891,7 +891,6 @@ public class Main_UI extends JFrame {
     public static class event_activate_hype_mode implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
-            System.out.println("Activating hype mode for auto Stock scanning");
             Main_data_handler.start_Hype_Mode(vol, hyp);
         }
     }
