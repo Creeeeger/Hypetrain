@@ -16,6 +16,7 @@
 - Re-use the config when using on another machine (import / export config)
 - get notified when the hype comes in
 - set in settings your volume to only check for stocks where you can buy full volume to make maximum profit
+- pre-defined set of stocks for volumes of 200-300k €
 
 ---
 

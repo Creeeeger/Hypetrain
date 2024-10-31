@@ -333,30 +333,106 @@ public class Main_data_handler {
                 .fetch();
     }
 
-    public static void start_Hype_Mode(int Volume, float Hype) {
-        System.out.printf("Settings: %s Volume, %s Hype%n", Volume, Hype);
-        int price_per_stock = 1; //!!!Update to real price
-        int amt_to_buy = Volume / price_per_stock;
-        //!!!Add logic for hype mode
+    public static void start_Hype_Mode(int tradeVolume, float hypeStrength) {
+        String[] stockSymbols = { //List of theoretical trade-able symbols
+                "AEM", "CVNA", "VRT", "ODFL", "EW", "KHC", "VLO", "CTVA", "HES", "TCOM",
+                "MCHP", "LNG", "CBRE", "GLW", "FERG", "ACGL", "SNOW", "IT", "LVS", "DDOG",
+                "LULU", "AME", "DFS", "EA", "GIS", "YUM", "IRM", "VRSK", "IDXX", "HSY",
+                "BKR", "SYY", "NGG", "BNS", "NXPI", "COF", "EPD", "WDAY", "RSG", "AJG",
+                "FTNT", "ADSK", "AFL", "PCG", "PSA", "DHI", "TTD", "SLB", "MET", "ROP",
+                "GM", "SE", "TSN", "MKC", "EXPE", "TRU", "MDB", "MT", "ZTO", "BBY",
+                "ARE", "OMC", "LPLA", "AER", "CLX", "PFG", "ULTA", "VRSN", "LUV", "DGX",
+                "APTV", "DKNG", "UTHR", "AKAM", "FTAI", "POOL", "MGM", "CAVA", "TTEK", "SWK",
+                "GGG", "DUOL", "BMRN", "XPO", "AES", "TXRH", "DOCU", "GMAB", "CF", "USFD",
+                "REG", "SWKS", "TFC", "TRV", "NSC", "ET", "OKE", "APP", "URI", "PSX",
+                "GWW", "O", "COIN", "AZO", "AAPL", "NVDA", "MSFT", "GOOGL", "AMZN", "META",
+                "TSM", "BRK/B", "TSLA", "LLY", "AVGO", "WMT", "JPM", "XOM", "UNH", "V",
+                "NVO", "ORCL", "MA", "HD", "PG", "COST", "JNJ", "ABBV", "BAC", "NFLX",
+                "KO", "CRM", "SAP", "ASML", "CVX", "MRK", "TMUS", "AMD", "BABA", "SMFG",
+                "TM", "NVS", "PEP", "AZN", "LIN", "WFC", "CSCO", "ADBE", "MCD", "TMO",
+                "PM", "ABT", "IBM", "NOW", "MS", "QCOM", "GE", "AXP", "CAT", "TXN",
+                "ISRG", "FMX", "DHR", "RY", "VZ", "DIS", "PDD", "NEE", "AMGN", "INTU",
+                "RTX", "HSBC", "GS", "UBER", "PFE", "HDB", "CMCSA", "T", "UL", "ARM",
+                "AMAT", "SPGI", "LOW", "TTE", "BLK", "BKNG", "PGR", "UNP", "SNY", "SYK",
+                "HON", "LMT", "SCHW", "TJX", "BSX", "KKR", "ANET", "VRTX", "C", "BX",
+                "MUFG", "COP", "RACE", "MU", "PANW", "NKE", "ADP", "UPS", "CB", "MDT",
+                "ADI", "FI", "BUD", "SBUX", "DE", "UBS", "GILD", "IBN", "MMC", "PLD",
+                "SONY", "BMY", "AMT", "REGN", "SHOP", "PLTR", "SO", "LRCX", "INTC", "TD",
+                "ELV", "ICE", "BA", "HCA", "MDLZ", "INFY", "SHW", "KLAC", "DUK", "RELX",
+                "SCCO", "TT", "PBR", "CI", "EQIX", "ABNB", "ENB", "MO", "PYPL", "MCO",
+                "CEG", "CTAS", "BP", "CMG", "GD", "WM", "APH", "RIO", "ZTS", "BN",
+                "APO", "CME", "AON", "PH", "GEV", "WELL", "CL", "GSK", "BTI", "MSI",
+                "SNPS", "ITW", "SPOT", "USB", "TDG", "NOC", "PNC", "TRI", "DEO", "CRWD",
+                "CNQ", "MAR", "EQNR", "ECL", "CP", "CVS", "MRVL", "MMM", "APD", "CNI",
+                "TGT", "ORLY", "CDNS", "BDX", "EOG", "BMO", "FCX", "CARR", "FDX", "MCK",
+                "JD", "CSX"
+        };
+
+        System.out.printf("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Hype, %s Stocks to scan\n", tradeVolume, hypeStrength, stockSymbols.length); //Print out basic info
+
+        List<String> possibleSymbols = new ArrayList<>(); //get the symbols based on the config
+
+        if (tradeVolume > 300000) { //symbols list is based on 200-300k only call api intensive method if usage is above
+            get_available_symbols(tradeVolume, stockSymbols, result -> {
+                for (String s : result) {
+                    possibleSymbols.add(s.toUpperCase());
+                }
+                hypeModeFinder(possibleSymbols);
+            });
+        } else {
+            possibleSymbols.addAll(Arrays.asList(stockSymbols)); //copy all symbols to the list
+            hypeModeFinder(possibleSymbols);
+        }
     }
 
-    //!!!finish get_available_symbols method
-    public static List<String> get_available_symbols(int volume) { // Method for receiving trade-able symbols for amount of volume
-        List<String> symbols = new ArrayList<>(); // Initialize an ArrayList to hold the symbols
+    public static void get_available_symbols(int tradeVolume, String[] possibleSymbols, SymbolCallback callback) {
+        List<String> actualSymbols = new ArrayList<>();
 
-//        AlphaVantage.api()
-//                .stocks()
-//                .forVolume(volume)
-//                .onSuccess(e -> {
-//                    List<StockResponse.StockMatch> results = e.getMatches();
-//                    for (StockResponse.StockMatch match : results) {
-//                        symbols.add(match.getSymbol()); // Add each symbol to the ArrayList
-//                    }
-//                })
-//                .onFailure(Main_data_handler::handleFailure)
-//                .fetch();
+        for (int i = 0; i < possibleSymbols.length; i++) {
+            int finalI = i;
+            AlphaVantage.api()
+                    .fundamentalData()
+                    .companyOverview()
+                    .forSymbol(possibleSymbols[i])
+                    .onSuccess(e -> {
+                        long market_cap = ((CompanyOverviewResponse) e).getOverview().getMarketCapitalization();
+                        long outstanding_Shares = ((CompanyOverviewResponse) e).getOverview().getSharesOutstanding();
 
-        return symbols; // Return the ArrayList of symbols
+                        AlphaVantage.api()
+                                .timeSeries()
+                                .daily()
+                                .forSymbol(possibleSymbols[finalI])
+                                .outputSize(OutputSize.COMPACT)
+                                .onSuccess(tsResponse -> {
+                                    double close = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getClose();
+                                    long volume = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getVolume();
+
+                                    // Check conditions and add to actual symbols
+                                    if (tradeVolume < market_cap) {
+                                        if (((double) tradeVolume / close) < volume) {
+                                            if (((long) tradeVolume / close) < outstanding_Shares) {
+                                                actualSymbols.add(possibleSymbols[finalI]);
+                                            }
+                                        }
+                                    }
+
+                                    // Check if all symbols have been processed
+                                    if (finalI == possibleSymbols.length - 1) {
+                                        callback.onSymbolsAvailable(actualSymbols); // Call the callback when all are done
+                                    }
+                                })
+                                .onFailure(Main_data_handler::handleFailure)
+                                .fetch();
+                    })
+                    .onFailure(Main_data_handler::handleFailure)
+                    .fetch();
+        }
+    }
+
+    //!!!Add logic for hype mode
+    public static void hypeModeFinder(List<String> symbols) {
+        System.out.println("Symbols to use for hype: " + symbols.size()); //print the amount of hype-able symbols
+
     }
 
     //Interfaces
@@ -377,8 +453,11 @@ public class Main_data_handler {
     public interface ReceiveNewsCallback {
         void onNewsReceived(List<NewsResponse.NewsItem> news);
     }
+
+    public interface SymbolCallback {
+        void onSymbolsAvailable(List<String> symbols);
+    }
 }
 
 //TODO
 //!!!Add logic for hype mode
-//!!!finish get_available_symbols method for volume filtering
