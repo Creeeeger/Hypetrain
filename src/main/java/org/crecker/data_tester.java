@@ -148,99 +148,30 @@ public class data_tester {
     public static List<Notification> get_alerts_from_stock(List<StockUnit> stocks) {
         List<Notification> alertsList = new ArrayList<>();
 
-        // Thresholds for detecting potential spikes or dips
-        double consistencyThreshold = 0.2;  // Minimum percentage change per minute
-        double toleranceThreshold = 0.05;   // Tolerance for minor fluctuations
-        int consecutiveCount = 1;           // Number of consecutive minute changes required to trigger an alert
+        for (int i = 30; i < stocks.size(); i++) {
+            List<StockUnit> frame = new ArrayList<>();
 
-        int upCount = 0;    // Counter for consecutive upward movements
-        int downCount = 0;  // Counter for consecutive downward movements
-
-        // Loop through the Stock (minute-level data assumed)
-        for (int i = 1; i < stocks.size(); i++) {
-            double currentClose = stocks.get(i).getClose();  // Get the current close price
-            double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
-
-            // Calculate percentage change between consecutive time points
-            double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
-
-            // Detect consistent upward movement (potential spike)
-            if (percentageChange >= consistencyThreshold) {
-                upCount++;  // Increment upward counter
-                downCount = 0;  // Reset downward counter
-            }
-            // Detect consistent downward movement (potential dip)
-            else if (percentageChange <= -consistencyThreshold) {
-                downCount++;  // Increment downward counter
-                upCount = 0;  // Reset upward counter
-            }
-            // Ignore minor fluctuations (inside the tolerance range)
-            else if (Math.abs(percentageChange) < toleranceThreshold) {
-            }
-            // Reset counts if the change is significant but doesn't meet spike/dip criteria
-            else {
-                upCount = 0;
-                downCount = 0;
+            // Add 30 stocks to the frame in the correct order
+            for (int j = 0; j < 30; j++) {
+                frame.add(stocks.get(i - 30 + j)); // Add stocks from i-30 to i-1
             }
 
-            //!!!fix the graph logic later for live view
-            // If we have enough consecutive upward movements, trigger a spike notification
-            if (upCount >= consecutiveCount) {
-                TimeSeries timeSeries = new TimeSeries("View window of change");
+            // Get notifications for the current frame
+            List<Notification> notifications = get_notification_for_frame(frame);
 
-                try {
-                    // Check if we have enough previous data points to generate the view window
-                    if (i >= 15) {
-                        for (int j = -15; j < 5; j++) {
-                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
-                        }
-                    } else {
-                        // Handle the case where there's not enough data for a full window
-                        for (int j = -i; j < 5; j++) {  // Start from the available data
-                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
-                        }
-                    }
-
-                    // Add the spike notification to the list
-                    alertsList.add(Main_data_handler.create_Notification(true, Main_UI.selected_stock, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));
-
-                } catch (Exception e) {
-                    System.err.println("Error while generating spike notification: " + e.getMessage());
-                    e.printStackTrace();  // Optionally log the full stack trace
-                }
-
-                upCount = 0;  // Reset the upward counter after the notification
-            }
-
-            // If we have enough consecutive downward movements, trigger a dip notification
-            if (downCount >= consecutiveCount) {
-                TimeSeries timeSeries = new TimeSeries("View window of change");
-
-                try {
-                    // Check if we have enough previous data points to generate the view window
-                    if (i >= 15) {
-                        for (int j = -15; j < 5; j++) {
-                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
-                        }
-
-                    } else {
-                        // Handle the case where there's not enough data for a full window
-                        for (int j = -i; j < 5; j++) {  // Start from the available data
-                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i + j).getDate())), stocks.get(i + j).getClose());
-                        }
-                    }
-
-                    alertsList.add(Main_data_handler.create_Notification(false, Main_UI.selected_stock, percentageChange, timeSeries, currentClose, Main_data_handler.convertToDate(stocks.get(i).getDate())));  // Add the spike notification to the list
-
-                } catch (Exception e) {
-                    System.err.println("Error while generating spike notification: " + e.getMessage());
-                    e.printStackTrace();  // Optionally log the full stack trace
-                }
-                downCount = 0;  // Reset the downward counter after the notification
+            // Add notifications to alertsList if not empty
+            if (!notifications.isEmpty()) {
+                alertsList.addAll(notifications); // Add all notifications to alertsList
             }
         }
 
-        // Return the list of notifications generated (spike/dip alerts)
+        return alertsList;
+    }
+
+    public static List<Notification> get_notification_for_frame(List<StockUnit> stocks) {
+        List<Notification> alertsList = new ArrayList<>();
+        //add test algo!!!
+
         return alertsList;
     }
 
@@ -290,4 +221,4 @@ public class data_tester {
 }
 
 //TODO
-//!!!fix the graph logic later for live view
+//add test algo!!!

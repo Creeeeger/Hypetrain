@@ -952,8 +952,6 @@ public class Main_UI extends JFrame {
                     addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries()); //add notification sample
                 }
 
-                addNews("what an event", "with some content", "https://www.google.com/"); //add news sample
-
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }

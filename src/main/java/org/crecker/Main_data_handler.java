@@ -25,10 +25,7 @@ import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.List;
@@ -373,15 +370,38 @@ public class Main_data_handler {
 
         List<String> possibleSymbols = new ArrayList<>(); //get the symbols based on the config
 
-        if (tradeVolume > 300000) { //symbols list is based on 200-300k only call api intensive method if usage is above
-            get_available_symbols(tradeVolume, stockSymbols, result -> {
-                for (String s : result) {
-                    possibleSymbols.add(s.toUpperCase());
+        if (tradeVolume > 300000) {
+            File file = new File(tradeVolume + ".txt");
+
+            if (file.exists()) {
+                // Load symbols from file if it exists
+                try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                    String line;
+                    while ((line = reader.readLine()) != null) {
+                        possibleSymbols.add(line);
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace();
                 }
                 hypeModeFinder(possibleSymbols);
-            });
+            } else {
+                // If file does not exist, call API and write symbols to file
+                get_available_symbols(tradeVolume, stockSymbols, result -> {
+                    try (FileWriter writer = new FileWriter(file)) {
+                        for (String s : result) {
+                            String symbol = s.toUpperCase();
+                            possibleSymbols.add(symbol);  // Add to possibleSymbols
+                            writer.write(symbol + System.lineSeparator());  // Write to file
+                        }
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                    hypeModeFinder(possibleSymbols);
+                });
+            }
         } else {
-            possibleSymbols.addAll(Arrays.asList(stockSymbols)); //copy all symbols to the list
+            // For tradeVolume <= 300000, directly copy symbols to the list and process
+            possibleSymbols.addAll(Arrays.asList(stockSymbols));
             hypeModeFinder(possibleSymbols);
         }
     }
