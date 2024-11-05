@@ -29,6 +29,7 @@ import com.crazzyghost.alphavantage.forex.Forex;
 import com.crazzyghost.alphavantage.fundamentaldata.FundamentalData;
 import com.crazzyghost.alphavantage.indicator.Indicator;
 import com.crazzyghost.alphavantage.news.News;
+import com.crazzyghost.alphavantage.realtime.RealTime;
 import com.crazzyghost.alphavantage.sector.Sector;
 import com.crazzyghost.alphavantage.stock.Stock;
 import com.crazzyghost.alphavantage.technicalindicator.TechnicalIndicator;
@@ -163,5 +164,10 @@ public class AlphaVantage {
     //News symbols
     public News News() {
         return new News(config);
+    }
+
+    //RealTime symbol
+    public RealTime Realtime() {
+        return new RealTime(config);
     }
 }

@@ -8,6 +8,7 @@ import com.crazzyghost.alphavantage.fundamentaldata.response.CompanyOverviewResp
 import com.crazzyghost.alphavantage.news.response.NewsResponse;
 import com.crazzyghost.alphavantage.parameters.Interval;
 import com.crazzyghost.alphavantage.parameters.OutputSize;
+import com.crazzyghost.alphavantage.realtime.response.RealTimeResponse;
 import com.crazzyghost.alphavantage.stock.response.StockResponse;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
@@ -450,9 +451,38 @@ public class Main_data_handler {
         }
     }
 
-    //!!!Add logic for hype mode
     public static void hypeModeFinder(List<String> symbols) {
-        System.out.println("Symbols to use for hype: " + symbols.size()); //print the amount of hype-able symbols
+        System.out.println("Symbols to use for hype: " + symbols.size());
+
+        while (true) {
+            try {
+                List<RealTimeResponse.RealTimeMatch> matches = new ArrayList<>();
+
+                for (int i = 0; i < Math.ceil(symbols.size() / 100.0); i++) {
+                    String symbolsBatch = String.join(",", symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()))).toUpperCase();
+                    AlphaVantage.api()
+                            .Realtime()
+                            .setSymbols(symbolsBatch)
+                            .onSuccess(response -> {
+                                matches.addAll(response.getMatches());
+                            })
+                            .onFailure(Main_data_handler::handleFailure)
+                            .fetch();
+                }
+                process_data(matches);
+
+                // Wait for 5 seconds before repeating the function
+                Thread.sleep(5000);
+
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // Restore interrupted status
+                System.err.println("Loop was interrupted: " + e.getMessage());
+                break; // Exit the loop if interrupted
+            }
+        }
+    }
+
+    public static void process_data(List<RealTimeResponse.RealTimeMatch> matches) {
 
     }
 

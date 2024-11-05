@@ -101,5 +101,6 @@ public enum Function {
     NONFARM_PAYROLL,
 
     SYMBOL_SEARCH, //Stock search
-    NEWS_SENTIMENT //news search
+    NEWS_SENTIMENT, //news search
+    REALTIME_BULK_QUOTES //bulk quotes
 }
