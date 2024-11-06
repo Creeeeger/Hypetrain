@@ -34,6 +34,8 @@ import java.util.*;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
+    public static ArrayList<timeframe> matchList = new ArrayList<>();
+
     public static void main(String[] args) { //use the method to generate lists for training the algorithm
         String apiKey = "2NN1RGFV3V34ORCZ"; //SIKE NEW KEY
 
@@ -174,7 +176,6 @@ public class Main_data_handler {
         controlPanel.add(zoomOutButton);
         return controlPanel;
     }
-
 
     //Start of main code
     public static void InitAPi(String token) {
@@ -483,7 +484,9 @@ public class Main_data_handler {
     }
 
     public static void process_data(List<RealTimeResponse.RealTimeMatch> matches) {
-
+        // Create a new timeframe with all the matches from this batch
+        timeframe frame = new timeframe(new ArrayList<>(matches)); // Wrap matches in a new ArrayList
+        matchList.add(frame); // Add the timeframe to matchList
     }
 
     //Interfaces
@@ -507,6 +510,16 @@ public class Main_data_handler {
 
     public interface SymbolCallback {
         void onSymbolsAvailable(List<String> symbols);
+    }
+
+    // OOP Models
+    public static class timeframe {
+        ArrayList<RealTimeResponse.RealTimeMatch> matches;
+
+        // Constructor to initialize matches
+        public timeframe(ArrayList<RealTimeResponse.RealTimeMatch> matches) {
+            this.matches = matches;
+        }
     }
 }
 
