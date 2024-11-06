@@ -8,3 +8,7 @@ TODO
 - improve early detection algorithm
 - create alerts from all kind of stocks
 - change the notification creation symbol logic to the actual symbol
+
+- add logic later for cleaning the array
+
+---Test the whole symbol logic
