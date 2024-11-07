@@ -149,7 +149,7 @@ public class RealTimeResponse {
             }
 
             try {
-                List<Map<String, String>> quotes = (List<Map<String, String>>) stringObjectMap.get("Realtime Quotes");
+                List<Map<String, String>> quotes = (List<Map<String, String>>) stringObjectMap.get("data");
                 if (quotes != null) {
                     for (Map<String, String> quote : quotes) {
                         matches.add(new RealTimeMatch(

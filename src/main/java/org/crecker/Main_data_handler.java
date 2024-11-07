@@ -31,10 +31,12 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
 public class Main_data_handler {
     public static ArrayList<timeframe> matchList = new ArrayList<>();
+    public static ArrayList<percents> percentList = new ArrayList<>();
 
     public static void main(String[] args) { //use the method to generate lists for training the algorithm
         String apiKey = "2NN1RGFV3V34ORCZ"; //SIKE NEW KEY
@@ -458,6 +460,8 @@ public class Main_data_handler {
         while (true) {
             try {
                 List<RealTimeResponse.RealTimeMatch> matches = new ArrayList<>();
+                // CountDownLatch to wait for all API calls to finish
+                CountDownLatch latch = new CountDownLatch((int) Math.ceil(symbols.size() / 100.0));
 
                 for (int i = 0; i < Math.ceil(symbols.size() / 100.0); i++) {
                     String symbolsBatch = String.join(",", symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()))).toUpperCase();
@@ -466,10 +470,16 @@ public class Main_data_handler {
                             .setSymbols(symbolsBatch)
                             .onSuccess(response -> {
                                 matches.addAll(response.getMatches());
+                                latch.countDown(); // Decrement the latch count when a batch completes
                             })
                             .onFailure(Main_data_handler::handleFailure)
                             .fetch();
                 }
+
+                // Wait for all async calls to complete
+                latch.await(); // This will block until all counts down to 0
+
+                // Once all async calls are completed, process the matches
                 process_data(matches);
 
                 // Wait for 5 seconds before repeating the function
@@ -487,7 +497,59 @@ public class Main_data_handler {
         // Create a new timeframe with all the matches from this batch
         timeframe frame = new timeframe(new ArrayList<>(matches)); // Wrap matches in a new ArrayList
         matchList.add(frame); // Add the timeframe to matchList
+        calculatePercentageChange();
     }
+
+    public static void calculatePercentageChange() {
+        // Create a new list for the percentage changes associated with the current timeframe
+        List<percent_unit> percentBatch = new ArrayList<>();
+
+        // Check if matchList has more than one batch of data
+        if (matchList.size() > 1) {
+            // Iterate through the matches of the last timeframe added to matchList
+            for (int i = 1; i < matchList.get(matchList.size() - 1).matches.size(); i++) {
+                String date = matchList.get(matchList.size() - 1).matches.get(i).getTimestamp();
+
+                // Get the current close price and the previous close price
+                double currentClose = matchList.get(matchList.size() - 1).matches.get(i).getClose();
+                double previousClose = matchList.get(matchList.size() - 2).matches.get(i).getClose();
+
+                // Calculate the percentage change between consecutive time points
+                double percentageChange = ((currentClose - previousClose) / previousClose) * 100;  // Calculate percentage change
+
+                // Create a new percent_unit object and add it to the batch
+                percent_unit unit = new percent_unit(date, percentageChange);
+                percentBatch.add(unit);
+            }
+
+            // Create a percents object with the collected batch of percent_unit objects
+            percents percentObj = new percents(new ArrayList<>(percentBatch));
+
+            // Add the percents object to percentList (store the batch of percentage changes)
+            percentList.add(percentObj);
+        }
+
+        print_percents();
+    }
+
+    public static void print_percents() {
+        // Check if percentList is empty
+        if (percentList.isEmpty()) {
+            System.out.println("No percentage data available.");
+            return;
+        }
+
+        // Iterate over all percents objects in percentList
+        for (int i = 0; i < percentList.size(); i++) {
+            for (int j = 0; j < 3; j++) {
+                System.out.println(matchList.get(i).matches.get(j).getSymbol() + " " + percentList.get(i).units.get(j).date + " - " + percentList.get(i).units.get(j).percentage);
+            }
+            System.out.println();
+        }
+        System.out.println();
+        System.out.println();
+    }
+
 
     //Interfaces
     public interface DataCallback {
@@ -519,6 +581,24 @@ public class Main_data_handler {
         // Constructor to initialize matches
         public timeframe(ArrayList<RealTimeResponse.RealTimeMatch> matches) {
             this.matches = matches;
+        }
+    }
+
+    public static class percents {
+        ArrayList<percent_unit> units;
+
+        public percents(ArrayList<percent_unit> unit) {
+            this.units = unit;
+        }
+    }
+
+    public static class percent_unit {
+        String date;
+        Double percentage;
+
+        public percent_unit(String date, Double percentage) {
+            this.date = date;
+            this.percentage = percentage;
         }
     }
 }
