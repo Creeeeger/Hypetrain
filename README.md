@@ -9,6 +9,7 @@
 
 
 - search for symbols
+- check percentage change
 - receive the latest news about a stock
 - Time history about a stock
 - Add your custom symbols to your watch list

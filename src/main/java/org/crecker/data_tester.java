@@ -106,12 +106,12 @@ public class data_tester {
     }
 
     public static List<Notification> tester(List<StockUnit> stocks) {
-        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(5000).getDate()));
+        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(1000).getDate()));
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
         Stock_value(inter_day_stocks);
-        Stock_change(inter_day_stocks);
+        //Stock_change(inter_day_stocks);
 
         return alerts;
     }
@@ -148,16 +148,16 @@ public class data_tester {
     public static List<Notification> get_alerts_from_stock(List<StockUnit> stocks) {
         List<Notification> alertsList = new ArrayList<>();
 
-        for (int i = 30; i < stocks.size(); i++) {
+        for (int i = 20; i < stocks.size(); i++) {
             List<StockUnit> frame = new ArrayList<>();
 
-            // Add 30 stocks to the frame in the correct order
-            for (int j = 0; j < 30; j++) {
-                frame.add(stocks.get(i - 30 + j)); // Add stocks from i-30 to i-1
+            // Add 20 stocks to the frame in the correct order
+            for (int j = 0; j < 20; j++) {
+                frame.add(stocks.get(i - 20 + j)); // Add stocks from i-20 to i-1
             }
 
             // Get notifications for the current frame
-            List<Notification> notifications = get_notification_for_frame(frame);
+            List<Notification> notifications = getNotificationForFrame(frame);
 
             // Add notifications to alertsList if not empty
             if (!notifications.isEmpty()) {
@@ -168,11 +168,82 @@ public class data_tester {
         return alertsList;
     }
 
-    public static List<Notification> get_notification_for_frame(List<StockUnit> stocks) {
+    //!!!Finish percentage algorithm
+    public static List<Notification> getNotificationForFrame(List<StockUnit> stocks) {
         List<Notification> alertsList = new ArrayList<>();
-        //add test algo!!!
+
+        double spikeThreshold = 0.3;      // Threshold for a spike in the short term
+        double sustainedThreshold = 0.1;  // Threshold for a medium-term increase
+        double volatilityThreshold = 0.05; // Minimum volatility level to detect a spike
+        double cumulativeChangeThreshold = 1.0; // Minimum cumulative percentage change to confirm a spike
+
+        double change = 0;
+        double change0to7 = 0;
+        double change7to14 = 0;
+        double change14to20 = 0;
+        double change17to20 = 0;
+
+        List<Double> percentageChanges = new ArrayList<>(); // Store individual percentage changes for volatility calculation
+        TimeSeries timeSeries = new TimeSeries("Nvidia stock");
+
+        for (int i = 1; i < stocks.size(); i++) {
+            double currentClose = stocks.get(i).getClose();
+            double previousClose = stocks.get(i - 1).getClose();
+            double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
+            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
+
+            percentageChanges.add(percentageChange); // Add to changes list for volatility calculation
+
+            // Track cumulative changes across time frames
+            if (i < 7) {
+                change0to7 += percentageChange;
+            } else if (i >= 7 && i < 14) {
+                change7to14 += percentageChange;
+            } else if (i >= 14 && i < 20) {
+                change14to20 += percentageChange;
+            }
+            if (i >= 17) {
+                change17to20 += percentageChange;
+            }
+            change += percentageChange;
+        }
+
+        // Calculate volatility as the standard deviation of percentage changes
+        double volatility = calculateVolatility(percentageChanges);
+
+        // Apply refined spike detection logic with new filters
+        if (isRefinedSpikeEvent(change0to7, change7to14, change14to20, change17to20, change, spikeThreshold, sustainedThreshold, volatility, volatilityThreshold, cumulativeChangeThreshold)) {
+            System.out.printf("%s, %.3f    %.3f    %.3f    %.3f    Volatility: %.3f%n", stocks.get(stocks.size() - 1).getDate(), change, change0to7, change7to14, change14to20, volatility);
+            alertsList.add(new Notification("Nvidia stock" + stocks.get(stocks.size() - 1).getDate(), String.format("%s, %.3f    %.3f    %.3f    %.3f    Volatility: %.3f", stocks.get(stocks.size() - 1).getDate(), change, change0to7, change7to14, change14to20, volatility), timeSeries));
+        }
 
         return alertsList;
+    }
+
+    // Helper method for calculating volatility (standard deviation of percentage changes)
+    private static double calculateVolatility(List<Double> changes) {
+        double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
+        return Math.sqrt(variance); // Standard deviation as volatility measure
+    }
+
+    // Enhanced spike detection with additional filters
+    private static boolean isRefinedSpikeEvent(double change0to7, double change7to14, double change14to20, double change17to20,
+                                               double cumulativeChange, double spikeThreshold, double sustainedThreshold,
+                                               double volatility, double volatilityThreshold, double cumulativeChangeThreshold) {
+        int positivePeriodCount = 0;
+
+        // Count periods with sustained positive changes
+        if (change0to7 > sustainedThreshold) positivePeriodCount++;
+        if (change7to14 > sustainedThreshold) positivePeriodCount++;
+        if (change14to20 > sustainedThreshold) positivePeriodCount++;
+
+        // Spike detection based on refined criteria:
+        return (positivePeriodCount >= 2)                      // At least two periods show sustained positive change
+                && (change17to20 >= spikeThreshold || change14to20 >= spikeThreshold)  // Significant recent spike
+                && (volatility >= volatilityThreshold)          // Ensure sufficient volatility
+                && (cumulativeChange >= cumulativeChangeThreshold) // Cumulative change meets threshold
+                && (change14to20 > -0.1);                       // Prevents detection during significant downtrends
     }
 
     public static void Stock_value(List<StockUnit> stocks) { //plot the stock value
@@ -221,4 +292,4 @@ public class data_tester {
 }
 
 //TODO
-//add test algo!!!
+//!!!Finish percentage algorithm

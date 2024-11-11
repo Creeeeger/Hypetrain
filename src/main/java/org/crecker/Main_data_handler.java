@@ -17,6 +17,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
@@ -26,6 +27,9 @@ import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.Point2D;
 import java.io.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
@@ -37,6 +41,15 @@ import java.util.stream.Collectors;
 public class Main_data_handler {
     public static ArrayList<timeframe> matchList = new ArrayList<>();
     public static ArrayList<percents> percentList = new ArrayList<>();
+    public static JLabel percentageChange;
+    static JFreeChart chart;
+    private static double point1X = Double.NaN;
+    private static double point1Y = Double.NaN;
+    private static double point2X = Double.NaN;
+    private static double point2Y = Double.NaN;
+    private static ValueMarker marker1 = null;
+    private static ValueMarker marker2 = null;
+    private static IntervalMarker shadedRegion = null;
 
     public static void main(String[] args) { //use the method to generate lists for training the algorithm
         String apiKey = "2NN1RGFV3V34ORCZ"; //SIKE NEW KEY
@@ -115,7 +128,7 @@ public class Main_data_handler {
         dataset.addSeries(timeSeries);
 
         // Create the chart with the dataset
-        JFreeChart chart = ChartFactory.createTimeSeriesChart(
+        chart = ChartFactory.createTimeSeriesChart(
                 chart_name, // Chart title
                 X_axis, // X-axis Label
                 Y_axis, // Y-axis Label
@@ -147,6 +160,38 @@ public class Main_data_handler {
         chartPanel.setRangeZoomable(true);     // Allow zooming on the Y-axis
         chartPanel.setDomainZoomable(true);    // Allow zooming on the X-axis
 
+        chartPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                Point2D p = chartPanel.translateScreenToJava2D(e.getPoint());
+                XYPlot plot = chart.getXYPlot();
+                ValueAxis xAxis = plot.getDomainAxis();
+                ValueAxis yAxis = plot.getRangeAxis();
+
+                // Convert mouse position to data coordinates
+                double x = xAxis.java2DToValue(p.getX(), chartPanel.getScreenDataArea(), plot.getDomainAxisEdge());
+                double y = yAxis.java2DToValue(p.getY(), chartPanel.getScreenDataArea(), plot.getRangeAxisEdge());
+
+                if (Double.isNaN(point1X)) {
+                    // First point selected, set the first marker
+                    point1X = x;
+                    point1Y = y;
+                    addFirstMarker(plot, point1X);
+                } else {
+                    // Second point selected, set the second marker and shaded region
+                    point2X = x;
+                    point2Y = y;
+                    addSecondMarkerAndShade(plot);
+
+                    // Reset points for next selection
+                    point1X = Double.NaN;
+                    point1Y = Double.NaN;
+                    point2X = Double.NaN;
+                    point2Y = Double.NaN;
+                }
+            }
+        });
+
         // Add buttons for controlling the scale
         JPanel controlPanel = getjPanel(chartPanel);
 
@@ -158,6 +203,54 @@ public class Main_data_handler {
         frame.pack();
         frame.setVisible(true);
         frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    private static void addFirstMarker(XYPlot plot, double xPosition) {
+        // Clear previous markers if any
+        if (marker1 != null) {
+            plot.removeDomainMarker(marker1);
+        }
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Create and add the first marker
+        marker1 = new ValueMarker(xPosition);
+        marker1.setPaint(Color.GREEN);  // First marker in green
+        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
+        plot.addDomainMarker(marker1);
+    }
+
+    private static void addSecondMarkerAndShade(XYPlot plot) {
+        // Clear previous markers and shaded region if they exist
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Calculate the percentage difference between the two y-values
+        double percentageDiff = ((point2Y - point1Y) / point1Y) * 100;
+
+        // Determine the color of the second marker based on percentage difference
+        Color markerColor = (percentageDiff >= 0) ? Color.GREEN : Color.RED;
+        Color shadeColor = (percentageDiff >= 0) ? new Color(100, 200, 100, 50) : new Color(200, 100, 100, 50);
+
+        // Create and add the second marker
+        marker2 = new ValueMarker(point2X);
+        marker2.setPaint(markerColor);
+        marker2.setStroke(new BasicStroke(1.5f)); // Customize thickness
+        plot.addDomainMarker(marker2);
+
+        // Create and add the shaded region between the two markers
+        shadedRegion = new IntervalMarker(Math.min(point1X, point2X), Math.max(point1X, point2X));
+        shadedRegion.setPaint(shadeColor);  // Translucent green or red shade
+        plot.addDomainMarker(shadedRegion);
+        percentageChange.setText(String.format("Percentage Change: %.3f%%", percentageDiff));
     }
 
     @NotNull
@@ -172,10 +265,12 @@ public class Main_data_handler {
         zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
 
         JPanel controlPanel = new JPanel();
+        percentageChange = new JLabel("Percentage Change");
 
         controlPanel.add(autoRangeButton);
         controlPanel.add(zoomInButton);
         controlPanel.add(zoomOutButton);
+        controlPanel.add(percentageChange);
         return controlPanel;
     }
 
@@ -455,8 +550,6 @@ public class Main_data_handler {
     }
 
     public static void hypeModeFinder(List<String> symbols) {
-        System.out.println("Symbols to use for hype: " + symbols.size());
-
         while (true) {
             try {
                 List<RealTimeResponse.RealTimeMatch> matches = new ArrayList<>();
@@ -536,18 +629,9 @@ public class Main_data_handler {
         // Check if percentList is empty
         if (percentList.isEmpty()) {
             System.out.println("No percentage data available.");
-            return;
         }
 
-        // Iterate over all percents objects in percentList
-        for (int i = 0; i < percentList.size(); i++) {
-            for (int j = 0; j < 3; j++) {
-                System.out.println(matchList.get(i).matches.get(j).getSymbol() + " " + percentList.get(i).units.get(j).date + " - " + percentList.get(i).units.get(j).percentage);
-            }
-            System.out.println();
-        }
-        System.out.println();
-        System.out.println();
+        //!!!Implement the percentage change method
     }
 
 
@@ -605,3 +689,4 @@ public class Main_data_handler {
 
 //TODO
 //!!!Add logic for hype mode
+//!!!Implement the percentage change method

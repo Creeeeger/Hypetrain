@@ -1,10 +1,8 @@
 TODO
 --Chart data--
-- add tool to check gain (apple stocks be like)
-- add live updates to chart (check the premium section of the api)
+- add live updates to chart
 
 --Hype mode--
-- add the hype code in the data handler
 - improve early detection algorithm
 - create alerts from all kind of stocks
 - change the notification creation symbol logic to the actual symbol
