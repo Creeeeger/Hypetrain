@@ -38,6 +38,8 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
+import static org.crecker.Main_UI.logTextArea;
+
 public class Main_data_handler {
     public static ArrayList<timeframe> matchList = new ArrayList<>();
     public static ArrayList<percents> percentList = new ArrayList<>();
@@ -464,8 +466,8 @@ public class Main_data_handler {
                 "TGT", "ORLY", "CDNS", "BDX", "EOG", "BMO", "FCX", "CARR", "FDX", "MCK",
                 "JD", "CSX"
         };
-
-        System.out.printf("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Hype, %s Stocks to scan\n", tradeVolume, hypeStrength, stockSymbols.length); //Print out basic info
+        logTextArea.append(String.format("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Hype, %s Stocks to scan\n", tradeVolume, hypeStrength, stockSymbols.length));
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
         List<String> possibleSymbols = new ArrayList<>(); //get the symbols based on the config
 
@@ -482,8 +484,15 @@ public class Main_data_handler {
                 } catch (IOException e) {
                     e.printStackTrace();
                 }
+
+                logTextArea.append("Loaded symbols from file\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
                 hypeModeFinder(possibleSymbols);
             } else {
+                logTextArea.append("Started getting possible symbols\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
                 // If file does not exist, call API and write symbols to file
                 get_available_symbols(tradeVolume, stockSymbols, result -> {
                     try (FileWriter writer = new FileWriter(file)) {
@@ -495,12 +504,20 @@ public class Main_data_handler {
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
+
+                    logTextArea.append("Finished getting possible symbols\n");
+                    logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
                     hypeModeFinder(possibleSymbols);
                 });
             }
         } else {
             // For tradeVolume <= 300000, directly copy symbols to the list and process
             possibleSymbols.addAll(Arrays.asList(stockSymbols));
+
+            logTextArea.append("Use pre set symbols\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
             hypeModeFinder(possibleSymbols);
         }
     }
@@ -550,6 +567,9 @@ public class Main_data_handler {
     }
 
     public static void hypeModeFinder(List<String> symbols) {
+        logTextArea.append("Started pulling data from server\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
         while (true) {
             try {
                 List<RealTimeResponse.RealTimeMatch> matches = new ArrayList<>();
@@ -580,6 +600,9 @@ public class Main_data_handler {
 
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt(); // Restore interrupted status
+                logTextArea.append("Error occurred during data pull\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
                 System.err.println("Loop was interrupted: " + e.getMessage());
                 break; // Exit the loop if interrupted
             }
@@ -621,6 +644,9 @@ public class Main_data_handler {
             // Add the percents object to percentList (store the batch of percentage changes)
             percentList.add(percentObj);
         }
+
+        logTextArea.append("New percentages got calculated\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
         print_percents();
     }
