@@ -12,6 +12,8 @@ import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 
+import static org.crecker.Main_UI.logTextArea;
+
 public class data_tester {
     static List<StockUnit> inter_day_stocks;
     static List<Notification> alerts;
@@ -106,7 +108,7 @@ public class data_tester {
     }
 
     public static List<Notification> tester(List<StockUnit> stocks) {
-        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(1000).getDate()));
+        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(5000).getDate()));
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
@@ -214,7 +216,7 @@ public class data_tester {
         // Apply refined spike detection logic with new filters
         if (isRefinedSpikeEvent(change0to7, change7to14, change14to20, change17to20, change, spikeThreshold, sustainedThreshold, volatility, volatilityThreshold, cumulativeChangeThreshold)) {
             System.out.printf("%s, %.3f    %.3f    %.3f    %.3f    Volatility: %.3f%n", stocks.get(stocks.size() - 1).getDate(), change, change0to7, change7to14, change14to20, volatility);
-            alertsList.add(new Notification("Nvidia stock" + stocks.get(stocks.size() - 1).getDate(), String.format("%s, %.3f    %.3f    %.3f    %.3f    Volatility: %.3f", stocks.get(stocks.size() - 1).getDate(), change, change0to7, change7to14, change14to20, volatility), timeSeries));
+            alertsList.add(new Notification(change + "% Nvidia stock" + stocks.get(stocks.size() - 1).getDate(), String.format("%s, %.3f    %.3f    %.3f    %.3f    Volatility: %.3f", stocks.get(stocks.size() - 1).getDate(), change, change0to7, change7to14, change14to20, volatility), timeSeries));
         }
 
         return alertsList;
@@ -286,7 +288,12 @@ public class data_tester {
     }
 
     public static List<Notification> Main_data_puller() throws IOException { //get stock notifications
+        logTextArea.append("Data puller has started.\n");
+
         List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
+
+        logTextArea.append("Data puller has finished.\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         return tester(stocks); //test method to test the Stock data
     }
 }

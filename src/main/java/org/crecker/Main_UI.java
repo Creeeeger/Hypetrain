@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.*;
 
 public class Main_UI extends JFrame {
+    public static JTextArea logTextArea;
     static int vol;
     static float hyp;
     static boolean isSorted;
@@ -669,14 +670,32 @@ public class Main_UI extends JFrame {
         // Wrap the JList in a JScrollPane
         JScrollPane scrollPane = new JScrollPane(notificationList);
         scrollPane.setPreferredSize(new Dimension(200, 100)); // Set the preferred size of the scroll pane
+        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE)); // Allow it to expand fully
         panel.add(scrollPane);
 
-        // Optional: Add some spacing between components
-        panel.add(Box.createRigidArea(new Dimension(0, 10))); // Vertical spacing
+        // Add a logging area above the test button
+        logTextArea = new JTextArea(3, 20); // Set rows to control initial visible lines
+        logTextArea.setEditable(false);
+        logTextArea.setLineWrap(true); // Enable line wrapping
+        logTextArea.setWrapStyleWord(true); // Wrap at word boundaries for cleaner appearance
 
+        JScrollPane logScrollPane = new JScrollPane(logTextArea);
+        logScrollPane.setPreferredSize(new Dimension(200, 150)); // Set preferred size for height
+        logScrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, 50)); // Set maximum height to restrict growth
+
+        JLabel logLabel = new JLabel("Hype log window");
+        panel.add(logLabel);
+        panel.add(logScrollPane);
+
+        // Add flexible space between the log window and the rest
+        panel.add(Box.createRigidArea(new Dimension(0, 10))); // Small vertical spacing
+        panel.add(Box.createVerticalGlue()); // Flexible space to push the log window up
+
+        panel.add(logScrollPane);
+        panel.add(Box.createRigidArea(new Dimension(0, 10))); // Vertical spacing
         panel.setBorder(BorderFactory.createTitledBorder("Notifications"));
 
-        //test button to add test notifications
+        // Test button to add test notifications
         JButton button = new JButton("add (test)");
         panel.add(button);
         button.addActionListener(new event_addNotification());
