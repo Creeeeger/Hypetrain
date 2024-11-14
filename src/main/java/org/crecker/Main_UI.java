@@ -153,7 +153,7 @@ public class Main_UI extends JFrame {
     public static void load_config() {
         setValues();
 
-        refresh(true, true, true, true);
+        refresh(true, true, true, false);
         Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
 
         System.out.println("Config reloaded!");
@@ -240,6 +240,25 @@ public class Main_UI extends JFrame {
                 {"sort", String.valueOf(isSorted)},
                 {"key", key}
         };
+    }
+
+    // Method to add a notification
+    public static void addNotification(String title, String content, TimeSeries timeSeries, Color color) {
+        // Loop through existing notifications to check for duplicates
+        for (int i = 0; i < notificationListModel.getSize(); i++) {
+            Notification existingNotification = notificationListModel.getElementAt(i);
+
+            if (existingNotification.getTitle().equals(title) &&
+                    existingNotification.getContent().equals(content) &&
+                    existingNotification.getTimeSeries().equals(timeSeries)) {
+                // If a matching notification is found, return without adding
+                return;
+            }
+        }
+
+        // If no duplicate found, create and add the new notification
+        Notification newNotification = new Notification(title, content, timeSeries, color);
+        notificationListModel.addElement(newNotification);
     }
 
     public JPanel create_symbol_panel() {
@@ -667,6 +686,21 @@ public class Main_UI extends JFrame {
             }
         });
 
+        // Custom ListCellRenderer for the notifications
+        notificationList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
+            JLabel label = new JLabel(value.getTitle(), JLabel.CENTER);
+
+            // Set the notification color as background
+            label.setOpaque(true);
+            label.setBackground(value.getColor());
+
+            // Set border and text color based on selection
+            label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2, true));
+            label.setForeground(isSelected ? Color.WHITE : Color.BLACK);
+
+            return label;
+        });
+
         // Wrap the JList in a JScrollPane
         JScrollPane scrollPane = new JScrollPane(notificationList);
         scrollPane.setPreferredSize(new Dimension(200, 100)); // Set the preferred size of the scroll pane
@@ -701,12 +735,6 @@ public class Main_UI extends JFrame {
         button.addActionListener(new event_addNotification());
 
         return panel;
-    }
-
-    // Method to add a notification
-    public void addNotification(String title, String content, TimeSeries timeSeries) { //Method to add a new notification to the panel
-        Notification newNotification = new Notification(title, content, timeSeries);
-        notificationListModel.addElement(newNotification);
     }
 
     // Open notification and close previous one
@@ -910,7 +938,15 @@ public class Main_UI extends JFrame {
     public static class event_activate_hype_mode implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
-            Main_data_handler.start_Hype_Mode(vol, hyp);
+            // Run the Hype Mode in a background thread
+            new SwingWorker<Void, Void>() {
+                @Override
+                protected Void doInBackground() {
+                    // Perform the heavy task in the background
+                    Main_data_handler.start_Hype_Mode(vol, hyp);
+                    return null;
+                }
+            }.execute();
         }
     }
 
@@ -952,15 +988,8 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public class event_sort_notifications implements ActionListener {
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            sort_notifications();
-        }
-    }
-
     //test method
-    public class event_addNotification implements ActionListener {
+    public static class event_addNotification implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -968,12 +997,19 @@ public class Main_UI extends JFrame {
                 List<Notification> notifications = data_tester.Main_data_puller();
 
                 for (Notification notification : notifications) {
-                    addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries()); //add notification sample
+                    addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor()); //add notification sample
                 }
 
             } catch (IOException ex) {
                 throw new RuntimeException(ex);
             }
+        }
+    }
+
+    public class event_sort_notifications implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            sort_notifications();
         }
     }
 }

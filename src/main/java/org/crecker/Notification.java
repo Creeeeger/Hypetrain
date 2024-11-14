@@ -13,12 +13,14 @@ public class Notification {
     private final String title;
     private final String content;
     private final TimeSeries timeSeries;
+    private final Color color;
     private JFrame notificationFrame; // Frame for the notification
 
-    public Notification(String title, String content, TimeSeries timeSeries) {
+    public Notification(String title, String content, TimeSeries timeSeries, Color color) {
         this.title = title;
         this.content = content;
         this.timeSeries = timeSeries;
+        this.color = color;
     }
 
     public String getTitle() { //get the title
@@ -33,6 +35,10 @@ public class Notification {
         return timeSeries;
     }
 
+    public Color getColor() {
+        return color;
+    }
+
     public void showNotification() {
         // Create the notification window
         notificationFrame = new JFrame(title);
@@ -40,6 +46,7 @@ public class Notification {
         notificationFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         notificationFrame.setLocationRelativeTo(null);
         notificationFrame.setAlwaysOnTop(true);
+        notificationFrame.getContentPane().setBackground(color);
 
         // Create the text area with content, enable line wrapping
         JTextArea textArea = new JTextArea(content);
@@ -59,7 +66,11 @@ public class Notification {
 
         // Wrap the TimeSeries in a TimeSeriesCollection, which implements XYDataset
         TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(timeSeries);
+        try {
+            dataset.addSeries(timeSeries);
+        } catch (IllegalArgumentException e) {
+            dataset.addSeries(new TimeSeries("placeholder"));
+        }
 
         // Create the chart with the dataset
         JFreeChart chart = ChartFactory.createTimeSeriesChart(

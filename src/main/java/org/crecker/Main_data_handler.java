@@ -38,6 +38,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
+import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.logTextArea;
 
 public class Main_data_handler {
@@ -379,16 +380,19 @@ public class Main_data_handler {
 
     public static Notification create_Notification(boolean spike, String company, double percentage, TimeSeries timeSeries, double close, Date date) {
         String title, content;
+        Color color;
         if (spike) {
+            color = new Color(34, 139, 34);
             title = String.format("%.2f%% spike for %s", percentage, company);
             content = String.format("Consistent upward movement of %.2f%%, Price: %.2f, Date: %s", percentage, close, date);
 
         } else {
+            color = new Color(178, 34, 34);
             title = String.format("%.2f%% dip for %s", percentage, company);
             content = String.format("Consistent downward movement of %.2f%%, Price: %.2f, Date: %s", percentage, close, date);
         }
 
-        return new Notification(title, content, timeSeries);
+        return new Notification(title, content, timeSeries, color);
     }
 
     public static void handleFailure(AlphaVantageException error) {
@@ -602,8 +606,6 @@ public class Main_data_handler {
                 Thread.currentThread().interrupt(); // Restore interrupted status
                 logTextArea.append("Error occurred during data pull\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-
-                System.err.println("Loop was interrupted: " + e.getMessage());
                 break; // Exit the loop if interrupted
             }
         }
@@ -612,7 +614,17 @@ public class Main_data_handler {
     public static void process_data(List<RealTimeResponse.RealTimeMatch> matches) {
         // Create a new timeframe with all the matches from this batch
         timeframe frame = new timeframe(new ArrayList<>(matches)); // Wrap matches in a new ArrayList
-        matchList.add(frame); // Add the timeframe to matchList
+
+        if (matchList.isEmpty() || matchList.size() == 1) {
+            matchList.add(frame); // Add the timeframe to matchList
+        } else {
+            if (matchList.get(matchList.size() - 1).matches.size() == matches.size()) {
+                matchList.add(frame); // Add the timeframe to matchList
+            } else {
+                System.out.println("matchSize doesn't match: " + matchList.get(matchList.size() - 1).matches.size() + " vs. " + matches.size());
+            }
+        }
+
         calculatePercentageChange();
     }
 
@@ -621,9 +633,9 @@ public class Main_data_handler {
         List<percent_unit> percentBatch = new ArrayList<>();
 
         // Check if matchList has more than one batch of data
-        if (matchList.size() > 1) {
+        if (matchList.size() > 2) {
             // Iterate through the matches of the last timeframe added to matchList
-            for (int i = 1; i < matchList.get(matchList.size() - 1).matches.size(); i++) {
+            for (int i = 0; i < matchList.get(matchList.size() - 1).matches.size(); i++) {
                 String date = matchList.get(matchList.size() - 1).matches.get(i).getTimestamp();
 
                 // Get the current close price and the previous close price
@@ -643,23 +655,50 @@ public class Main_data_handler {
 
             // Add the percents object to percentList (store the batch of percentage changes)
             percentList.add(percentObj);
+
+            calculatePercents();
+        } else {
+            logTextArea.append("Not enough percentage data available.\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
 
         logTextArea.append("New percentages got calculated\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-
-        print_percents();
     }
 
-    public static void print_percents() {
-        // Check if percentList is empty
-        if (percentList.isEmpty()) {
-            System.out.println("No percentage data available.");
-        }
+    public static void calculatePercents() {
+        hardcoreCrash(20);
 
         //!!!Implement the percentage change method
     }
 
+    public static void hardcoreCrash(int entries) {
+        logTextArea.append("Checking for crashes\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
+        // Ensure we have enough frames to compare
+        if (percentList.size() >= entries) {
+            // Initialize changes list with 0 for each stock
+            List<Double> changes = new ArrayList<>(Collections.nCopies(percentList.get(0).units.size(), 0.0));
+
+            // Loop over the frames, starting from the (entries)th last frame to compare with the previous frames
+            for (int i = percentList.size() - entries; i < percentList.size(); i++) {
+                percents currentFrame = percentList.get(i);
+
+                // Loop through all the stocks (units) in the current frame
+                for (int j = 0; j < currentFrame.units.size(); j++) {
+                    double currentPercentage = currentFrame.units.get(j).percentage;
+                    changes.set(j, changes.get(j) + currentPercentage); // Sum up the percentage changes for each stock
+
+                    // Define a crash threshold
+                    if (changes.get(j) < -6.0) {
+                        // Report the crash
+                        addNotification(matchList.get(0).matches.get(j).getSymbol() + " Crash!", String.valueOf(changes.get(j)), null, new Color(255, 99, 71));
+                    }
+                }
+            }
+        }
+    }
 
     //Interfaces
     public interface DataCallback {
