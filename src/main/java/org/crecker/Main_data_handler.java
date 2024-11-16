@@ -594,6 +594,15 @@ public class Main_data_handler {
         }
     }
 
+    public static void getRealTimeUpdate(String symbol, RealTimeCallback callback) {
+        AlphaVantage.api()
+                .Realtime()
+                .setSymbols(symbol)
+                .onSuccess(response -> callback.onRealTimeReceived(response.getMatches().get(0)))
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+    }
+
     public static void process_data(List<RealTimeResponse.RealTimeMatch> matches) {
         // Create a new timeframe with all the matches from this batch
         timeframe frame = new timeframe(new ArrayList<>(matches)); // Wrap matches in a new ArrayList
@@ -704,6 +713,10 @@ public class Main_data_handler {
 
     public interface SymbolCallback {
         void onSymbolsAvailable(List<String> symbols);
+    }
+
+    public interface RealTimeCallback {
+        void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
     }
 
     // OOP Models
