@@ -9,6 +9,7 @@ import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Minute;
+import org.jfree.data.time.RegularTimePeriod;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -29,6 +30,8 @@ import java.util.List;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.TimeUnit;
 
 public class Main_UI extends JFrame {
     public static JTextArea logTextArea;
@@ -66,6 +69,8 @@ public class Main_UI extends JFrame {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
+    private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+    private String currentStockSymbol = null; // Track the currently displayed stock symbol
 
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
@@ -432,6 +437,10 @@ public class Main_UI extends JFrame {
                         }
                     });
                 });
+
+                if (realtime) {
+                    SwingUtilities.invokeLater(this::startRealTimeUpdates);
+                }
             }
         });
 
@@ -524,6 +533,38 @@ public class Main_UI extends JFrame {
         });
 
         return panel;
+    }
+
+    public void startRealTimeUpdates() {
+        if (realtime) {
+            executorService.scheduleAtFixedRate(() -> {
+                if (realtime) {
+                    // Asynchronous fetching of real-time stock data
+                    Main_data_handler.getRealTimeUpdate(selected_stock, value -> {
+                        if (value != null) {
+                            SwingUtilities.invokeLater(() -> {
+                                try {
+                                    Date date = Main_data_handler.convertToDate(value.getTimestamp());
+                                    // Get the latest closing price for the new data point
+                                    double latestClose = value.getClose();  // Assuming 'value' contains the stock data
+
+                                    // Update the time series with the new timestamp and closing price
+                                    timeSeries.addOrUpdate(new Minute(date), latestClose);
+
+                                    chartPanel.repaint();
+                                } catch (Exception e) {
+                                    logTextArea.append("Error updating chart: " + e.getMessage() + "\n");
+                                    logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                                }
+                            });
+                        } else {
+                            logTextArea.append("No real-time updates available\n");
+                            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                        }
+                    });
+                }
+            }, 0, 1, TimeUnit.SECONDS);
+        }
     }
 
     private Color generateRandomColor() {
@@ -660,47 +701,101 @@ public class Main_UI extends JFrame {
     }
 
     public void refreshChartData(int choice) {
-        //Create a new time series
-        timeSeries = new TimeSeries(selected_stock + " price");
-
-        // Clear the existing data in the TimeSeries
-        timeSeries.clear();
-
         // Define an array to hold the iteration limits for each case
         int[] limits = {960, 2880, 6720, 9600, 19200}; // Limits for cases 1 to 5
 
-        // Check if the choice is valid
+        ChartPanel newChartDisplay = null;
+        // Validate the choice
         if (choice < 1 || choice > 5) {
             throw new RuntimeException("A case must be selected");
         }
 
         // Get the limit based on the choice
-        int limit = limits[choice - 1]; // Adjust for zero-based index
+        int limit = limits[choice - 1];
 
-        try {
-            // Populate the time series with Stock data
-            for (int i = 0; i < limit; i++) {
-                String timestamp = stocks.get(i).getDate();
-                double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
+        // Check if the stock symbol has changed
+        if (!selected_stock.equals(currentStockSymbol)) {
+            // Create a new time series for the new stock symbol
+            timeSeries = new TimeSeries(selected_stock + " price");
+            currentStockSymbol = selected_stock; // Update the tracked stock symbol
 
-                // Add the data to the TimeSeries
-                timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+            try {
+                // Populate the time series with data for the new stock
+                for (int i = 0; i < limit; i++) {
+                    if (i >= stocks.size()) {
+                        break; // Stop if data limit exceeds available stock data
+                    }
+
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose() * Math.random(); // Assuming getClose() returns closing price
+
+                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                }
+                // Create a new chart with the updated time series
+                newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
+
+            } catch (Exception e) {
+                logTextArea.append("No data received: " + e.getMessage() + "\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
             }
-        } catch (Exception e) {
-            logTextArea.append("No data received: " + e.getMessage());
-            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        } else {
+            // If the stock symbol is the same, adjust the view frame
+            Set<Date> existingTimestamps = new HashSet<>();
+            for (int i = 0; i < timeSeries.getItemCount(); i++) {
+                existingTimestamps.add(timeSeries.getTimePeriod(i).getStart());
+            }
+
+            try {
+                // Append new data within the limit while keeping live data
+                for (int i = 0; i < limit; i++) {
+                    if (i >= stocks.size()) {
+                        break; // Stop if data limit exceeds available stock data
+                    }
+
+                    String timestamp = stocks.get(i).getDate();
+                    double closingPrice = stocks.get(i).getClose();
+                    Date date = Main_data_handler.convertToDate(timestamp);
+
+                    // Add new data only if it doesn't already exist
+                    if (!existingTimestamps.contains(date)) {
+                        timeSeries.addOrUpdate(new Minute(date), closingPrice);
+                        existingTimestamps.add(date);
+                    }
+                }
+
+                if (timeSeries.getItemCount() > limit) {
+                    // Show only the last 'limit' data points
+                    TimeSeries filteredSeries = new TimeSeries(selected_stock + " Price");
+                    for (int i = timeSeries.getItemCount() - limit; i < timeSeries.getItemCount(); i++) {
+                        RegularTimePeriod period = timeSeries.getTimePeriod(i);
+                        filteredSeries.addOrUpdate(period, timeSeries.getValue(period));
+                    }
+                    // Update chart with the filtered series
+                    // Create a new chart with the updated time series
+                    newChartDisplay = createChart(filteredSeries, selected_stock + " Price Chart");
+                } else {
+                    // If the number of data points is less than the limit, just use the entire series
+                    // Create a new chart with the updated time series
+                    newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
+                }
+
+            } catch (Exception e) {
+                logTextArea.append("Error adjusting view frame: " + e.getMessage() + "\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+            }
         }
 
-        // Create a new chart with the updated title
-        ChartPanel newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
+        if (newChartDisplay != null) {
+            chartPanel.remove(chartDisplay);
+            chartDisplay = newChartDisplay; // Update the reference to the new chart
+            chartPanel.add(chartDisplay, BorderLayout.CENTER);
+        } else {
+            logTextArea.append("Chart could not be generated.\n");
+        }
 
-        // Remove the old chart
-        chartPanel.remove(chartDisplay); // Remove the old chart
-        chartDisplay = newChartDisplay; // Update the reference to the new chart
-        chartPanel.add(chartDisplay, BorderLayout.CENTER); // Add the new chart
-
-        chartPanel.revalidate(); // Refresh the panel
-        chartPanel.repaint(); // Repaint the panel to show new chart
+        // Refresh the chart panel
+        chartPanel.revalidate();
+        chartPanel.repaint();
     }
 
     private ChartPanel createChart(TimeSeries timeSeries, String chartName) {
