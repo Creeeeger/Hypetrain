@@ -727,7 +727,7 @@ public class Main_UI extends JFrame {
                     }
 
                     String timestamp = stocks.get(i).getDate();
-                    double closingPrice = stocks.get(i).getClose() * Math.random(); // Assuming getClose() returns closing price
+                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
 
                     timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
                 }
