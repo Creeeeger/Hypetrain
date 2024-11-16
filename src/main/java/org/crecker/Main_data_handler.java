@@ -660,6 +660,7 @@ public class Main_data_handler {
 
     public static void calculatePercents() {
         hardcoreCrash(20);
+        checkToClean();
 
         //!!!Implement the percentage change method
     }
@@ -689,6 +690,20 @@ public class Main_data_handler {
                     }
                 }
             }
+        }
+    }
+
+    public static void checkToClean() {
+        // Check if any of the lists are too large and need trimming
+        if (matchList.size() > 1000) {
+            // Remove first 200 elements and shift the rest forward
+            matchList.subList(0, 200).clear();
+            System.out.println("First 200 entries removed from matchList");
+        }
+        if (percentList.size() > 1000) {
+            // Remove first 200 elements and shift the rest forward
+            percentList.subList(0, 200).clear();
+            System.out.println("First 200 entries removed from percentList");
         }
     }
 
