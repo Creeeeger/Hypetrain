@@ -19,9 +19,9 @@ public class data_tester {
     static List<Notification> alerts;
 
     public static void main(String[] args) throws IOException {
-        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
+        List<StockUnit> stocks = readStockUnitsFromFile("TSLA.txt"); //Get the Stock data from the file (simulate real Stock data)
 
-        tester(stocks, false); //test method to test the Stock data
+        tester(stocks, false, 1, 5000); //test method to test the Stock data
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
@@ -104,13 +104,13 @@ public class data_tester {
                 .build();
     }
 
-    public static List<Notification> tester(List<StockUnit> stocks, Boolean allTime) {
-        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(5000).getDate()), allTime);
+    public static List<Notification> tester(List<StockUnit> stocks, Boolean allTime, int windowsSize, int time) {
+        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(time).getDate()), allTime);
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
         Stock_value(inter_day_stocks);
-        Stock_smoothed_change(inter_day_stocks, 5);
+        Stock_smoothed_change(inter_day_stocks, windowsSize);
 
         return alerts;
     }
@@ -169,22 +169,20 @@ public class data_tester {
 
     //!!!Finish percentage algorithm
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String stockName) {
+
         List<Notification> alertsList = new ArrayList<>();
+        List<Double> percentageChanges = new ArrayList<>();
+        TimeSeries timeSeries = new TimeSeries(stockName);
 
         // Thresholds for early detection
+        int consecutiveIncreaseCount = 0;
         double volatilityThreshold = 0.05;
         double cumulativeChangeThreshold = 1.0;
         double cumulativeChange = 0;
-        double change15to20 = 0;
-
-        List<Double> percentageChanges = new ArrayList<>();
-        TimeSeries timeSeries = new TimeSeries(stockName + " stock chart");
-
-        // Initialize consecutive positive change counters to track momentum
-        int consecutiveIncreaseCount = 0;
+        double change10to20 = 0;
         double cumulativeIncrease = 0;
         double cumulativeDecrease = 0;
-        double minorDipTolerance = 0.2; // Allow dips up to 20% of cumulative increase
+        double minorDipTolerance = 0.2;
 
         for (int i = 1; i < stocks.size(); i++) {
             double currentClose = stocks.get(i).getClose();
@@ -194,13 +192,10 @@ public class data_tester {
             timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
             percentageChanges.add(percentageChange);
 
-            if (i >= 15) {
-                change15to20 += percentageChange;
-            }
-
             if (i >= 10) {
-                cumulativeChange += percentageChange;
+                change10to20 += percentageChange;
             }
+            cumulativeChange += percentageChange;
 
             // Check if the current percentage change is positive or a minor dip
             if (percentageChange > 0) {
@@ -228,22 +223,22 @@ public class data_tester {
         double volatility = calculateVolatility(percentageChanges);
 
         // Apply predictive spike detection logic
-        if (isPredictiveSpikeEvent(change15to20, cumulativeChange, volatility, volatilityThreshold, cumulativeChangeThreshold, consecutiveIncreaseCount, pattern)) {
-            if (cumulativeChange > 0) {
-                alertsList.add(new Notification(cumulativeChange + "% " + stockName + " stock predicted increase ", String.format("%s, %.3f", cumulativeChange, volatility), timeSeries, new Color(50, 205, 50)));
-            } else {
-                alertsList.add(new Notification(cumulativeChange + "% " + stockName + " stock predicted decrease ", String.format("%s, %.3f", cumulativeChange, volatility), timeSeries, new Color(178, 34, 34)));
-            }
-            System.out.println(cumulativeChange + "% " + stockName + " stock predicted decrease " + String.format("%s, %.3f", cumulativeChange, volatility));
+        if (isPredictiveSpikeEvent(change10to20, cumulativeChange, volatility, volatilityThreshold, cumulativeChangeThreshold, consecutiveIncreaseCount, pattern)) {
+            createNotification(stockName, cumulativeChange, change10to20, alertsList, volatility, timeSeries);
         }
 
         return alertsList;
     }
 
+    // Helper method for calculating volatility (standard deviation of percentage changes)
+    private static double calculateVolatility(List<Double> changes) {
+        double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
+        return Math.sqrt(variance); // Standard deviation as volatility measure
+    }
+
     // Predictive spike detection method focusing on early rise indicators
-    private static boolean isPredictiveSpikeEvent(double change17to20, double cumulativeChange, double volatility,
-                                                  double volatilityThreshold, double cumulativeChangeThreshold,
-                                                  int consecutiveIncreaseCount, String pattern) {
+    private static boolean isPredictiveSpikeEvent(double change10to20, double cumulativeChange, double volatility, double volatilityThreshold, double cumulativeChangeThreshold, int consecutiveIncreaseCount, String pattern) {
         // Set of undesired patterns to avoid
         Set<String> undesiredPatterns = getStrings();
 
@@ -251,13 +246,18 @@ public class data_tester {
         if (undesiredPatterns.contains(pattern)) {
             return false;
         } else {
-            // Early spike detection criteria:
-            return (                            // At least one period with positive change for early detection
-                    (volatility >= volatilityThreshold)               // Ensure enough volatility
-                            && (cumulativeChange >= cumulativeChangeThreshold || consecutiveIncreaseCount >= 3)
-                            && (change17to20 > 0)
-            ); // Accumulated change or sustained momentum
+            return ((volatility >= volatilityThreshold) && (cumulativeChange >= cumulativeChangeThreshold || consecutiveIncreaseCount >= 3) && (change10to20 > 0.3));
         }
+    }
+
+    private static void createNotification(String stockName, double cumulativeChange, double change10to20, List<Notification> alertsList, double volatility, TimeSeries timeSeries) {
+        if (change10to20 > 0) {
+            alertsList.add(new Notification(String.format("%.3f%% %s stock predicted increase", change10to20, stockName), String.format("%s, %.3f", cumulativeChange, volatility), timeSeries, new Color(50, 205, 50)));
+        } else {
+            alertsList.add(new Notification(String.format("%.3f%% %s stock predicted decrease", change10to20, stockName), String.format("%.3f, %.3f", cumulativeChange, volatility), timeSeries, new Color(178, 34, 34)));
+        }
+
+        System.out.printf("%.3f%% %s, cumulative change = %.3f, volatility = %.3f%n", change10to20, stockName, cumulativeChange, volatility);
     }
 
     public static String detectPattern(List<Double> percentageChanges) {
@@ -317,13 +317,6 @@ public class data_tester {
         return undesiredPatterns;
     }
 
-    // Helper method for calculating volatility (standard deviation of percentage changes)
-    private static double calculateVolatility(List<Double> changes) {
-        double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-        double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
-        return Math.sqrt(variance); // Standard deviation as volatility measure
-    }
-
     public static void Stock_value(List<StockUnit> stocks) { //plot the stock value
         // Create a TimeSeries object for plotting
         TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
@@ -380,11 +373,11 @@ public class data_tester {
     public static List<Notification> Main_data_puller() throws IOException { //get stock notifications
         logTextArea.append("Data puller has started.\n");
 
-        List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
+        List<StockUnit> stocks = readStockUnitsFromFile("TSLA.txt"); //Get the Stock data from the file (simulate real Stock data)
 
         logTextArea.append("Data puller has finished.\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        return tester(stocks, false); //test method to test the Stock data
+        return tester(stocks, false, 5, 5000); //test method to test the Stock data
     }
 }
 

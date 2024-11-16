@@ -163,6 +163,10 @@ public class config_handler {
             key.appendChild(doc.createTextNode("0988PSIKXZ50IP2T")); //Stock free key
             root.appendChild(key);
 
+            Element realtime = doc.createElement("realtime");
+            realtime.appendChild(doc.createTextNode("false"));
+            root.appendChild(realtime);
+
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
             // Use TransformerFactory to create a Transformer instance for converting the Document to XML format
