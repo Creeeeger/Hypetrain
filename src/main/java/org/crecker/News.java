@@ -21,18 +21,6 @@ public class News {
         this.url = url;
     }
 
-    public String getTitle() {
-        return title;
-    }
-
-    public String getContent() {
-        return content;
-    }
-
-    public String getUrl() {
-        return url;
-    }
-
     public void showNews() {
         // Create the News window
         NewsFrame = new JFrame(title);
@@ -80,7 +68,7 @@ public class News {
                 try {
                     Desktop.getDesktop().browse(new URI(url));
                 } catch (Exception ex) {
-                    ex.printStackTrace();
+                    System.out.println(ex.getMessage());
                 }
             }
         });

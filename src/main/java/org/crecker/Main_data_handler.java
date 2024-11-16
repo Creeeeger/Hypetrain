@@ -362,7 +362,7 @@ public class Main_data_handler {
         try {
             return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(timestamp);
         } catch (ParseException e) {
-            e.printStackTrace();
+            System.out.println(e.getMessage());
             return new Date();
         }
     }
@@ -373,26 +373,9 @@ public class Main_data_handler {
         try {
             return new SimpleDateFormat("yyyy-MM-dd").parse(timestamp);
         } catch (ParseException e) {
-            e.printStackTrace();
+            System.out.println(e.getMessage());
             return new Date();
         }
-    }
-
-    public static Notification create_Notification(boolean spike, String company, double percentage, TimeSeries timeSeries, double close, Date date) {
-        String title, content;
-        Color color;
-        if (spike) {
-            color = new Color(34, 139, 34);
-            title = String.format("%.2f%% spike for %s", percentage, company);
-            content = String.format("Consistent upward movement of %.2f%%, Price: %.2f, Date: %s", percentage, close, date);
-
-        } else {
-            color = new Color(178, 34, 34);
-            title = String.format("%.2f%% dip for %s", percentage, company);
-            content = String.format("Consistent downward movement of %.2f%%, Price: %.2f, Date: %s", percentage, close, date);
-        }
-
-        return new Notification(title, content, timeSeries, color);
     }
 
     public static void handleFailure(AlphaVantageException error) {
@@ -486,7 +469,7 @@ public class Main_data_handler {
                         possibleSymbols.add(line);
                     }
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    System.out.println(e.getMessage());
                 }
 
                 logTextArea.append("Loaded symbols from file\n");
@@ -506,7 +489,7 @@ public class Main_data_handler {
                             writer.write(symbol + System.lineSeparator());  // Write to file
                         }
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        System.out.println(e.getMessage());
                     }
 
                     logTextArea.append("Finished getting possible symbols\n");
@@ -753,5 +736,4 @@ public class Main_data_handler {
 }
 
 //TODO
-//!!!Add logic for hype mode
 //!!!Implement the percentage change method

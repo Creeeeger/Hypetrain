@@ -1,6 +1,7 @@
 package org.crecker;
 
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import org.jetbrains.annotations.NotNull;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 
@@ -8,10 +9,8 @@ import java.awt.*;
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Date;
 import java.util.List;
+import java.util.*;
 
 import static org.crecker.Main_UI.logTextArea;
 
@@ -23,9 +22,6 @@ public class data_tester {
         List<StockUnit> stocks = readStockUnitsFromFile("NVDA.txt"); //Get the Stock data from the file (simulate real Stock data)
 
         tester(stocks, false); //test method to test the Stock data
-
-        //further code to test on data comes here
-        System.out.println("Data got loaded successfully!");
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
@@ -114,7 +110,7 @@ public class data_tester {
         alerts = get_alerts_from_stock(inter_day_stocks);
 
         Stock_value(inter_day_stocks);
-        //Stock_change(inter_day_stocks);
+        Stock_smoothed_change(inter_day_stocks, 5);
 
         return alerts;
     }
@@ -227,21 +223,41 @@ public class data_tester {
         }
 
         String pattern = detectPattern(percentageChanges);
-        System.out.println(stocks.get(stocks.size() - 1).getDate() + " " + pattern);
 
         // Calculate volatility as the standard deviation of percentage changes
         double volatility = calculateVolatility(percentageChanges);
 
         // Apply predictive spike detection logic
-        if (isPredictiveSpikeEvent(change15to20, cumulativeChange, volatility, volatilityThreshold, cumulativeChangeThreshold, consecutiveIncreaseCount)) {
+        if (isPredictiveSpikeEvent(change15to20, cumulativeChange, volatility, volatilityThreshold, cumulativeChangeThreshold, consecutiveIncreaseCount, pattern)) {
             if (cumulativeChange > 0) {
-                alertsList.add(new Notification(cumulativeChange + "% " + stockName + " stock predicted increase " + stocks.get(stocks.size() - 1).getDate(), String.format("%s, %.3f    %.3f", stocks.get(stocks.size() - 1).getDate(), cumulativeChange, volatility), timeSeries, new Color(50, 205, 50)));
+                alertsList.add(new Notification(cumulativeChange + "% " + stockName + " stock predicted increase ", String.format("%s, %.3f", cumulativeChange, volatility), timeSeries, new Color(50, 205, 50)));
             } else {
-                alertsList.add(new Notification(cumulativeChange + "% " + stockName + " stock predicted decrease " + stocks.get(stocks.size() - 1).getDate(), String.format("%s, %.3f    %.3f", stocks.get(stocks.size() - 1).getDate(), cumulativeChange, volatility), timeSeries, new Color(178, 34, 34)));
+                alertsList.add(new Notification(cumulativeChange + "% " + stockName + " stock predicted decrease ", String.format("%s, %.3f", cumulativeChange, volatility), timeSeries, new Color(178, 34, 34)));
             }
+            System.out.println(cumulativeChange + "% " + stockName + " stock predicted decrease " + String.format("%s, %.3f", cumulativeChange, volatility));
         }
 
         return alertsList;
+    }
+
+    // Predictive spike detection method focusing on early rise indicators
+    private static boolean isPredictiveSpikeEvent(double change17to20, double cumulativeChange, double volatility,
+                                                  double volatilityThreshold, double cumulativeChangeThreshold,
+                                                  int consecutiveIncreaseCount, String pattern) {
+        // Set of undesired patterns to avoid
+        Set<String> undesiredPatterns = getStrings();
+
+        // Avoid undesired patterns
+        if (undesiredPatterns.contains(pattern)) {
+            return false;
+        } else {
+            // Early spike detection criteria:
+            return (                            // At least one period with positive change for early detection
+                    (volatility >= volatilityThreshold)               // Ensure enough volatility
+                            && (cumulativeChange >= cumulativeChangeThreshold || consecutiveIncreaseCount >= 3)
+                            && (change17to20 > 0)
+            ); // Accumulated change or sustained momentum
+        }
     }
 
     public static String detectPattern(List<Double> percentageChanges) {
@@ -267,12 +283,9 @@ public class data_tester {
             change066to1 += percentageChanges.get(i);
         }
 
-        // Determine the pattern for each segment
-        String stringBuilder = String.valueOf(getPatternSymbol(change0to033)) +
+        return String.valueOf(getPatternSymbol(change0to033)) +
                 getPatternSymbol(change033to066) +
                 getPatternSymbol(change066to1);
-
-        return stringBuilder;
     }
 
     // Helper method to determine the pattern symbol based on the threshold
@@ -286,16 +299,22 @@ public class data_tester {
         }
     }
 
-    // Predictive spike detection method focusing on early rise indicators
-    private static boolean isPredictiveSpikeEvent(double change17to20, double cumulativeChange, double volatility,
-                                                  double volatilityThreshold, double cumulativeChangeThreshold,
-                                                  int consecutiveIncreaseCount) {
-        // Early spike detection criteria:
-        return (                            // At least one period with positive change for early detection
-                (volatility >= volatilityThreshold)               // Ensure enough volatility
-                        && (cumulativeChange >= cumulativeChangeThreshold || consecutiveIncreaseCount >= 3)
-                        && (change17to20 > 0)
-        ); // Accumulated change or sustained momentum
+    @NotNull
+    private static Set<String> getStrings() {
+        Set<String> undesiredPatterns = new HashSet<>();
+        undesiredPatterns.add("\\\\\\");
+        undesiredPatterns.add("_\\\\");
+        undesiredPatterns.add("__\\");
+        undesiredPatterns.add("___");
+        undesiredPatterns.add("\\__");
+        undesiredPatterns.add("\\\\_");
+        undesiredPatterns.add("\\_\\");
+        undesiredPatterns.add("//\\\\");
+        undesiredPatterns.add("//_\\");
+        undesiredPatterns.add("_\\");
+        undesiredPatterns.add("//__");
+        undesiredPatterns.add("//\\_");
+        return undesiredPatterns;
     }
 
     // Helper method for calculating volatility (standard deviation of percentage changes)
@@ -322,26 +341,40 @@ public class data_tester {
         Main_data_handler.plotData(timeSeries, "NVDA price change", "Date", "price");
     }
 
-    public static void Stock_change(List<StockUnit> stocks) { //plot the stock percentage change
+    public static void Stock_smoothed_change(List<StockUnit> stocks, int windowSize) {
         // Create a TimeSeries object for plotting
-        TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
+        TimeSeries timeSeries = new TimeSeries("NVDA Smoothed Percentage Change");
 
+        List<Double> percentageChanges = new ArrayList<>();
+
+        // Calculate percentage changes and store them
         for (int i = 1; i < stocks.size(); i++) {
-            String date = stocks.get(i).getDate();
-
             double currentClose = stocks.get(i).getClose();  // Get the current close price
             double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
 
-            // Calculate percentage change between consecutive time points
+            // Calculate percentage change
             double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
+            percentageChanges.add(percentageChange);
+        }
 
-            if (percentageChange < 1.5 && percentageChange > -1.5) {
-                timeSeries.add(new Minute(Main_data_handler.convertToDate(date)), percentageChange);
+        // Apply the moving average to smooth the data
+        for (int i = windowSize - 1; i < percentageChanges.size(); i++) {
+            String date = stocks.get(i).getDate();
+
+            double sum = 0.0;
+            for (int j = i - windowSize + 1; j <= i; j++) {
+                sum += percentageChanges.get(j);
             }
+
+            // Calculate the moving average
+            double smoothedChange = sum / windowSize;
+
+            // Add the smoothed value to the TimeSeries
+            timeSeries.add(new Minute(Main_data_handler.convertToDate(date)), smoothedChange);
         }
 
         // Plot the data
-        Main_data_handler.plotData(timeSeries, "NVDA percentage change", "Date", "Percentage change");
+        Main_data_handler.plotData(timeSeries, "NVDA Smoothed Percentage Change", "Date", "Smoothed Change (%)");
     }
 
     public static List<Notification> Main_data_puller() throws IOException { //get stock notifications
