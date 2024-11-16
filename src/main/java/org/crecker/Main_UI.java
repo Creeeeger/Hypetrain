@@ -34,7 +34,7 @@ public class Main_UI extends JFrame {
     public static JTextArea logTextArea;
     static int vol;
     static float hyp;
-    static boolean isSorted;
+    static boolean isSorted, realtime;
     static String sym, key;
     static String selected_stock = "Select a Stock"; //selected_stock is the Stock to show in the chart bar
     static String[][] setting_data;
@@ -93,6 +93,7 @@ public class Main_UI extends JFrame {
         sym = setting_data[2][1];
         isSorted = Boolean.parseBoolean(setting_data[3][1]);
         key = setting_data[4][1];
+        realtime = Boolean.parseBoolean(setting_data[5][1]);
     }
 
     public static void main(String[] args) {
@@ -117,14 +118,17 @@ public class Main_UI extends JFrame {
 
             refresh(true, true, true, false);
 
-            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), isSorted, key);
+            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), isSorted, key, realtime);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
-            System.out.println("New config created");
 
+            logTextArea.append("New config created\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         } else {
-            System.out.println("Load config");
+            logTextArea.append("Load config\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
             setValues();
 
             if (!key.isEmpty()) {
@@ -136,7 +140,8 @@ public class Main_UI extends JFrame {
             load_table(sym);
 
             refresh(true, true, true, false);
-            System.out.println("Config loaded!");
+            logTextArea.append("Config loaded\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
     }
 
@@ -167,13 +172,14 @@ public class Main_UI extends JFrame {
 
         refresh(true, true, true, false);
         Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
-
-        System.out.println("Config reloaded!");
+        logTextArea.append("Config reloaded\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
 
     public static void save_config(String[][] data) {
         config_handler.save_config(data);
-        System.out.println("Config saved successfully");
+        logTextArea.append("Config saved successfully\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
 
     public static void load_table(String config) {
@@ -211,7 +217,8 @@ public class Main_UI extends JFrame {
                 stockColors.put(objects[0].toString(), (Color) objects[1]);
             }
         } catch (Exception e) {
-            System.out.println("No elements saved before");
+            logTextArea.append("No elements saved before\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
     }
 
@@ -250,7 +257,8 @@ public class Main_UI extends JFrame {
                 {"hype_strength", String.valueOf(hyp)},
                 {"symbols", sym = create_sym_array()},
                 {"sort", String.valueOf(isSorted)},
-                {"key", key}
+                {"key", key},
+                {"realtime", String.valueOf(realtime)},
         };
     }
 
@@ -389,7 +397,8 @@ public class Main_UI extends JFrame {
 
                         updateStockInfoLabels(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
                     } else {
-                        System.out.println("Received null or incomplete data.");
+                        logTextArea.append("Received null or incomplete data.\n");
+                        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
                     }
                 });
 
@@ -678,7 +687,8 @@ public class Main_UI extends JFrame {
                 timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
             }
         } catch (Exception e) {
-            System.out.println("No data received: " + e.getMessage());
+            logTextArea.append("No data received: " + e.getMessage());
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
 
         // Create a new chart with the updated title
@@ -991,7 +1001,6 @@ public class Main_UI extends JFrame {
 
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(null, "Error processing configuration file: " + ex.getMessage());
-                    System.out.println(ex.getMessage());
                 }
             }
         }
@@ -1052,7 +1061,7 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(vol, hyp, sym, isSorted, key);
+            Settings_handler gui = new Settings_handler(vol, hyp, sym, isSorted, key, realtime);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");
