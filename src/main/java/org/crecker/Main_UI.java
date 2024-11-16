@@ -4,7 +4,9 @@ import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
@@ -18,12 +20,15 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
+import java.awt.geom.Point2D;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.List;
 import java.util.*;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class Main_UI extends JFrame {
     public static JTextArea logTextArea;
@@ -54,6 +59,13 @@ public class Main_UI extends JFrame {
     static News CurrentNews;
 
     static List<StockUnit> stocks;
+    private static double point1X = Double.NaN;
+    private static double point1Y = Double.NaN;
+    private static double point2X = Double.NaN;
+    private static double point2Y = Double.NaN;
+    private static ValueMarker marker1 = null;
+    private static ValueMarker marker2 = null;
+    private static IntervalMarker shadedRegion = null;
 
     public Main_UI() {
         // Setting layout for the frame (1 row, 4 columns)
@@ -259,6 +271,56 @@ public class Main_UI extends JFrame {
         // If no duplicate found, create and add the new notification
         Notification newNotification = new Notification(title, content, timeSeries, color);
         notificationListModel.addElement(newNotification);
+    }
+
+    private static void addFirstMarker(XYPlot plot, double xPosition) {
+        // Clear previous markers if any
+        if (marker1 != null) {
+            plot.removeDomainMarker(marker1);
+        }
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Create and add the first marker
+        marker1 = new ValueMarker(xPosition);
+        marker1.setPaint(Color.GREEN);  // First marker in green
+        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
+        plot.addDomainMarker(marker1);
+    }
+
+    private static void addSecondMarkerAndShade(XYPlot plot) {
+        // Clear previous markers and shaded region if they exist
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Calculate the percentage difference between the two y-values
+        double percentageDiff = ((point2Y - point1Y) / point1Y) * 100;
+
+        // Determine the color of the second marker based on percentage difference
+        Color markerColor = (percentageDiff >= 0) ? Color.GREEN : Color.RED;
+        Color shadeColor = (percentageDiff >= 0) ? new Color(100, 200, 100, 50) : new Color(200, 100, 100, 50);
+
+        // Create and add the second marker
+        marker2 = new ValueMarker(point2X);
+        marker2.setPaint(markerColor);
+        marker2.setStroke(new BasicStroke(1.5f)); // Customize thickness
+        plot.addDomainMarker(marker2);
+
+        // Create and add the shaded region between the two markers
+        shadedRegion = new IntervalMarker(Math.min(point1X, point2X), Math.max(point1X, point2X));
+        shadedRegion.setPaint(shadeColor);  // Translucent green or red shade
+        plot.addDomainMarker(shadedRegion);
+
+        logTextArea.append(String.format("Percentage Change: %.3f%%\n", percentageDiff));
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
 
     public JPanel create_symbol_panel() {
@@ -639,19 +701,54 @@ public class Main_UI extends JFrame {
         // Create the chart with the dataset
         JFreeChart chart = ChartFactory.createTimeSeriesChart(
                 chartName, // Chart title
-                "Date", // X-axis Label
-                "Price", // Y-axis Label
-                dataset, // The dataset
-                true, // Show legend
-                true, // Show tooltips
-                false // Show URLs
+                "Date",    // X-axis Label
+                "Price",   // Y-axis Label
+                dataset,   // The dataset
+                true,      // Show legend
+                true,      // Show tooltips
+                false      // Show URLs
         );
 
-        // Customizing the plot
+        // Customize the plot
         XYPlot plot = chart.getXYPlot();
         plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
 
-        return new ChartPanel(chart);
+        // Create the chart panel and enable zoom and pan features
+        ChartPanel chartPanel = new ChartPanel(chart);
+
+        // Add mouse listener for marker placement and shaded region
+        chartPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                Point2D p = chartPanel.translateScreenToJava2D(e.getPoint());
+                ValueAxis xAxis = plot.getDomainAxis();
+                ValueAxis yAxis = plot.getRangeAxis();
+
+                // Convert mouse position to data coordinates
+                double x = xAxis.java2DToValue(p.getX(), chartPanel.getScreenDataArea(), plot.getDomainAxisEdge());
+                double y = yAxis.java2DToValue(p.getY(), chartPanel.getScreenDataArea(), plot.getRangeAxisEdge());
+
+                if (Double.isNaN(point1X)) {
+                    // First point selected, set the first marker
+                    point1X = x;
+                    point1Y = y;
+                    addFirstMarker(plot, point1X);
+                } else {
+                    // Second point selected, set the second marker and shaded region
+                    point2X = x;
+                    point2Y = y;
+                    addSecondMarkerAndShade(plot);
+
+                    // Reset points for next selection
+                    point1X = Double.NaN;
+                    point1Y = Double.NaN;
+                    point2X = Double.NaN;
+                    point2Y = Double.NaN;
+                }
+            }
+        });
+
+        return chartPanel;
     }
 
     public JPanel create_hype_panel() {
@@ -836,7 +933,7 @@ public class Main_UI extends JFrame {
                 // Parse the substring into a float value
                 return Float.parseFloat(title.substring(0, percentIndex));
             } catch (NumberFormatException e) {
-                e.printStackTrace(); // Handle invalid format gracefully
+                System.out.println(e.getMessage());
             }
         }
         return 0.0f; // Default to 0 if extraction fails
@@ -894,7 +991,7 @@ public class Main_UI extends JFrame {
 
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(null, "Error processing configuration file: " + ex.getMessage());
-                    ex.printStackTrace();
+                    System.out.println(ex.getMessage());
                 }
             }
         }
@@ -929,24 +1026,25 @@ public class Main_UI extends JFrame {
                     JOptionPane.showMessageDialog(null, "Configuration exported successfully!");
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(null, "Error exporting configuration file: " + ex.getMessage());
-                    ex.printStackTrace();
+                    System.out.println(ex.getMessage());
                 }
             }
         }
     }
 
     public static class event_activate_hype_mode implements ActionListener {
+        private static final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
         @Override
         public void actionPerformed(ActionEvent e) {
-            // Run the Hype Mode in a background thread
-            new SwingWorker<Void, Void>() {
-                @Override
-                protected Void doInBackground() {
-                    // Perform the heavy task in the background
+            // Run the Hype Mode in a dedicated background thread
+            executorService.submit(() -> {
+                try {
                     Main_data_handler.start_Hype_Mode(vol, hyp);
-                    return null;
+                } catch (Exception ex) {
+                    System.out.println(ex.getMessage());
                 }
-            }.execute();
+            });
         }
     }
 
