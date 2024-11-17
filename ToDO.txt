@@ -1,6 +1,10 @@
 TODO
 --Hype mode--
-- improve early detection algorithm
-- change the notification creation symbol logic to the actual symbol
+- change logic for parsing arrays & parse symbol & implement the methods into the data handler
 
-- change logic for parsing arrays
+- cleanup code & debugging methods
+
+
+--Testing--
+- optimize parameters for algorithm
+- implement premium api
