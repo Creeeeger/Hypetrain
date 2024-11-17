@@ -21,7 +21,9 @@ public class data_tester {
     public static void main(String[] args) throws IOException {
         List<StockUnit> stocks = readStockUnitsFromFile("TSLA.txt"); //Get the Stock data from the file (simulate real Stock data)
 
-        tester(stocks, false, 1, 5000); //test method to test the Stock data
+        for (Notification notification : tester(stocks, true, 1)) {
+            System.out.println(notification.getTitle() + " " + notification.getContent());
+        }
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
@@ -104,13 +106,12 @@ public class data_tester {
                 .build();
     }
 
-    public static List<Notification> tester(List<StockUnit> stocks, Boolean allTime, int windowsSize, int time) {
+    public static List<Notification> tester(List<StockUnit> stocks, Boolean allTime, int time) {
         inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(time).getDate()), allTime);
 
         alerts = get_alerts_from_stock(inter_day_stocks);
 
         Stock_value(inter_day_stocks);
-        Stock_smoothed_change(inter_day_stocks, windowsSize);
 
         return alerts;
     }
@@ -146,58 +147,85 @@ public class data_tester {
 
     public static List<Notification> get_alerts_from_stock(List<StockUnit> stocks) {
         List<Notification> alertsList = new ArrayList<>();
+        Set<String> uniqueAlerts = new HashSet<>(); // To track unique alerts
+        int frameSize = 20;
 
-        for (int i = 20; i < stocks.size(); i++) {
+        for (int i = frameSize; i < stocks.size(); i++) {
             List<StockUnit> frame = new ArrayList<>();
 
-            // Add 20 stocks to the frame in the correct order
-            for (int j = 0; j < 20; j++) {
-                frame.add(stocks.get(i - 20 + j));
+            for (int j = 0; j < frameSize; j++) {
+                frame.add(stocks.get(i - frameSize + j));
             }
 
             // Get notifications for the current frame
             List<Notification> notifications = getNotificationForFrame(frame, "Nvidia");
 
-            // Add notifications to alertsList if not empty
-            if (!notifications.isEmpty()) {
-                alertsList.addAll(notifications); // Add all notifications to alertsList
+            // Add unique notifications to the alertsList
+            if (!notifications.isEmpty()) { // Emptiness check
+                for (Notification notification : notifications) {
+                    // Check if the alert is already added
+                    if (uniqueAlerts.add(notification.toString())) { // Add to the Set and check for uniqueness
+                        alertsList.add(notification); // Add to the alerts list if unique
+                    }
+                }
             }
         }
 
         return alertsList;
     }
 
-    //!!!Finish percentage algorithm
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String stockName) {
+        //Crash Related variables
+        int minCrashLevelPercentage = 5;
+        int crashLength = 10;
 
-        List<Notification> alertsList = new ArrayList<>();
-        List<Double> percentageChanges = new ArrayList<>();
-        TimeSeries timeSeries = new TimeSeries(stockName);
+        //prevent wrong dip variables
+        double lastChanges = 0;
+        int lastChangeLength = 5;
 
-        // Thresholds for early detection
+        //permanent rise variables
+        double permanentChangeLevel = 4.0;
+
+        //minor dip detection variables
         int consecutiveIncreaseCount = 0;
-        double volatilityThreshold = 0.05;
-        double cumulativeChangeThreshold = 1.0;
-        double cumulativeChange = 0;
-        double change10to20 = 0;
         double cumulativeIncrease = 0;
         double cumulativeDecrease = 0;
         double minorDipTolerance = 0.2;
 
+        //rapid increase variables
+        double minIncrease = 0.4;
+        int rapidWindowSize = 4;
+        int minConsecutiveCount = 1;
+
+        //Volatility variables
+        double volatility = 0.0;
+        double volatilityThreshold = 0.05;
+
+        //algorithm related variables
+        List<Notification> alertsList = new ArrayList<>();
+        List<Double> percentageChanges = new ArrayList<>();
+        TimeSeries timeSeries = new TimeSeries(stockName);
+        double totalChange = 0;
+        String pattern = "";
+
         for (int i = 1; i < stocks.size(); i++) {
+            //Changes & percentages calculations
             double currentClose = stocks.get(i).getClose();
             double previousClose = stocks.get(i - 1).getClose();
             double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
-
-            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
             percentageChanges.add(percentageChange);
+            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
 
-            if (i >= 10) {
-                change10to20 += percentageChange;
-            }
-            cumulativeChange += percentageChange;
+            //Crash logic
+            crashLogic(stocks, stockName, i, crashLength, minCrashLevelPercentage, alertsList, timeSeries);
 
-            // Check if the current percentage change is positive or a minor dip
+            //last changes calculations
+            lastChanges = LastChangeLogic(stocks, i, lastChangeLength, lastChanges, percentageChange);
+
+            //total change calculation
+            totalChange = TotalChangeLogic(stocks, stockName, totalChange, percentageChange, i, permanentChangeLevel, alertsList, timeSeries);
+
+            // Check if the current percentage change is positive or a minor dip (momentum calculation)
             if (percentageChange > 0) {
                 cumulativeIncrease += percentageChange;
                 consecutiveIncreaseCount++;
@@ -215,19 +243,78 @@ public class data_tester {
                     cumulativeDecrease = 0;
                 }
             }
-        }
 
-        String pattern = detectPattern(percentageChanges);
+            //pattern detection & volatility calculation of percentage changes logic
+            if (i == stocks.size() - 1) {
+                pattern = detectPattern(percentageChanges);
+                volatility = calculateVolatility(percentageChanges);
+            }
 
-        // Calculate volatility as the standard deviation of percentage changes
-        double volatility = calculateVolatility(percentageChanges);
-
-        // Apply predictive spike detection logic
-        if (isPredictiveSpikeEvent(change10to20, cumulativeChange, volatility, volatilityThreshold, cumulativeChangeThreshold, consecutiveIncreaseCount, pattern)) {
-            createNotification(stockName, cumulativeChange, change10to20, alertsList, volatility, timeSeries);
+            //rapid increase logic
+            rapidIncreaseLogic(stocks, stockName, i, rapidWindowSize, volatility, volatilityThreshold, minIncrease, consecutiveIncreaseCount, minConsecutiveCount, lastChangeLength, lastChanges, pattern, alertsList, timeSeries);
         }
 
         return alertsList;
+    }
+
+    private static void rapidIncreaseLogic(List<StockUnit> stocks, String stockName, int i, int rapidWindowSize, double volatility, double volatilityThreshold, double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount, int lastChangeLength, double lastChanges, String pattern, List<Notification> alertsList, TimeSeries timeSeries) {
+        if (i >= rapidWindowSize) { // Ensure the window is valid
+            double maxIncreaseInWindow = 0.0;
+
+            for (int j = i - rapidWindowSize + 1; j <= i; j++) {
+                double previousPrice = stocks.get(j - 1).getClose();
+                double currentPrice = stocks.get(j).getClose();
+                double increase = ((currentPrice - previousPrice) / previousPrice) * 100;
+
+                maxIncreaseInWindow = Math.max(maxIncreaseInWindow, increase);
+            }
+
+            if ((volatility >= volatilityThreshold) && (maxIncreaseInWindow >= minIncrease) && (consecutiveIncreaseCount >= minConsecutiveCount) && (i >= (stocks.size() - lastChangeLength)) && (lastChanges > minIncrease)) {
+                Set<String> undesiredPatterns = getStrings();
+                // Avoid undesired patterns
+                if (!undesiredPatterns.contains(pattern)) {
+                    createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, false, stocks.get(i).getDate());
+                }
+            }
+        }
+    }
+
+    private static double TotalChangeLogic(List<StockUnit> stocks, String stockName, double totalChange, double percentageChange, int i, double permanentChangeLevel, List<Notification> alertsList, TimeSeries timeSeries) {
+        totalChange += percentageChange;
+        if (i == stocks.size() - 1) {
+            if (totalChange > permanentChangeLevel) {
+                createNotification(stockName, totalChange, alertsList, timeSeries, true, stocks.get(stocks.size() - 1).getDate());
+            }
+        }
+        return totalChange;
+    }
+
+    private static double LastChangeLogic(List<StockUnit> stocks, int i, int lastChangeLength, double lastChanges, double percentageChange) {
+        if (i >= (stocks.size() - lastChangeLength)) {
+            lastChanges += percentageChange;
+        }
+        return lastChanges;
+    }
+
+    private static void crashLogic(List<StockUnit> stocks, String stockName, int i, int crashLength, int minCrashLevelPercentage, List<Notification> alertsList, TimeSeries timeSeries) {
+        double maxPriceInWindow = Double.MIN_VALUE;
+        double minPriceInWindow = Double.MAX_VALUE;
+
+        if (i > crashLength) {
+            for (int j = i - crashLength; j <= i; j++) {
+                double price = stocks.get(j).getClose();
+                maxPriceInWindow = Math.max(maxPriceInWindow, price);
+                minPriceInWindow = Math.min(minPriceInWindow, price);
+            }
+
+            double crash = ((maxPriceInWindow - minPriceInWindow) / maxPriceInWindow) * 100;
+
+            // Check for a crash of 5% or more in the window
+            if (crash >= minCrashLevelPercentage) {
+                crash = crash * -1;
+                createNotification(stockName, crash, alertsList, timeSeries, false, stocks.get(i).getDate());
+            }
+        }
     }
 
     // Helper method for calculating volatility (standard deviation of percentage changes)
@@ -237,27 +324,14 @@ public class data_tester {
         return Math.sqrt(variance); // Standard deviation as volatility measure
     }
 
-    // Predictive spike detection method focusing on early rise indicators
-    private static boolean isPredictiveSpikeEvent(double change10to20, double cumulativeChange, double volatility, double volatilityThreshold, double cumulativeChangeThreshold, int consecutiveIncreaseCount, String pattern) {
-        // Set of undesired patterns to avoid
-        Set<String> undesiredPatterns = getStrings();
-
-        // Avoid undesired patterns
-        if (undesiredPatterns.contains(pattern)) {
-            return false;
+    private static void createNotification(String stockName, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, boolean longTimeIncrease, String date) {
+        if (longTimeIncrease) {
+            alertsList.add(new Notification(String.format("%.3f%% %s stock steady rise", totalChange, stockName), String.format("rose by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 200, 150)));
+        } else if (totalChange > 0) {
+            alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, stockName), String.format("Increased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 205, 50)));
         } else {
-            return ((volatility >= volatilityThreshold) && (cumulativeChange >= cumulativeChangeThreshold || consecutiveIncreaseCount >= 3) && (change10to20 > 0.3));
+            alertsList.add(new Notification(String.format("%.3f%% %s stock decrease", totalChange, stockName), String.format("Decreased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(178, 34, 34)));
         }
-    }
-
-    private static void createNotification(String stockName, double cumulativeChange, double change10to20, List<Notification> alertsList, double volatility, TimeSeries timeSeries) {
-        if (change10to20 > 0) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock predicted increase", change10to20, stockName), String.format("%s, %.3f", cumulativeChange, volatility), timeSeries, new Color(50, 205, 50)));
-        } else {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock predicted decrease", change10to20, stockName), String.format("%.3f, %.3f", cumulativeChange, volatility), timeSeries, new Color(178, 34, 34)));
-        }
-
-        System.out.printf("%.3f%% %s, cumulative change = %.3f, volatility = %.3f%n", change10to20, stockName, cumulativeChange, volatility);
     }
 
     public static String detectPattern(List<Double> percentageChanges) {
@@ -334,42 +408,6 @@ public class data_tester {
         Main_data_handler.plotData(timeSeries, "NVDA price change", "Date", "price");
     }
 
-    public static void Stock_smoothed_change(List<StockUnit> stocks, int windowSize) {
-        // Create a TimeSeries object for plotting
-        TimeSeries timeSeries = new TimeSeries("NVDA Smoothed Percentage Change");
-
-        List<Double> percentageChanges = new ArrayList<>();
-
-        // Calculate percentage changes and store them
-        for (int i = 1; i < stocks.size(); i++) {
-            double currentClose = stocks.get(i).getClose();  // Get the current close price
-            double previousClose = stocks.get(i - 1).getClose();  // Get the previous close price
-
-            // Calculate percentage change
-            double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
-            percentageChanges.add(percentageChange);
-        }
-
-        // Apply the moving average to smooth the data
-        for (int i = windowSize - 1; i < percentageChanges.size(); i++) {
-            String date = stocks.get(i).getDate();
-
-            double sum = 0.0;
-            for (int j = i - windowSize + 1; j <= i; j++) {
-                sum += percentageChanges.get(j);
-            }
-
-            // Calculate the moving average
-            double smoothedChange = sum / windowSize;
-
-            // Add the smoothed value to the TimeSeries
-            timeSeries.add(new Minute(Main_data_handler.convertToDate(date)), smoothedChange);
-        }
-
-        // Plot the data
-        Main_data_handler.plotData(timeSeries, "NVDA Smoothed Percentage Change", "Date", "Smoothed Change (%)");
-    }
-
     public static List<Notification> Main_data_puller() throws IOException { //get stock notifications
         logTextArea.append("Data puller has started.\n");
 
@@ -377,9 +415,6 @@ public class data_tester {
 
         logTextArea.append("Data puller has finished.\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        return tester(stocks, false, 5, 5000); //test method to test the Stock data
+        return tester(stocks, false, 5); //test method to test the Stock data
     }
 }
-
-//TODO
-//!!!Finish percentage algorithm
