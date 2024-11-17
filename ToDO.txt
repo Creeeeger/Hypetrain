@@ -1,10 +1,15 @@
 TODO
---Hype mode--
-- change logic for parsing arrays & parse symbol & implement the methods into the data handler
-
-- cleanup code & debugging methods
-
+- optimize code
 
 --Testing--
 - optimize parameters for algorithm
-- implement premium api
+- improve algorithms dip then spike capabilities
+- implement premium api check if it works
+- write P/L function to calculate revenue on 120k over period
+
+
+----
+remove tester from main UI
+set frame size to right size
+set entries to right number for crash analysis
+remove full frame method

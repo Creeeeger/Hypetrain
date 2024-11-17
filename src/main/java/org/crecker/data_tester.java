@@ -1,29 +1,132 @@
 package org.crecker;
 
+import com.crazzyghost.alphavantage.AlphaVantage;
+import com.crazzyghost.alphavantage.Config;
+import com.crazzyghost.alphavantage.parameters.Interval;
+import com.crazzyghost.alphavantage.parameters.OutputSize;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import org.jetbrains.annotations.NotNull;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.chart.plot.ValueMarker;
+import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
 
+import javax.swing.*;
 import java.awt.*;
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.IOException;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.Point2D;
+import java.io.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
-import java.util.*;
 
-import static org.crecker.Main_UI.logTextArea;
+import static org.crecker.Main_data_handler.*;
 
 public class data_tester {
-    static List<StockUnit> inter_day_stocks;
-    static List<Notification> alerts;
+    public static JLabel percentageChange;
+    static JFreeChart chart;
+    private static double point1X = Double.NaN;
+    private static double point1Y = Double.NaN;
+    private static double point2X = Double.NaN;
+    private static double point2Y = Double.NaN;
+    private static ValueMarker marker1 = null;
+    private static ValueMarker marker2 = null;
+    private static IntervalMarker shadedRegion = null;
 
-    public static void main(String[] args) throws IOException {
-        List<StockUnit> stocks = readStockUnitsFromFile("TSLA.txt"); //Get the Stock data from the file (simulate real Stock data)
+    //new data filler method
+    public static void main(String[] args) {
+        tester();
+        //  getData("NVDA");
+    }
 
-        for (Notification notification : tester(stocks, true, 1)) {
-            System.out.println(notification.getTitle() + " " + notification.getContent());
+    //method for pulling new data from server for tests and training
+    public static void getData(String symbol) {
+        String apiKey = "2NN1RGFV3V34ORCZ";
+
+        // Configure the API client
+        Config cfg = Config.builder()
+                .key(apiKey)
+                .timeOut(10) // Timeout in seconds
+                .build();
+
+        // Initialize the Alpha Vantage API
+        AlphaVantage.api().init(cfg);
+
+        AlphaVantage.api()
+                .timeSeries()
+                .intraday()
+                .forSymbol(symbol)
+                .interval(Interval.ONE_MIN)
+                .outputSize(OutputSize.FULL)
+                .onSuccess(e -> {
+                    try {
+                        handleSuccess((TimeSeriesResponse) e);
+                    } catch (IOException ex) {
+                        throw new RuntimeException(ex);
+                    }
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+    }
+
+    public static void handleSuccess(TimeSeriesResponse response) throws IOException {
+        // This generates some test data since we don't have unlimited API access
+        BufferedWriter bufferedWriter = getBufferedWriter(response); //in reversed format (new to old)
+        bufferedWriter.close(); // Close the BufferedWriter to free system resources
+    }
+
+    private static BufferedWriter getBufferedWriter(TimeSeriesResponse response) throws IOException {
+        File data = new File(response.getMetaData().getSymbol().toUpperCase() + ".txt"); // Create a File object for the output file named "NVDA.txt"
+
+        // Check if the file already exists
+        if (!data.exists()) {
+            // If the file does not exist, create a new file
+            data.createNewFile(); // May throw IOException if it fails
         }
+
+        // Initialize BufferedWriter to write to the file
+        BufferedWriter bufferedWriter = new BufferedWriter(new FileWriter(data)); // Create a BufferedWriter to write to the file
+        bufferedWriter.write(Arrays.toString(response.getStockUnits().toArray())); // Write the Stock units data to the file as a string
+        bufferedWriter.flush(); // Flush the writer to ensure all data is written to the file
+        return bufferedWriter;
+    }
+
+    public static void tester() {
+        String[] fileNames = {"TSLA.txt", "NVDA.txt", "NVDA.txt"}; //add more files
+
+        // Process data for each file
+        for (String fileName : fileNames) {
+            try {
+                processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")));
+            } catch (IOException e) {
+                throw new RuntimeException(e);
+            }
+        }
+
+        calculateStockPercentageChange();
+        calculateSpikes();
+
+
+        TimeSeries timeSeries = new TimeSeries("stock");
+        for (int i = 1; i < stockList.size(); i++) {
+            String timestamp = stockList.get(i).stockUnits.get(0).getDate();
+            double closingPrice = stockList.get(i).stockUnits.get(0).getClose(); // Assuming getClose() returns closing price
+
+            // Add the data to the TimeSeries
+            timeSeries.add(new Minute(convertToDate(timestamp)), closingPrice);
+        }
+        // Plot the data
+        // plotData(timeSeries, " price change", "Date", "price");
+
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
@@ -106,315 +209,229 @@ public class data_tester {
                 .build();
     }
 
-    public static List<Notification> tester(List<StockUnit> stocks, Boolean allTime, int time) {
-        inter_day_stocks = get_Inter_Day(stocks, Main_data_handler.convertToDate_Simple(stocks.get(time).getDate()), allTime);
+    public static void processStockDataFromFile(String filePath, String symbol) throws IOException {
+        // Read stock data from file into stockUnits
+        List<StockUnit> stockUnits = readStockUnitsFromFile(filePath);
+        Main_data_handler.stock stockObj;
 
-        alerts = get_alerts_from_stock(inter_day_stocks);
+        // Ensure stockList is initialized
+        if (stockList == null) {
+            stockList = new ArrayList<>();
+        }
+        boolean isFirstRound = stockList.isEmpty();
 
-        Stock_value(inter_day_stocks);
+        for (int i = 0; i < stockUnits.size(); i++) {
+            List<StockUnit> stockBatch = new ArrayList<>();
+            stockUnits.get(i).setSymbol(symbol);
+            stockBatch.add(stockUnits.get(i));
+            stockObj = new Main_data_handler.stock(new ArrayList<>(stockBatch));
 
-        return alerts;
+            if (isFirstRound) {
+                stockList.add(stockObj); // Add the stock object to stockList
+            } else {
+                if (i > 0 && i < stockList.size()) {  // Ensure you're not accessing invalid indices
+                    int prevSize = stockList.get(i - 1).stockUnits.size();
+                    int currSize = stockList.get(i).stockUnits.size();
+
+                    if (prevSize != currSize + 1) {
+                        // Handle the mismatch, possibly adding the stock unit to the current stock object
+                        if (currSize > 0) {
+                            stockList.get(i).stockUnits.add(stockUnits.get(i));
+                        }
+
+                    } else {
+                        // Normal case where no mismatch
+                        stockList.get(i).stockUnits.add(stockUnits.get(i));
+                    }
+                }
+            }
+        }
     }
 
-    public static List<StockUnit> get_Inter_Day(List<StockUnit> stocks, Date last_date, Boolean allTime) {
-        List<StockUnit> inter_day_stocks = new ArrayList<>();
+    public static void calculateStockPercentageChange() {
+        // Check if there are at least two batches of stock data in stockList
+        for (int i = 1; i < stockList.size(); i++) {
+            // Get the last two batches
+            Main_data_handler.stock currentStockBatch = stockList.get(i);
+            Main_data_handler.stock previousStockBatch = stockList.get(i - 1);
 
-        for (int i = 0; i < stocks.size(); i++) {
-            Date current_date = Main_data_handler.convertToDate_Simple(stocks.get(i).getDate());
+            // Check if the current batch and previous batch have the same number of stock units
+            if (currentStockBatch.stockUnits.size() == previousStockBatch.stockUnits.size()) {
+                // Iterate through the stock units in the current and previous batches
+                for (int j = 0; j < currentStockBatch.stockUnits.size(); j++) {
+                    // Get the current and previous stock units
+                    StockUnit currentStockUnit = currentStockBatch.stockUnits.get(j);
+                    StockUnit previousStockUnit = previousStockBatch.stockUnits.get(j);
 
-            // Check if the current date matches the last date
-            if (current_date.equals(last_date) || allTime) {
-                double current_close = stocks.get(i).getClose();
+                    // Get the current close price and the previous close price
+                    double currentClose = currentStockUnit.getClose();
+                    double previousClose = previousStockUnit.getClose();
 
-                // Ensure there is a previous Stock entry to compare with
-                if (i > 0) {
-                    double previous_close = stocks.get(i - 1).getClose();
+                    // Calculate the percentage change between the consecutive stock units
+                    double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
 
                     // Check for a 10% dip or peak
-                    if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
-                        // Replace the current close with the previous close
-                        stocks.get(i).setClose(previous_close); // Use the setter method
-                    }
-                }
+                    if (Math.abs(percentageChange) >= 14) {
+                        currentStockUnit.setPercentageChange(previousStockUnit.getPercentageChange());
 
-                // Add the modified Stock to the inter_day_stocks list
-                inter_day_stocks.add(stocks.get(i));
-            }
-        }
-
-        return inter_day_stocks;
-    }
-
-    public static List<Notification> get_alerts_from_stock(List<StockUnit> stocks) {
-        List<Notification> alertsList = new ArrayList<>();
-        Set<String> uniqueAlerts = new HashSet<>(); // To track unique alerts
-        int frameSize = 20;
-
-        for (int i = frameSize; i < stocks.size(); i++) {
-            List<StockUnit> frame = new ArrayList<>();
-
-            for (int j = 0; j < frameSize; j++) {
-                frame.add(stocks.get(i - frameSize + j));
-            }
-
-            // Get notifications for the current frame
-            List<Notification> notifications = getNotificationForFrame(frame, "Nvidia");
-
-            // Add unique notifications to the alertsList
-            if (!notifications.isEmpty()) { // Emptiness check
-                for (Notification notification : notifications) {
-                    // Check if the alert is already added
-                    if (uniqueAlerts.add(notification.toString())) { // Add to the Set and check for uniqueness
-                        alertsList.add(notification); // Add to the alerts list if unique
+                    } else {
+                        // Set the percentage change using the setter method
+                        currentStockUnit.setPercentageChange(percentageChange);
                     }
                 }
             }
         }
-
-        return alertsList;
     }
 
-    public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String stockName) {
-        //Crash Related variables
-        int minCrashLevelPercentage = 5;
-        int crashLength = 10;
+    public static void plotData(TimeSeries timeSeries, String chart_name, String X_axis, String Y_axis) {
+        // Wrap the TimeSeries in a TimeSeriesCollection, which implements XYDataset
+        TimeSeriesCollection dataset = new TimeSeriesCollection();
+        dataset.addSeries(timeSeries);
 
-        //prevent wrong dip variables
-        double lastChanges = 0;
-        int lastChangeLength = 5;
+        // Create the chart with the dataset
+        chart = ChartFactory.createTimeSeriesChart(
+                chart_name, // Chart title
+                X_axis, // X-axis Label
+                Y_axis, // Y-axis Label
+                dataset, // The dataset (now a TimeSeriesCollection)
+                true, // Show legend
+                true, // Show tooltips
+                false // Show URLs
+        );
 
-        //permanent rise variables
-        double permanentChangeLevel = 4.0;
+        // Customizing the plot
+        XYPlot plot = chart.getXYPlot();
 
-        //minor dip detection variables
-        int consecutiveIncreaseCount = 0;
-        double cumulativeIncrease = 0;
-        double cumulativeDecrease = 0;
-        double minorDipTolerance = 0.2;
+        // Add a light red shade below Y=0
+        plot.addRangeMarker(new IntervalMarker(Double.NEGATIVE_INFINITY, 0.0, new Color(255, 200, 200, 100)));
 
-        //rapid increase variables
-        double minIncrease = 0.4;
-        int rapidWindowSize = 4;
-        int minConsecutiveCount = 1;
+        // Add a light green shade above Y=0
+        plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
 
-        //Volatility variables
-        double volatility = 0.0;
-        double volatilityThreshold = 0.05;
+        // Add a black line at y = 0
+        ValueMarker zeroLine = new ValueMarker(0.0);
+        zeroLine.setPaint(Color.BLACK); // Set the color to black
+        zeroLine.setStroke(new BasicStroke(1.0f)); // Set the stroke for the line
+        plot.addRangeMarker(zeroLine);
 
-        //algorithm related variables
-        List<Notification> alertsList = new ArrayList<>();
-        List<Double> percentageChanges = new ArrayList<>();
-        TimeSeries timeSeries = new TimeSeries(stockName);
-        double totalChange = 0;
-        String pattern = "";
+        // Enable zoom and pan features on the chart panel
+        ChartPanel chartPanel = new ChartPanel(chart);
+        chartPanel.setMouseWheelEnabled(true); // Zoom with mouse wheel
+        chartPanel.setZoomAroundAnchor(true);  // Zoom on the point where the mouse is anchored
+        chartPanel.setRangeZoomable(true);     // Allow zooming on the Y-axis
+        chartPanel.setDomainZoomable(true);    // Allow zooming on the X-axis
 
-        for (int i = 1; i < stocks.size(); i++) {
-            //Changes & percentages calculations
-            double currentClose = stocks.get(i).getClose();
-            double previousClose = stocks.get(i - 1).getClose();
-            double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
-            percentageChanges.add(percentageChange);
-            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
+        chartPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                Point2D p = chartPanel.translateScreenToJava2D(e.getPoint());
+                XYPlot plot = chart.getXYPlot();
+                ValueAxis xAxis = plot.getDomainAxis();
+                ValueAxis yAxis = plot.getRangeAxis();
 
-            //Crash logic
-            crashLogic(stocks, stockName, i, crashLength, minCrashLevelPercentage, alertsList, timeSeries);
+                // Convert mouse position to data coordinates
+                double x = xAxis.java2DToValue(p.getX(), chartPanel.getScreenDataArea(), plot.getDomainAxisEdge());
+                double y = yAxis.java2DToValue(p.getY(), chartPanel.getScreenDataArea(), plot.getRangeAxisEdge());
 
-            //last changes calculations
-            lastChanges = LastChangeLogic(stocks, i, lastChangeLength, lastChanges, percentageChange);
-
-            //total change calculation
-            totalChange = TotalChangeLogic(stocks, stockName, totalChange, percentageChange, i, permanentChangeLevel, alertsList, timeSeries);
-
-            // Check if the current percentage change is positive or a minor dip (momentum calculation)
-            if (percentageChange > 0) {
-                cumulativeIncrease += percentageChange;
-                consecutiveIncreaseCount++;
-                cumulativeDecrease = 0; // Reset cumulative decrease when there's an increase
-            } else {
-                cumulativeDecrease += Math.abs(percentageChange); // Track cumulative decreases
-                // Check if the cumulative decrease is within tolerance
-                if (cumulativeDecrease <= minorDipTolerance * cumulativeIncrease) {
-                    // Allow minor dip, continue momentum tracking without resetting
-                    consecutiveIncreaseCount++;
+                if (Double.isNaN(point1X)) {
+                    // First point selected, set the first marker
+                    point1X = x;
+                    point1Y = y;
+                    addFirstMarker(plot, point1X);
                 } else {
-                    // If the dip is too large, reset momentum
-                    consecutiveIncreaseCount = 0;
-                    cumulativeIncrease = 0;
-                    cumulativeDecrease = 0;
+                    // Second point selected, set the second marker and shaded region
+                    point2X = x;
+                    point2Y = y;
+                    addSecondMarkerAndShade(plot);
+
+                    // Reset points for next selection
+                    point1X = Double.NaN;
+                    point1Y = Double.NaN;
+                    point2X = Double.NaN;
+                    point2Y = Double.NaN;
                 }
             }
+        });
 
-            //pattern detection & volatility calculation of percentage changes logic
-            if (i == stocks.size() - 1) {
-                pattern = detectPattern(percentageChanges);
-                volatility = calculateVolatility(percentageChanges);
-            }
+        // Add buttons for controlling the scale
+        JPanel controlPanel = getjPanel(chartPanel);
 
-            //rapid increase logic
-            rapidIncreaseLogic(stocks, stockName, i, rapidWindowSize, volatility, volatilityThreshold, minIncrease, consecutiveIncreaseCount, minConsecutiveCount, lastChangeLength, lastChanges, pattern, alertsList, timeSeries);
-        }
-
-        return alertsList;
+        // Create the frame to display the chart
+        JFrame frame = new JFrame("Stock Data");
+        frame.setLayout(new BorderLayout());
+        frame.add(chartPanel, BorderLayout.CENTER);
+        frame.add(controlPanel, BorderLayout.SOUTH); // Add control buttons to the frame
+        frame.pack();
+        frame.setVisible(true);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
     }
 
-    private static void rapidIncreaseLogic(List<StockUnit> stocks, String stockName, int i, int rapidWindowSize, double volatility, double volatilityThreshold, double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount, int lastChangeLength, double lastChanges, String pattern, List<Notification> alertsList, TimeSeries timeSeries) {
-        if (i >= rapidWindowSize) { // Ensure the window is valid
-            double maxIncreaseInWindow = 0.0;
-
-            for (int j = i - rapidWindowSize + 1; j <= i; j++) {
-                double previousPrice = stocks.get(j - 1).getClose();
-                double currentPrice = stocks.get(j).getClose();
-                double increase = ((currentPrice - previousPrice) / previousPrice) * 100;
-
-                maxIncreaseInWindow = Math.max(maxIncreaseInWindow, increase);
-            }
-
-            if ((volatility >= volatilityThreshold) && (maxIncreaseInWindow >= minIncrease) && (consecutiveIncreaseCount >= minConsecutiveCount) && (i >= (stocks.size() - lastChangeLength)) && (lastChanges > minIncrease)) {
-                Set<String> undesiredPatterns = getStrings();
-                // Avoid undesired patterns
-                if (!undesiredPatterns.contains(pattern)) {
-                    createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, false, stocks.get(i).getDate());
-                }
-            }
+    private static void addFirstMarker(XYPlot plot, double xPosition) {
+        // Clear previous markers if any
+        if (marker1 != null) {
+            plot.removeDomainMarker(marker1);
         }
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Create and add the first marker
+        marker1 = new ValueMarker(xPosition);
+        marker1.setPaint(Color.GREEN);  // First marker in green
+        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
+        plot.addDomainMarker(marker1);
     }
 
-    private static double TotalChangeLogic(List<StockUnit> stocks, String stockName, double totalChange, double percentageChange, int i, double permanentChangeLevel, List<Notification> alertsList, TimeSeries timeSeries) {
-        totalChange += percentageChange;
-        if (i == stocks.size() - 1) {
-            if (totalChange > permanentChangeLevel) {
-                createNotification(stockName, totalChange, alertsList, timeSeries, true, stocks.get(stocks.size() - 1).getDate());
-            }
+    private static void addSecondMarkerAndShade(XYPlot plot) {
+        // Clear previous markers and shaded region if they exist
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
         }
-        return totalChange;
-    }
-
-    private static double LastChangeLogic(List<StockUnit> stocks, int i, int lastChangeLength, double lastChanges, double percentageChange) {
-        if (i >= (stocks.size() - lastChangeLength)) {
-            lastChanges += percentageChange;
-        }
-        return lastChanges;
-    }
-
-    private static void crashLogic(List<StockUnit> stocks, String stockName, int i, int crashLength, int minCrashLevelPercentage, List<Notification> alertsList, TimeSeries timeSeries) {
-        double maxPriceInWindow = Double.MIN_VALUE;
-        double minPriceInWindow = Double.MAX_VALUE;
-
-        if (i > crashLength) {
-            for (int j = i - crashLength; j <= i; j++) {
-                double price = stocks.get(j).getClose();
-                maxPriceInWindow = Math.max(maxPriceInWindow, price);
-                minPriceInWindow = Math.min(minPriceInWindow, price);
-            }
-
-            double crash = ((maxPriceInWindow - minPriceInWindow) / maxPriceInWindow) * 100;
-
-            // Check for a crash of 5% or more in the window
-            if (crash >= minCrashLevelPercentage) {
-                crash = crash * -1;
-                createNotification(stockName, crash, alertsList, timeSeries, false, stocks.get(i).getDate());
-            }
-        }
-    }
-
-    // Helper method for calculating volatility (standard deviation of percentage changes)
-    private static double calculateVolatility(List<Double> changes) {
-        double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-        double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
-        return Math.sqrt(variance); // Standard deviation as volatility measure
-    }
-
-    private static void createNotification(String stockName, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, boolean longTimeIncrease, String date) {
-        if (longTimeIncrease) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock steady rise", totalChange, stockName), String.format("rose by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 200, 150)));
-        } else if (totalChange > 0) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, stockName), String.format("Increased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 205, 50)));
-        } else {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock decrease", totalChange, stockName), String.format("Decreased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(178, 34, 34)));
-        }
-    }
-
-    public static String detectPattern(List<Double> percentageChanges) {
-        int size = percentageChanges.size();
-        int segmentSize = size / 3;
-
-        double change0to033 = 0;
-        double change033to066 = 0;
-        double change066to1 = 0;
-
-        // Sum the first third of the list
-        for (int i = 0; i < segmentSize; i++) {
-            change0to033 += percentageChanges.get(i);
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
         }
 
-        // Sum the second third of the list
-        for (int i = segmentSize; i < 2 * segmentSize; i++) {
-            change033to066 += percentageChanges.get(i);
-        }
+        // Calculate the percentage difference between the two y-values
+        double percentageDiff = ((point2Y - point1Y) / point1Y) * 100;
 
-        // Sum the last third of the list
-        for (int i = 2 * segmentSize; i < size; i++) {
-            change066to1 += percentageChanges.get(i);
-        }
+        // Determine the color of the second marker based on percentage difference
+        Color markerColor = (percentageDiff >= 0) ? Color.GREEN : Color.RED;
+        Color shadeColor = (percentageDiff >= 0) ? new Color(100, 200, 100, 50) : new Color(200, 100, 100, 50);
 
-        return String.valueOf(getPatternSymbol(change0to033)) +
-                getPatternSymbol(change033to066) +
-                getPatternSymbol(change066to1);
-    }
+        // Create and add the second marker
+        marker2 = new ValueMarker(point2X);
+        marker2.setPaint(markerColor);
+        marker2.setStroke(new BasicStroke(1.5f)); // Customize thickness
+        plot.addDomainMarker(marker2);
 
-    // Helper method to determine the pattern symbol based on the threshold
-    private static char getPatternSymbol(double change) {
-        if (change > 0.1) {
-            return '/';
-        } else if (change >= -0.1 && change < 0.1) {
-            return '_';
-        } else {
-            return '\\';
-        }
+        // Create and add the shaded region between the two markers
+        shadedRegion = new IntervalMarker(Math.min(point1X, point2X), Math.max(point1X, point2X));
+        shadedRegion.setPaint(shadeColor);  // Translucent green or red shade
+        plot.addDomainMarker(shadedRegion);
+        percentageChange.setText(String.format("Percentage Change: %.3f%%", percentageDiff));
     }
 
     @NotNull
-    private static Set<String> getStrings() {
-        Set<String> undesiredPatterns = new HashSet<>();
-        undesiredPatterns.add("\\\\\\");
-        undesiredPatterns.add("_\\\\");
-        undesiredPatterns.add("__\\");
-        undesiredPatterns.add("___");
-        undesiredPatterns.add("\\__");
-        undesiredPatterns.add("\\\\_");
-        undesiredPatterns.add("\\_\\");
-        undesiredPatterns.add("//\\\\");
-        undesiredPatterns.add("//_\\");
-        undesiredPatterns.add("_\\");
-        undesiredPatterns.add("//__");
-        undesiredPatterns.add("//\\_");
-        return undesiredPatterns;
-    }
+    private static JPanel getjPanel(ChartPanel chartPanel) {
+        JButton autoRangeButton = new JButton("Auto Range");
+        autoRangeButton.addActionListener(e -> chartPanel.restoreAutoBounds()); // Reset to original scale
 
-    public static void Stock_value(List<StockUnit> stocks) { //plot the stock value
-        // Create a TimeSeries object for plotting
-        TimeSeries timeSeries = new TimeSeries("NVDA Stock Price");
+        JButton zoomInButton = new JButton("Zoom In");
+        zoomInButton.addActionListener(e -> chartPanel.zoomInBoth(0.5, 0.5)); // Zoom in by 50%
 
-        // Populate the time series with Stock data
-        for (StockUnit stock : stocks) {
-            String timestamp = stock.getDate();
-            double closingPrice = stock.getClose(); // Assuming getClose() returns closing price
+        JButton zoomOutButton = new JButton("Zoom Out");
+        zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
 
-            // Add the data to the TimeSeries
-            timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
-        }
+        JPanel controlPanel = new JPanel();
+        percentageChange = new JLabel("Percentage Change");
 
-        // Plot the data
-        Main_data_handler.plotData(timeSeries, "NVDA price change", "Date", "price");
-    }
-
-    public static List<Notification> Main_data_puller() throws IOException { //get stock notifications
-        logTextArea.append("Data puller has started.\n");
-
-        List<StockUnit> stocks = readStockUnitsFromFile("TSLA.txt"); //Get the Stock data from the file (simulate real Stock data)
-
-        logTextArea.append("Data puller has finished.\n");
-        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        return tester(stocks, false, 5); //test method to test the Stock data
+        controlPanel.add(autoRangeButton);
+        controlPanel.add(zoomInButton);
+        controlPanel.add(zoomOutButton);
+        controlPanel.add(percentageChange);
+        return controlPanel;
     }
 }

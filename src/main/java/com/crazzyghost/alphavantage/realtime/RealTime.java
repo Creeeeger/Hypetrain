@@ -55,13 +55,7 @@ public final class RealTime implements Fetcher {
 
     @Override
     public void fetch() {
-
         Config.checkNotNullOrKeyEmpty(config);
-
-//        // Replace builder.build() with the direct URL string for testing since I don't have premium
-//        String url = "https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=MSFT,AAPL,IBM&apikey=demo";
-//
-//        config.getOkHttpClient().newCall(new Request.Builder().url(url).build()).enqueue(new Callback() {
 
         config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new Callback() {
             @Override

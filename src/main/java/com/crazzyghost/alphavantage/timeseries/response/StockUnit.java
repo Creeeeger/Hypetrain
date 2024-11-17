@@ -6,12 +6,14 @@ public class StockUnit {
     private final double open;
     private final double high;
     private final double low;
-    private double close;
     private final double adjustedClose;
     private final long volume;
     private final double dividendAmount;
     private final double splitCoefficient;
     private final String dateTime;
+    private String symbol;
+    private double percentageChange;
+    private double close;
 
 
     private StockUnit(Builder builder) {
@@ -24,6 +26,8 @@ public class StockUnit {
         this.dividendAmount = builder.dividendAmount;
         this.splitCoefficient = builder.splitCoefficient;
         this.dateTime = builder.dateTime;
+        this.symbol = builder.symbol;
+        this.percentageChange = builder.percentageChange;
     }
 
     public double getOpen() {
@@ -42,7 +46,6 @@ public class StockUnit {
         return close;
     }
 
-    // Setter for the close value
     public void setClose(double close) {
         this.close = close;
     }
@@ -67,6 +70,22 @@ public class StockUnit {
         return dateTime;
     }
 
+    public String getSymbol() {
+        return symbol;
+    }
+
+    public void setSymbol(String symbol) {
+        this.symbol = symbol;
+    }
+
+    public double getPercentageChange() {
+        return percentageChange;
+    }
+
+    public void setPercentageChange(double percentageChange) {
+        this.percentageChange = percentageChange;
+    }
+
     @Override
     public String toString() {
         return "\n" + "StockUnit{" +
@@ -79,6 +98,8 @@ public class StockUnit {
                 ", dividendAmount=" + dividendAmount +
                 ", splitCoefficient=" + splitCoefficient +
                 ", date=" + dateTime +
+                ", symbol=" + symbol +
+                ", percentageChange=" + percentageChange +
                 '}';
     }
 
@@ -93,6 +114,8 @@ public class StockUnit {
         double dividendAmount;
         double splitCoefficient;
         String dateTime;
+        String symbol;
+        double percentageChange;
 
         public Builder open(double open) {
             this.open = open;
@@ -139,6 +162,15 @@ public class StockUnit {
             return this;
         }
 
+        public Builder symbol(String symbol) {
+            this.symbol = symbol;
+            return this;
+        }
+
+        public Builder percentageChange(double percentageChange) {
+            this.percentageChange = percentageChange;
+            return this;
+        }
 
         public StockUnit build() {
             return new StockUnit(this);

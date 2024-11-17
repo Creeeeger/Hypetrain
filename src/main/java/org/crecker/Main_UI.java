@@ -147,6 +147,8 @@ public class Main_UI extends JFrame {
             refresh(true, true, true, false);
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
+            data_tester.tester(); //!!!remove tester later
         }
     }
 
@@ -931,11 +933,6 @@ public class Main_UI extends JFrame {
         panel.add(Box.createRigidArea(new Dimension(0, 10))); // Vertical spacing
         panel.setBorder(BorderFactory.createTitledBorder("Notifications"));
 
-        // Test button to add test notifications
-        JButton button = new JButton("add (test)");
-        panel.add(button);
-        button.addActionListener(new event_addNotification());
-
         return panel;
     }
 
@@ -1187,24 +1184,6 @@ public class Main_UI extends JFrame {
             save_config(getValues()); //Save them in case user forgot
             System.out.println("Exit application");
             System.exit(0); // Exit the application
-        }
-    }
-
-    //test method
-    public static class event_addNotification implements ActionListener {
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            try {
-                List<Notification> notifications = data_tester.Main_data_puller();
-
-                for (Notification notification : notifications) {
-                    addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor()); //add notification sample
-                }
-
-            } catch (IOException ex) {
-                throw new RuntimeException(ex);
-            }
         }
     }
 
