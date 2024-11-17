@@ -1,15 +1,12 @@
 TODO
-- optimize code
-
 --Testing--
 - optimize parameters for algorithm
 - improve algorithms dip then spike capabilities
 - implement premium api check if it works
 - write P/L function to calculate revenue on 120k over period
 
-
 ----
-remove tester from main UI
-set frame size to right size
-set entries to right number for crash analysis
-remove full frame method
+remove tester from main UI - data_tester.tester(); //!!!remove tester later
+set frame size to right size - public static int frameSize = 20; // Frame size for analysis
+set entries to right number for crash analysis  - public static int entries = 20; //entries for crash analysis
+remove full frame method - lastNotificationTime = getFullFrame(k, lastNotificationTime, uniqueAlerts);
