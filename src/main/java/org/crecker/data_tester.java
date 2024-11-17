@@ -45,7 +45,7 @@ public class data_tester {
     //new data filler method
     public static void main(String[] args) {
         tester();
-        //  getData("NVDA");
+        // getData("WOLF");
     }
 
     //method for pulling new data from server for tests and training
@@ -101,7 +101,8 @@ public class data_tester {
     }
 
     public static void tester() {
-        String[] fileNames = {"TSLA.txt", "NVDA.txt", "NVDA.txt"}; //add more files
+        String[] fileNames = {"WOLF.txt", "PLTR.txt", "SMCI.txt", "TSLA.txt", "TSM.txt", "NVDA.txt"}; //add more files
+        int stock = 0;
 
         // Process data for each file
         for (String fileName : fileNames) {
@@ -115,18 +116,25 @@ public class data_tester {
         calculateStockPercentageChange();
         calculateSpikes();
 
-
         TimeSeries timeSeries = new TimeSeries("stock");
-        for (int i = 1; i < stockList.size(); i++) {
-            String timestamp = stockList.get(i).stockUnits.get(0).getDate();
-            double closingPrice = stockList.get(i).stockUnits.get(0).getClose(); // Assuming getClose() returns closing price
+        for (int i = 2; i < stockList.size(); i++) {
+            try {
+                String timestamp = stockList.get(i).stockUnits.get(stock).getDate();
+                double closingPrice = stockList.get(i).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
+                double prevClosingPrice = stockList.get(i-1).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
 
-            // Add the data to the TimeSeries
-            timeSeries.add(new Minute(convertToDate(timestamp)), closingPrice);
+                if (Math.abs((closingPrice - prevClosingPrice) / prevClosingPrice * 100) > 14) {
+                    closingPrice = prevClosingPrice;
+                }
+
+                // Add the data to the TimeSeries
+                timeSeries.addOrUpdate(new Minute(convertToDate(timestamp)), closingPrice);
+            } catch (Exception e) {
+                break;
+            }
         }
-        // Plot the data
-        // plotData(timeSeries, " price change", "Date", "price");
 
+        plotData(timeSeries, stockList.get(4).stockUnits.get(stock).getSymbol() + " price change", "Date", "price");
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {

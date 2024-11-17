@@ -35,6 +35,7 @@ import static org.crecker.Main_UI.logTextArea;
 public class Main_data_handler {
     public static ArrayList<stock> stockList = new ArrayList<>();
     public static int frameSize = 20; // Frame size for analysis
+    public static int entries = 20; //entries for crash analysis
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -59,7 +60,6 @@ public class Main_data_handler {
                 .onSuccess(e -> {
                     TimeSeriesResponse response = (TimeSeriesResponse) e;
                     stocks.addAll(response.getStockUnits()); // Populate the list
-
                     callback.onTimeLineFetched(stocks); // Call the callback with the Stock list
                 })
                 .onFailure(Main_data_handler::handleFailure)
@@ -431,7 +431,7 @@ public class Main_data_handler {
     }
 
     public static void calculateSpikes() {
-        hardcoreCrash(20);
+        hardcoreCrash(entries);
         spikeDetector();
         checkToClean();
     }
@@ -441,40 +441,44 @@ public class Main_data_handler {
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
         // Ensure we have enough stock data to compare
-        if (stockList.size() >= entries) {
+        if (stockList.size() >= entries && stockList.size() > 4) {
             // Initialize a list to track the cumulative percentage changes for each stock unit (skip stock 0)
-            List<Double> changes = new ArrayList<>(Collections.nCopies(stockList.get(0).stockUnits.size(), 0.0));
+            List<Double> changes = new ArrayList<>(Collections.nCopies(stockList.get(4).stockUnits.size(), 0.0));
 
             // Loop over the stock batches, starting from the (entries)th last batch to compare with the previous batches
             for (int i = stockList.size() - entries + 1; i < stockList.size(); i++) {
                 stock currentStockBatch = stockList.get(i);
 
                 // Loop through all the stock units in the current batch
-                for (int j = 0; j < currentStockBatch.stockUnits.size()-1; j++) {  // Start from j = 0 (skip stock 0 only if necessary)
-                    StockUnit currentStockUnit = currentStockBatch.stockUnits.get(j);
+                for (int j = 0; j < currentStockBatch.stockUnits.size() - 1; j++) {  // Start from j = 0 (skip stock 0 only if necessary)
+                    try {
+                        StockUnit currentStockUnit = currentStockBatch.stockUnits.get(j);
 
-                    // Get the cumulative percentage change for this stock unit
-                    double currentPercentageChange = currentStockUnit.getPercentageChange();
+                        // Get the cumulative percentage change for this stock unit
+                        double currentPercentageChange = currentStockUnit.getPercentageChange();
 
-                    // Sum up the percentage changes for each stock unit (skip stock 0 if necessary)
-                    changes.set(j, changes.get(j) + currentPercentageChange);
+                        // Sum up the percentage changes for each stock unit (skip stock 0 if necessary)
+                        changes.set(j, changes.get(j) + currentPercentageChange);
 
-                    // Define a crash threshold (you can adjust this value as needed)
-                    if (changes.get(j) < -6.0) {
-                        // Create a time series for the crashed stock
-                        TimeSeries timeSeries = new TimeSeries(currentStockUnit.getSymbol() + " Time Series");
+                        // Define a crash threshold (you can adjust this value as needed)
+                        if (changes.get(j) < -6.0) {
+                            // Create a time series for the crashed stock
+                            TimeSeries timeSeries = new TimeSeries(currentStockUnit.getSymbol() + " Time Series");
 
-                        // Populate the time series with the stock's date and closing prices
-                        for (int k = stockList.size()-entries ; k < stockList.size(); k++) {
-                            timeSeries.add(new Minute(Main_data_handler.convertToDate(stockList.get(k).stockUnits.get(j).getDate())), stockList.get(k).stockUnits.get(j).getClose());
+                            // Populate the time series with the stock's date and closing prices
+                            for (int k = stockList.size() - entries; k < stockList.size(); k++) {
+                                timeSeries.add(new Minute(Main_data_handler.convertToDate(stockList.get(k).stockUnits.get(j).getDate())), stockList.get(k).stockUnits.get(j).getClose());
+                            }
+
+                            // Report the crash with the time series
+                            addNotification(String.format("%.3f%% %s Crash", changes.get(j), currentStockUnit.getSymbol()),
+                                    String.format("Crashed by %.3f%% at %s", changes.get(j), currentStockUnit.getDate()),
+                                    timeSeries,                                     // Include the time series data for the stock
+                                    new Color(178, 34, 34)                 // Color for notification (red)
+                            );
                         }
-
-                        // Report the crash with the time series
-                        addNotification(String.format("%.3f%% %s Crash", changes.get(j), currentStockUnit.getSymbol()),
-                                String.format("Crashed by %.3f%% at %s", changes.get(j), currentStockUnit.getDate()),
-                                timeSeries,                                     // Include the time series data for the stock
-                                new Color(178, 34, 34)                 // Color for notification (red)
-                        );
+                    } catch (Exception e) {
+                        System.out.println("Error occured:" + e.getMessage());
                     }
                 }
             }
@@ -503,7 +507,7 @@ public class Main_data_handler {
         Set<String> uniqueAlerts = new HashSet<>(); // To track unique alerts
         LocalDateTime lastNotificationTime = null; // To store the time of the last printed notification
 
-        if (stockList.size() > frameSize) { //check if frame is in size
+        if (stockList.size() > frameSize && stockList.size() > 4) { //check if frame is in size
             for (int k = 0; k < stockList.get(frameSize - 1).stockUnits.size(); k++) { //go through all symbols
                 lastNotificationTime = getFullFrame(k, lastNotificationTime, uniqueAlerts);
                 //   lastNotificationTime = getRealFrame(k, lastNotificationTime, uniqueAlerts);
@@ -515,9 +519,13 @@ public class Main_data_handler {
     private static LocalDateTime getRealFrame(int k, LocalDateTime lastNotificationTime, Set<String> uniqueAlerts) {
         List<StockUnit> frame = new ArrayList<>();
 
-        // Create a frame of the last `frameSize` stock units
-        for (int j = stockList.size() - 1 - frameSize; j < stockList.size() - 1; j++) {
-            frame.add(stockList.get(j).stockUnits.get(k));
+        try {
+            // Create a frame of the last `frameSize` stock units
+            for (int j = stockList.size() - 1 - frameSize; j < stockList.size() - 1; j++) {
+                frame.add(stockList.get(j).stockUnits.get(k));
+            }
+        } catch (Exception e) {
+            System.out.println(e.getMessage());
         }
 
         // Get notifications for the current frame
@@ -565,13 +573,17 @@ public class Main_data_handler {
         for (int i = frameSize + 1; i < stockList.size() - 1; i++) {
             List<StockUnit> frame = new ArrayList<>();
 
-            // Create a frame of the last `frameSize` stock units, rolling over each iteration
-            for (int j = i - frameSize; j < i; j++) {
-                frame.add(stockList.get(j).stockUnits.get(k));
+            try {
+                // Create a frame of the last `frameSize` stock units, rolling over each iteration
+                for (int j = i - frameSize; j < i; j++) {
+                    frame.add(stockList.get(j).stockUnits.get(k));
+                }
+            } catch (Exception e) {
+                continue;
             }
 
             // Get notifications for the current frame
-            List<Notification> notifications = getNotificationForFrame(frame, stockList.get(stockList.size() - 1).stockUnits.get(k).getSymbol());
+            List<Notification> notifications = getNotificationForFrame(frame, stockList.get(4).stockUnits.get(k).getSymbol());
             if (!notifications.isEmpty()) { // Emptiness check
 
                 // Add unique notifications to the alertsList and add them via addNotification
