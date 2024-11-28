@@ -1,9 +1,11 @@
 TODO
 --Testing--
 - optimize parameters for algorithm
-- improve algorithms dip then spike capabilities
 - implement premium api check if it works
-- write P/L function to calculate revenue on 120k over period
+- update notification filter logic for real life usage later on
+
+
+__________Evaluate trading strategy AND algorithm strategy_________
 
 ----
 remove tester from main UI - data_tester.tester(); //!!!remove tester later

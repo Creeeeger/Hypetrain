@@ -22,6 +22,7 @@ import java.awt.*;
 import java.io.*;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
+import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -36,6 +37,8 @@ public class Main_data_handler {
     public static ArrayList<stock> stockList = new ArrayList<>();
     public static int frameSize = 20; // Frame size for analysis
     public static int entries = 20; //entries for crash analysis
+    public static int timeWindow = 20; //time window between alerts
+    public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -428,8 +431,11 @@ public class Main_data_handler {
     }
 
     public static void hardcoreCrash(int entries) {
-        logTextArea.append("Checking for crashes\n");
-        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        try {
+            logTextArea.append("Checking for crashes\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        } catch (Exception ignored) {
+        }
 
         // Ensure we have enough stock data to compare
         if (stockList.size() >= entries && stockList.size() > 4) {
@@ -469,7 +475,7 @@ public class Main_data_handler {
                             );
                         }
                     } catch (Exception e) {
-                        System.out.println("Error occured:" + e.getMessage());
+                        System.out.println("Error occurred:" + e.getMessage());
                     }
                 }
             }
@@ -527,8 +533,8 @@ public class Main_data_handler {
             // Add unique notifications to the alertsList and add them via addNotification
             for (Notification notification : notifications) {
 
-                // Check if the notification content contains "rose by" (to filter the stock change notifications)
-                if (notification.getContent().contains("rose by")) {
+                // Check if the notification content contains "Increased" (to filter the stock change notifications)
+                if (notification.getContent().contains("Increased")) {
                     int atIndex = notification.getContent().indexOf("at the ");
                     String datePart = notification.getContent().substring(atIndex + "at the ".length()).trim();
 
@@ -580,8 +586,8 @@ public class Main_data_handler {
                 // Add unique notifications to the alertsList and add them via addNotification
                 for (Notification notification : notifications) {
 
-                    // Check if the notification content contains "rose by" (to filter the stock change notifications)
-                    if (notification.getContent().contains("rose by")) {
+                    // Check if the notification content contains "Increased" (to filter the stock change notifications)
+                    if (notification.getContent().contains("Increased")) {
                         int atIndex = notification.getContent().indexOf("at the ");
                         String datePart = notification.getContent().substring(atIndex + "at the ".length()).trim();
 
@@ -596,25 +602,85 @@ public class Main_data_handler {
                                 if (lastNotificationTime == null) {
                                     lastNotificationTime = notificationTime; // Update lastNotificationTime
                                 }
-                                addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor());
+
+                                notificationsForPLAnalysis.add(notification);
                             }
                         }
                     } else {
                         // For non-stock change notifications, allow them if they are unique
                         if (uniqueAlerts.add(notification.toString())) { // Ensure uniqueness
                             lastNotificationTime = null;
-                            addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor());
+                            notificationsForPLAnalysis.add(notification);
                         }
                     }
                 }
             }
         }
+
+        filterNotificationsByTimeWindow(notificationsForPLAnalysis, timeWindow);
+
+        for (Notification notification : notificationsForPLAnalysis) {
+            try {
+                addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor());
+            } catch (Exception ignored) {
+            }
+        }
+
         return lastNotificationTime;
+    }
+
+
+    public static void filterNotificationsByTimeWindow(List<Notification> notifications, int timeWindowMinutes) {
+        // Sort notifications by timestamp to ensure proper order
+        notifications.sort(Comparator.comparing(notification1 -> Objects.requireNonNull(parseNotificationTime(notification1))));
+
+        // Create a new list to hold filtered notifications
+        List<Notification> filteredNotifications = new ArrayList<>();
+        LocalDateTime lastNotificationTime = null;
+
+        for (Notification notification : notifications) {
+            LocalDateTime currentNotificationTime = parseNotificationTime(notification);
+
+            if (currentNotificationTime != null) {
+                // If it's the first notification, or it's outside the time window, keep it
+                if (lastNotificationTime == null ||
+                        isOutsideTimeWindow(currentNotificationTime, lastNotificationTime, timeWindowMinutes)) {
+                    filteredNotifications.add(notification);
+                    lastNotificationTime = currentNotificationTime; // Update the last notification time
+                }
+            }
+        }
+
+        // Replace the original list with the filtered list
+        notifications.clear();
+        notifications.addAll(filteredNotifications);
+    }
+
+    // Helper method to check if the notification is outside the time window
+    private static boolean isOutsideTimeWindow(LocalDateTime current, LocalDateTime last, int timeWindowMinutes) {
+        return current.isAfter(last.plusMinutes(timeWindowMinutes));
+    }
+
+    // Parse the notification's timestamp from its content
+    private static LocalDateTime parseNotificationTime(Notification notification) {
+        int atIndex = notification.getContent().indexOf("at the ");
+        if (atIndex == -1) {
+            return null; // Invalid format
+        }
+
+        String datePart = notification.getContent().substring(atIndex + "at the ".length()).trim();
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        try {
+            return LocalDateTime.parse(datePart, formatter);
+        } catch (Exception e) {
+            return null; // Failed to parse
+        }
     }
 
     // Helper method to check if the notification is outside the 15-minute window
     private static boolean isOutsideTimeWindow(LocalDateTime current, LocalDateTime last) {
-        return current.isAfter(last.plusMinutes(15));
+        return current.isAfter(last.plusMinutes(timeWindow));
     }
 
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String stockName) {
@@ -643,11 +709,19 @@ public class Main_data_handler {
         TimeSeries timeSeries = new TimeSeries(stockName);
         String pattern = "";
 
+        // Prevent notifications if time frame spans over the weekend (Friday to Monday)
+        if (isWeekendSpan(stocks)) {
+            return new ArrayList<>(); // Return empty list to skip notifications
+        }
+
         for (int i = 1; i < stocks.size(); i++) {
             //Changes & percentages calculations
             double percentageChange = stocks.get(i).getPercentageChange();
             percentageChanges.add(percentageChange);
-            timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
+            try {
+                timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
+            } catch (Exception ignored) {
+            }
 
             //last changes calculations
             lastChanges = LastChangeLogic(stocks, i, lastChangeLength, lastChanges, percentageChange);
@@ -675,6 +749,14 @@ public class Main_data_handler {
             if (i == stocks.size() - 1) {
                 pattern = detectPattern(percentageChanges);
                 volatility = calculateVolatility(percentageChanges);
+                double change_last_3 = stocks.get(i).getPercentageChange() + stocks.get(i - 1).getPercentageChange() + stocks.get(i - 2).getPercentageChange();
+
+                if (change_last_3 <= -1.5 && stocks.get(i).getPercentageChange() >= 0.5) {
+                    try {
+                        createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getDate(), true);
+                    } catch (Exception ignored) {
+                    }
+                }
             }
 
             //rapid increase logic
@@ -682,6 +764,16 @@ public class Main_data_handler {
         }
 
         return alertsList;
+    }
+
+    // Helper method to check if the time frame spans over the weekend or over-day
+    private static boolean isWeekendSpan(List<StockUnit> stocks) {
+        // Parse the first and last stock unit's dates
+        LocalDateTime startDate = LocalDateTime.parse(stocks.get(0).getDate().replace(' ', 'T'));
+        LocalDateTime endDate = LocalDateTime.parse(stocks.get(stocks.size() - 1).getDate().replace(' ', 'T'));
+
+        // Check if the time span includes a weekend or spans different days
+        return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY) || !startDate.toLocalDate().equals(endDate.toLocalDate());
     }
 
     private static void rapidIncreaseLogic(List<StockUnit> stocks, String stockName, int i, int rapidWindowSize, double volatility, double volatilityThreshold, double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount, int lastChangeLength, double lastChanges, String pattern, List<Notification> alertsList, TimeSeries timeSeries) {
@@ -698,7 +790,7 @@ public class Main_data_handler {
 
                 // Avoid undesired patterns
                 if (!undesiredPatterns.contains(pattern)) {
-                    createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, stocks.get(i).getDate());
+                    createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, stocks.get(i).getDate(), false);
                 }
             }
         }
@@ -718,9 +810,11 @@ public class Main_data_handler {
         return Math.sqrt(variance); // Standard deviation as volatility measure
     }
 
-    private static void createNotification(String stockName, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, String date) {
-        if (totalChange > 0) {
+    private static void createNotification(String stockName, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, String date, boolean dip) {
+        if ((totalChange > 0) && !dip) {
             alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, stockName), String.format("Increased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 205, 50)));
+        } else if (dip) {
+            alertsList.add(new Notification(String.format("%.3f%% %s stock dipped", totalChange, stockName), String.format("dipped by %.3f%% at the %s", totalChange, date), timeSeries, new Color(255, 217, 0)));
         }
     }
 
