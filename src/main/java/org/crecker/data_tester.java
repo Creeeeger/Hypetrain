@@ -101,8 +101,8 @@ public class data_tester {
     }
 
     public static void tester() {
-        String[] fileNames = {"WOLF.txt", "PLTR.txt", "SMCI.txt", "TSLA.txt", "TSM.txt", "NVDA.txt"}; //add more files
-        int stock = 0;
+        String[] fileNames = {"NVDA.txt", "PLTR.txt", "SMCI.txt", "TSLA.txt", "TSM.txt", "WOLF.txt", "MSTR.txt", "SNOW.txt"}; //add more files
+        int stock = 2;
 
         // Process data for each file
         for (String fileName : fileNames) {
@@ -121,7 +121,7 @@ public class data_tester {
             try {
                 String timestamp = stockList.get(i).stockUnits.get(stock).getDate();
                 double closingPrice = stockList.get(i).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
-                double prevClosingPrice = stockList.get(i-1).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
+                double prevClosingPrice = stockList.get(i - 1).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
 
                 if (Math.abs((closingPrice - prevClosingPrice) / prevClosingPrice * 100) > 14) {
                     closingPrice = prevClosingPrice;
@@ -181,6 +181,7 @@ public class data_tester {
 
         // Reverse the list to get the Stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
         Collections.reverse(stockUnits);
+        stockUnits.subList(0, stockUnits.size() - 6000).clear();
 
         return stockUnits;
     }
