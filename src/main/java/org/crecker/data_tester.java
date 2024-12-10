@@ -14,7 +14,6 @@ import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -29,7 +28,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
-import static org.crecker.Main_data_handler.*;
+import static org.crecker.Main_data_handler.stockList;
 
 public class data_tester {
     public static JLabel percentageChange;
@@ -41,12 +40,6 @@ public class data_tester {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
-
-    //new data filler method
-    public static void main(String[] args) {
-        tester();
-        // getData("WOLF");
-    }
 
     //method for pulling new data from server for tests and training
     public static void getData(String symbol) {
@@ -100,44 +93,7 @@ public class data_tester {
         return bufferedWriter;
     }
 
-    public static void tester() {
-        String[] fileNames = {"NVDA.txt", "PLTR.txt", "SMCI.txt", "TSLA.txt", "TSM.txt", "WOLF.txt", "MSTR.txt", "SNOW.txt"}; //add more files
-        int stock = 2;
-
-        // Process data for each file
-        for (String fileName : fileNames) {
-            try {
-                processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")));
-            } catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-
-        calculateStockPercentageChange();
-        calculateSpikes();
-
-        TimeSeries timeSeries = new TimeSeries("stock");
-        for (int i = 2; i < stockList.size(); i++) {
-            try {
-                String timestamp = stockList.get(i).stockUnits.get(stock).getDate();
-                double closingPrice = stockList.get(i).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
-                double prevClosingPrice = stockList.get(i - 1).stockUnits.get(stock).getClose(); // Assuming getClose() returns closing price
-
-                if (Math.abs((closingPrice - prevClosingPrice) / prevClosingPrice * 100) > 14) {
-                    closingPrice = prevClosingPrice;
-                }
-
-                // Add the data to the TimeSeries
-                timeSeries.addOrUpdate(new Minute(convertToDate(timestamp)), closingPrice);
-            } catch (Exception e) {
-                break;
-            }
-        }
-
-        plotData(timeSeries, stockList.get(4).stockUnits.get(stock).getSymbol() + " price change", "Date", "price");
-    }
-
-    public static List<StockUnit> readStockUnitsFromFile(String filePath) throws IOException {
+    public static List<StockUnit> readStockUnitsFromFile(String filePath, int remove) throws IOException {
         // Read the entire file content as a single string
         BufferedReader bufferedReader = new BufferedReader(new FileReader(filePath));
         StringBuilder fileContentBuilder = new StringBuilder();
@@ -181,7 +137,7 @@ public class data_tester {
 
         // Reverse the list to get the Stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
         Collections.reverse(stockUnits);
-        stockUnits.subList(0, stockUnits.size() - 6000).clear();
+        stockUnits.subList(0, stockUnits.size() - remove).clear();
 
         return stockUnits;
     }
@@ -218,9 +174,9 @@ public class data_tester {
                 .build();
     }
 
-    public static void processStockDataFromFile(String filePath, String symbol) throws IOException {
+    public static void processStockDataFromFile(String filePath, String symbol, int remove) throws IOException {
         // Read stock data from file into stockUnits
-        List<StockUnit> stockUnits = readStockUnitsFromFile(filePath);
+        List<StockUnit> stockUnits = readStockUnitsFromFile(filePath, remove);
         Main_data_handler.stock stockObj;
 
         // Ensure stockList is initialized
@@ -324,6 +280,24 @@ public class data_tester {
         plot.addRangeMarker(zeroLine);
 
         // Enable zoom and pan features on the chart panel
+        ChartPanel chartPanel = getChartPanel();
+
+        // Add buttons for controlling the scale
+        JPanel controlPanel = getjPanel(chartPanel);
+
+        // Create the frame to display the chart
+        JFrame frame = new JFrame("Stock Data");
+        frame.setLayout(new BorderLayout());
+        frame.add(chartPanel, BorderLayout.CENTER);
+        frame.add(controlPanel, BorderLayout.SOUTH); // Add control buttons to the frame
+        frame.pack();
+        frame.setAlwaysOnTop(true); // Ensures the frame stays on top of other windows
+        frame.setVisible(true);
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+    }
+
+    @NotNull
+    private static ChartPanel getChartPanel() {
         ChartPanel chartPanel = new ChartPanel(chart);
         chartPanel.setMouseWheelEnabled(true); // Zoom with mouse wheel
         chartPanel.setZoomAroundAnchor(true);  // Zoom on the point where the mouse is anchored
@@ -361,18 +335,7 @@ public class data_tester {
                 }
             }
         });
-
-        // Add buttons for controlling the scale
-        JPanel controlPanel = getjPanel(chartPanel);
-
-        // Create the frame to display the chart
-        JFrame frame = new JFrame("Stock Data");
-        frame.setLayout(new BorderLayout());
-        frame.add(chartPanel, BorderLayout.CENTER);
-        frame.add(controlPanel, BorderLayout.SOUTH); // Add control buttons to the frame
-        frame.pack();
-        frame.setVisible(true);
-        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        return chartPanel;
     }
 
     private static void addFirstMarker(XYPlot plot, double xPosition) {

@@ -148,7 +148,7 @@ public class Main_UI extends JFrame {
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-            data_tester.tester(); //!!!remove tester later
+            P_L_Tester.PLAnalysis(); //!!!remove tester later
         }
     }
 
