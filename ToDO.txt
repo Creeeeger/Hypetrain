@@ -1,14 +1,15 @@
 TODO
 --Testing--
-- optimize parameters for algorithm
 - implement premium api check if it works
 - update notification filter logic for real life usage later on
+- build realFrame method
+- update logic to handle real time events instead of minutes
 
-
-__________Evaluate trading strategy AND algorithm strategy_________
+- improve trading strategy
 
 ----
 remove tester from main UI - data_tester.tester(); //!!!remove tester later
 set frame size to right size - public static int frameSize = 20; // Frame size for analysis
-set entries to right number for crash analysis  - public static int entries = 20; //entries for crash analysis
 remove full frame method - lastNotificationTime = getFullFrame(k, lastNotificationTime, uniqueAlerts);
+
+determine notification value based on the last 3 entries instead of the main entry

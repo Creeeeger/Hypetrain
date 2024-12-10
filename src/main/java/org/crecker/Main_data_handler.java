@@ -13,8 +13,6 @@ import com.crazzyghost.alphavantage.stock.response.StockResponse;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
-import org.jetbrains.annotations.NotNull;
-import org.jetbrains.annotations.Nullable;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 
@@ -30,14 +28,12 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
-import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.logTextArea;
 
 public class Main_data_handler {
     public static ArrayList<stock> stockList = new ArrayList<>();
     public static int frameSize = 20; // Frame size for analysis
-    public static int entries = 20; //entries for crash analysis
-    public static int timeWindow = 20; //time window between alerts
+    public static int timeWindow = 1; //time window between alerts
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
 
     public static void InitAPi(String token) {
@@ -187,7 +183,7 @@ public class Main_data_handler {
                 , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
                 , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
                 , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
-                , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSM", "TSN", "TT"
+                , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
                 , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
                 , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
                 , "ZIM", "ZTO", "ZTS", "ВТВТ"
@@ -425,61 +421,8 @@ public class Main_data_handler {
     }
 
     public static void calculateSpikes() {
-        hardcoreCrash(entries);
         spikeDetector();
         checkToClean();
-    }
-
-    public static void hardcoreCrash(int entries) {
-        try {
-            logTextArea.append("Checking for crashes\n");
-            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        } catch (Exception ignored) {
-        }
-
-        // Ensure we have enough stock data to compare
-        if (stockList.size() >= entries && stockList.size() > 4) {
-            // Initialize a list to track the cumulative percentage changes for each stock unit (skip stock 0)
-            List<Double> changes = new ArrayList<>(Collections.nCopies(stockList.get(4).stockUnits.size(), 0.0));
-
-            // Loop over the stock batches, starting from the (entries)th last batch to compare with the previous batches
-            for (int i = stockList.size() - entries + 1; i < stockList.size(); i++) {
-                stock currentStockBatch = stockList.get(i);
-
-                // Loop through all the stock units in the current batch
-                for (int j = 0; j < currentStockBatch.stockUnits.size() - 1; j++) {  // Start from j = 0 (skip stock 0 only if necessary)
-                    try {
-                        StockUnit currentStockUnit = currentStockBatch.stockUnits.get(j);
-
-                        // Get the cumulative percentage change for this stock unit
-                        double currentPercentageChange = currentStockUnit.getPercentageChange();
-
-                        // Sum up the percentage changes for each stock unit (skip stock 0 if necessary)
-                        changes.set(j, changes.get(j) + currentPercentageChange);
-
-                        // Define a crash threshold (you can adjust this value as needed)
-                        if (changes.get(j) < -6.0) {
-                            // Create a time series for the crashed stock
-                            TimeSeries timeSeries = new TimeSeries(currentStockUnit.getSymbol() + " Time Series");
-
-                            // Populate the time series with the stock's date and closing prices
-                            for (int k = stockList.size() - entries; k < stockList.size(); k++) {
-                                timeSeries.add(new Minute(Main_data_handler.convertToDate(stockList.get(k).stockUnits.get(j).getDate())), stockList.get(k).stockUnits.get(j).getClose());
-                            }
-
-                            // Report the crash with the time series
-                            addNotification(String.format("%.3f%% %s Crash", changes.get(j), currentStockUnit.getSymbol()),
-                                    String.format("Crashed by %.3f%% at %s", changes.get(j), currentStockUnit.getDate()),
-                                    timeSeries,                                     // Include the time series data for the stock
-                                    new Color(178, 34, 34)                 // Color for notification (red)
-                            );
-                        }
-                    } catch (Exception e) {
-                        System.out.println("Error occurred:" + e.getMessage());
-                    }
-                }
-            }
-        }
     }
 
     public static void checkToClean() {
@@ -500,20 +443,30 @@ public class Main_data_handler {
         }
     }
 
+    /**
+     * Detects potential spikes in stock data and generates notifications based on the analysis.
+     * It processes frames of stock data, filters notifications, and sorts them for analysis.
+     */
     public static void spikeDetector() {
-        Set<String> uniqueAlerts = new HashSet<>(); // To track unique alerts
-        LocalDateTime lastNotificationTime = null; // To store the time of the last printed notification
-
         if (stockList.size() > frameSize && stockList.size() > 4) { //check if frame is in size
             for (int k = 0; k < stockList.get(frameSize - 1).stockUnits.size(); k++) { //go through all symbols
-                lastNotificationTime = getFullFrame(k, lastNotificationTime, uniqueAlerts);
-                //   lastNotificationTime = getRealFrame(k, lastNotificationTime, uniqueAlerts);
+                getFullFrame(k);
+                //getRealFrame(k);
             }
         }
+
+        timeWindow = 0;
+        // Before sort all notifications which are significant included
+        // After sort as well but mixed with other notifications
+        filterNotificationsByTimeWindow(notificationsForPLAnalysis);
     }
 
-    @Nullable
-    private static LocalDateTime getRealFrame(int k, LocalDateTime lastNotificationTime, Set<String> uniqueAlerts) {
+    /**
+     * Processes a single frame of stock data to generate real-time notifications.
+     *
+     * @param k Index of the stock symbol in the frame.
+     */
+    private static void getRealFrame(int k) {
         List<StockUnit> frame = new ArrayList<>();
 
         try {
@@ -528,48 +481,22 @@ public class Main_data_handler {
         // Get notifications for the current frame
         List<Notification> notifications = getNotificationForFrame(frame, stockList.get(stockList.size() - 1).stockUnits.get(k).getSymbol());
 
-        if (!notifications.isEmpty()) { // Emptiness check
-
-            // Add unique notifications to the alertsList and add them via addNotification
-            for (Notification notification : notifications) {
-
-                // Check if the notification content contains "Increased" (to filter the stock change notifications)
-                if (notification.getContent().contains("Increased")) {
-                    int atIndex = notification.getContent().indexOf("at the ");
-                    String datePart = notification.getContent().substring(atIndex + "at the ".length()).trim();
-
-                    // Parse the notification time
-                    DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-                    LocalDateTime notificationTime = LocalDateTime.parse(datePart, formatter);
-
-                    // Check if the notification time is outside the 15-minute span or if it's the first notification
-                    if (lastNotificationTime == null || isOutsideTimeWindow(notificationTime, lastNotificationTime)) {
-                        if (uniqueAlerts.add(notification.toString())) { // Ensure uniqueness
-
-                            if (lastNotificationTime == null) {
-                                lastNotificationTime = notificationTime; // Update lastNotificationTime
-                            }
-
-                            addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor());
-                        }
-                    }
-                } else {
-                    // For non-stock change notifications, allow them if they are unique
-                    if (uniqueAlerts.add(notification.toString())) { // Ensure uniqueness
-                        lastNotificationTime = null;
-                        addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor());
-                    }
-                }
-            }
+        if (!notifications.isEmpty()) {
+            notificationsForPLAnalysis.addAll(notifications);
         }
-        return lastNotificationTime;
-    }
+    } //Build method for real data
 
-    @Nullable
-    public static LocalDateTime getFullFrame(int k, LocalDateTime lastNotificationTime, Set<String> uniqueAlerts) {
+
+    /**
+     * Processes multiple frames of stock data to generate notifications for all frames.
+     *
+     * @param k Index of the stock symbol in the frame.
+     */
+    public static void getFullFrame(int k) {
+        List<Notification> stockNotification = new ArrayList<>();
+
         for (int i = frameSize + 1; i < stockList.size() - 1; i++) {
             List<StockUnit> frame = new ArrayList<>();
-
             try {
                 // Create a frame of the last `frameSize` stock units, rolling over each iteration
                 for (int j = i - frameSize; j < i; j++) {
@@ -581,87 +508,74 @@ public class Main_data_handler {
 
             // Get notifications for the current frame
             List<Notification> notifications = getNotificationForFrame(frame, stockList.get(4).stockUnits.get(k).getSymbol());
+
             if (!notifications.isEmpty()) { // Emptiness check
-
-                // Add unique notifications to the alertsList and add them via addNotification
-                for (Notification notification : notifications) {
-
-                    // Check if the notification content contains "Increased" (to filter the stock change notifications)
-                    if (notification.getContent().contains("Increased")) {
-                        int atIndex = notification.getContent().indexOf("at the ");
-                        String datePart = notification.getContent().substring(atIndex + "at the ".length()).trim();
-
-                        // Parse the notification time
-                        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-                        LocalDateTime notificationTime = LocalDateTime.parse(datePart, formatter);
-
-                        // Check if the notification time is outside the 15-minute span or if it's the first notification
-                        if (lastNotificationTime == null || isOutsideTimeWindow(notificationTime, lastNotificationTime)) {
-                            if (uniqueAlerts.add(notification.toString())) { // Ensure uniqueness
-
-                                if (lastNotificationTime == null) {
-                                    lastNotificationTime = notificationTime; // Update lastNotificationTime
-                                }
-
-                                notificationsForPLAnalysis.add(notification);
-                            }
-                        }
-                    } else {
-                        // For non-stock change notifications, allow them if they are unique
-                        if (uniqueAlerts.add(notification.toString())) { // Ensure uniqueness
-                            lastNotificationTime = null;
-                            notificationsForPLAnalysis.add(notification);
-                        }
-                    }
-                }
+                stockNotification.addAll(notifications);
             }
         }
 
-        filterNotificationsByTimeWindow(notificationsForPLAnalysis, timeWindow);
-
-        for (Notification notification : notificationsForPLAnalysis) {
-            try {
-                addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(), notification.getColor());
-            } catch (Exception ignored) {
-            }
-        }
-
-        return lastNotificationTime;
+        filterNotificationsByTimeWindow(stockNotification);
+        notificationsForPLAnalysis.addAll(stockNotification);
     }
 
+    /**
+     * Filters notifications to ensure they are within a defined time window and removes duplicates.
+     *
+     * @param notifications List of notifications to filter.
+     */
+    public static void filterNotificationsByTimeWindow(List<Notification> notifications) {
+        // Sort notifications by their time series end date
+        notifications.sort((n1, n2) -> {
+            Date date1 = n1.getTimeSeries()
+                    .getTimePeriod(n1.getTimeSeries().getItemCount() - 1)
+                    .getEnd();
+            Date date2 = n2.getTimeSeries()
+                    .getTimePeriod(n2.getTimeSeries().getItemCount() - 1)
+                    .getEnd();
+            return date1.compareTo(date2); // Sort from old to new
+        });
 
-    public static void filterNotificationsByTimeWindow(List<Notification> notifications, int timeWindowMinutes) {
-        // Sort notifications by timestamp to ensure proper order
-        notifications.sort(Comparator.comparing(notification1 -> Objects.requireNonNull(parseNotificationTime(notification1))));
-
-        // Create a new list to hold filtered notifications
-        List<Notification> filteredNotifications = new ArrayList<>();
+        // Use a LinkedHashSet to maintain insertion order and ensure uniqueness
+        Set<Notification> filteredNotifications = new LinkedHashSet<>();
         LocalDateTime lastNotificationTime = null;
 
         for (Notification notification : notifications) {
             LocalDateTime currentNotificationTime = parseNotificationTime(notification);
 
             if (currentNotificationTime != null) {
-                // If it's the first notification, or it's outside the time window, keep it
-                if (lastNotificationTime == null ||
-                        isOutsideTimeWindow(currentNotificationTime, lastNotificationTime, timeWindowMinutes)) {
+                // Check uniqueness and time window
+                if (lastNotificationTime == null || isOutsideTimeWindow(currentNotificationTime, lastNotificationTime)) {
                     filteredNotifications.add(notification);
-                    lastNotificationTime = currentNotificationTime; // Update the last notification time
+                    lastNotificationTime = currentNotificationTime; // Update last notification time
                 }
+            } else {
+                // Log or track invalid notifications for debugging
+                System.err.println("Invalid notification format: " + notification);
             }
         }
 
-        // Replace the original list with the filtered list
+        // Replace the original list with filtered notifications
         notifications.clear();
         notifications.addAll(filteredNotifications);
     }
 
-    // Helper method to check if the notification is outside the time window
-    private static boolean isOutsideTimeWindow(LocalDateTime current, LocalDateTime last, int timeWindowMinutes) {
-        return current.isAfter(last.plusMinutes(timeWindowMinutes));
+    /**
+     * Checks if a given notification timestamp is outside the specified time window.
+     *
+     * @param current The timestamp of the current notification.
+     * @param last    The timestamp of the last valid notification.
+     * @return True if the current notification is outside the time window; false otherwise.
+     */
+    private static boolean isOutsideTimeWindow(LocalDateTime current, LocalDateTime last) {
+        return current.isAfter(last.plusMinutes(timeWindow));
     }
 
-    // Parse the notification's timestamp from its content
+    /**
+     * Parses the timestamp from the content of a notification.
+     *
+     * @param notification The notification whose timestamp needs to be parsed.
+     * @return The parsed timestamp as a LocalDateTime object, or null if parsing fails.
+     */
     private static LocalDateTime parseNotificationTime(Notification notification) {
         int atIndex = notification.getContent().indexOf("at the ");
         if (atIndex == -1) {
@@ -678,36 +592,55 @@ public class Main_data_handler {
         }
     }
 
-    // Helper method to check if the notification is outside the 15-minute window
-    private static boolean isOutsideTimeWindow(LocalDateTime current, LocalDateTime last) {
-        return current.isAfter(last.plusMinutes(timeWindow));
-    }
-
+    /**
+     * Generates notifications based on patterns and criteria within a frame of stock data.
+     *
+     * @param stocks    The frame of stock data.
+     * @param stockName The name of the stock being analyzed.
+     * @return A list of notifications generated from the frame.
+     */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String stockName) {
-        //prevent wrong dip variables
+        //prevent wrong dip variables (optimized)
         double lastChanges = 0;
         int lastChangeLength = 5;
 
-        //minor dip detection variables
+        //minor dip detection variables (optimized)
         int consecutiveIncreaseCount = 0;
         double cumulativeIncrease = 0;
         double cumulativeDecrease = 0;
-        double minorDipTolerance = 0.2;
+        double minorDipTolerance = 0.65;
 
-        //rapid increase variables
-        double minIncrease = 0.4;
-        int rapidWindowSize = 4;
-        int minConsecutiveCount = 1;
+        //rapid increase variables (optimized)
+        double minIncrease = 0.25;
+        int rapidWindowSize = 1;
+        int minConsecutiveCount = 2;
 
-        //Volatility variables
-        double volatility = 0.0;
-        double volatilityThreshold = 0.05;
+        //Volatility variables (optimized)
+        double volatility;
+        double volatilityThreshold = 0.07;
+
+        //Crash variables (optimized)
+        double dipDown = -1.5;
+        double dipUp = 0.8;
+        // Target is to minimize the crashes and maximize
+        // the profit or keep the ratio balanced since
+        // we don't want any extremes of both
 
         //algorithm related variables
         List<Notification> alertsList = new ArrayList<>();
         List<Double> percentageChanges = new ArrayList<>();
         TimeSeries timeSeries = new TimeSeries(stockName);
-        String pattern = "";
+
+        /*
+        Algorithm parts:
+        - isWeekendSpan: check if frame is over weekend
+        - percentageChange: gets the percentage change in numerical format for percentage as percent times by 100
+        - timeSeries: adds the frame to the timeSeries for later presentation
+        - lastChanges: sum of all percentages over the frame selected
+        - cumulativeIncrease / cumulativeDecrease: check if increase an increase and allow small dips, check as well for consecutive increases
+        - volatility: calculate the volatility of the frame
+        - rapidIncreaseLogic: check if frame satisfies criteria for notification
+         */
 
         // Prevent notifications if time frame spans over the weekend (Friday to Monday)
         if (isWeekendSpan(stocks)) {
@@ -718,6 +651,7 @@ public class Main_data_handler {
             //Changes & percentages calculations
             double percentageChange = stocks.get(i).getPercentageChange();
             percentageChanges.add(percentageChange);
+
             try {
                 timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
             } catch (Exception ignored) {
@@ -747,26 +681,33 @@ public class Main_data_handler {
 
             //pattern detection & volatility calculation of percentage changes logic
             if (i == stocks.size() - 1) {
-                pattern = detectPattern(percentageChanges);
                 volatility = calculateVolatility(percentageChanges);
-                double change_last_3 = stocks.get(i).getPercentageChange() + stocks.get(i - 1).getPercentageChange() + stocks.get(i - 2).getPercentageChange();
 
-                if (change_last_3 <= -1.5 && stocks.get(i).getPercentageChange() >= 0.5) {
+                if (((stocks.get(i - 1).getPercentageChange() +
+                        stocks.get(i - 2).getPercentageChange() +
+                        stocks.get(i - 3).getPercentageChange()) <= dipDown) &&
+                        (stocks.get(i).getPercentageChange() >= dipUp)) {
                     try {
                         createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getDate(), true);
                     } catch (Exception ignored) {
                     }
                 }
+
+                //rapid increase logic
+                rapidIncreaseLogic(stocks, stockName, i, rapidWindowSize,
+                        volatility, volatilityThreshold, minIncrease, consecutiveIncreaseCount,
+                        minConsecutiveCount, lastChangeLength, lastChanges, alertsList, timeSeries);
             }
-
-            //rapid increase logic
-            rapidIncreaseLogic(stocks, stockName, i, rapidWindowSize, volatility, volatilityThreshold, minIncrease, consecutiveIncreaseCount, minConsecutiveCount, lastChangeLength, lastChanges, pattern, alertsList, timeSeries);
         }
-
         return alertsList;
     }
 
-    // Helper method to check if the time frame spans over the weekend or over-day
+    /**
+     * Checks if the time frame of stock data spans over a weekend or across days.
+     *
+     * @param stocks The frame of stock data.
+     * @return True if the time frame spans a weekend or multiple days; false otherwise.
+     */
     private static boolean isWeekendSpan(List<StockUnit> stocks) {
         // Parse the first and last stock unit's dates
         LocalDateTime startDate = LocalDateTime.parse(stocks.get(0).getDate().replace(' ', 'T'));
@@ -776,26 +717,56 @@ public class Main_data_handler {
         return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY) || !startDate.toLocalDate().equals(endDate.toLocalDate());
     }
 
-    private static void rapidIncreaseLogic(List<StockUnit> stocks, String stockName, int i, int rapidWindowSize, double volatility, double volatilityThreshold, double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount, int lastChangeLength, double lastChanges, String pattern, List<Notification> alertsList, TimeSeries timeSeries) {
+    /**
+     * Implements logic to detect rapid increases in stock prices within a specified frame.
+     *
+     * @param stocks                   The frame of stock data.
+     * @param stockName                The name of the stock being analyzed.
+     * @param i                        The current index within the frame.
+     * @param rapidWindowSize          The size of the rapid increase window.
+     * @param volatility               The volatility of the frame.
+     * @param volatilityThreshold      The threshold for volatility.
+     * @param minIncrease              The minimum percentage increase to qualify.
+     * @param consecutiveIncreaseCount The count of consecutive increases.
+     * @param minConsecutiveCount      The minimum consecutive increase count required.
+     * @param lastChangeLength         The length of the change tracking window.
+     * @param lastChanges              The cumulative percentage change in the window.
+     * @param alertsList               The list to store generated notifications.
+     * @param timeSeries               The time series for graphical representation.
+     */
+    private static void rapidIncreaseLogic(List<StockUnit> stocks, String stockName, int i,
+                                           int rapidWindowSize, double volatility, double volatilityThreshold,
+                                           double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount,
+                                           int lastChangeLength, double lastChanges, List<Notification> alertsList, TimeSeries timeSeries) {
         if (i >= rapidWindowSize) { // Ensure the window is valid
             double maxIncreaseInWindow = 0.0;
 
             for (int j = i - rapidWindowSize + 1; j <= i; j++) {
-                double increase = stocks.get(i).getPercentageChange();
+                double increase = stocks.get(j).getPercentageChange();
                 maxIncreaseInWindow = Math.max(maxIncreaseInWindow, increase);
             }
 
-            if ((volatility >= volatilityThreshold) && (maxIncreaseInWindow >= minIncrease) && (consecutiveIncreaseCount >= minConsecutiveCount) && (i >= (stocks.size() - lastChangeLength)) && (lastChanges > minIncrease)) {
-                Set<String> undesiredPatterns = getStrings();
+            if (((volatility >= volatilityThreshold) || (lastChanges > 1.2)) &&
+                    ((maxIncreaseInWindow >= minIncrease)) &&
+                    (consecutiveIncreaseCount >= minConsecutiveCount) &&
+                    (i >= (stocks.size() - lastChangeLength)) &&
+                    (lastChanges > minIncrease)) {
 
-                // Avoid undesired patterns
-                if (!undesiredPatterns.contains(pattern)) {
-                    createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, stocks.get(i).getDate(), false);
-                }
+                createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, stocks.get(i).getDate(), false);
             }
         }
     }
 
+    /**
+     * Calculates cumulative percentage changes for a stock within a specified length.
+     *
+     * @param stocks           The frame of stock data.
+     * @param i                The current index within the frame.
+     * @param lastChangeLength The length of the change tracking window.
+     * @param lastChanges      The cumulative percentage change.
+     * @param percentageChange The current percentage change.
+     * @return Updated cumulative percentage change.
+     */
     private static double LastChangeLogic(List<StockUnit> stocks, int i, int lastChangeLength, double lastChanges, double percentageChange) {
         if (i >= (stocks.size() - lastChangeLength)) {
             lastChanges += percentageChange;
@@ -803,76 +774,34 @@ public class Main_data_handler {
         return lastChanges;
     }
 
-    // Helper method for calculating volatility (standard deviation of percentage changes)
+    /**
+     * Calculates the volatility (standard deviation) of percentage changes in stock data.
+     *
+     * @param changes A list of percentage changes in stock prices.
+     * @return The calculated volatility.
+     */
     private static double calculateVolatility(List<Double> changes) {
         double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
         double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
         return Math.sqrt(variance); // Standard deviation as volatility measure
     }
 
+    /**
+     * Creates a notification for a stock event (increase or dip) and adds it to the alerts list.
+     *
+     * @param stockName   The name of the stock.
+     * @param totalChange The total percentage change triggering the notification.
+     * @param alertsList  The list to store the notification.
+     * @param timeSeries  The time series for graphical representation.
+     * @param date        The date of the event.
+     * @param dip         True if the event is a dip; false if it's an increase.
+     */
     private static void createNotification(String stockName, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, String date, boolean dip) {
         if ((totalChange > 0) && !dip) {
             alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, stockName), String.format("Increased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 205, 50)));
         } else if (dip) {
             alertsList.add(new Notification(String.format("%.3f%% %s stock dipped", totalChange, stockName), String.format("dipped by %.3f%% at the %s", totalChange, date), timeSeries, new Color(255, 217, 0)));
         }
-    }
-
-    public static String detectPattern(List<Double> percentageChanges) {
-        int size = percentageChanges.size();
-        int segmentSize = size / 3;
-
-        double change0to033 = 0;
-        double change033to066 = 0;
-        double change066to1 = 0;
-
-        // Sum the first third of the list
-        for (int i = 0; i < segmentSize; i++) {
-            change0to033 += percentageChanges.get(i);
-        }
-
-        // Sum the second third of the list
-        for (int i = segmentSize; i < 2 * segmentSize; i++) {
-            change033to066 += percentageChanges.get(i);
-        }
-
-        // Sum the last third of the list
-        for (int i = 2 * segmentSize; i < size; i++) {
-            change066to1 += percentageChanges.get(i);
-        }
-
-        return String.valueOf(getPatternSymbol(change0to033)) +
-                getPatternSymbol(change033to066) +
-                getPatternSymbol(change066to1);
-    }
-
-    // Helper method to determine the pattern symbol based on the threshold
-    private static char getPatternSymbol(double change) {
-        if (change > 0.1) {
-            return '/';
-        } else if (change >= -0.1 && change < 0.1) {
-            return '_';
-        } else {
-            return '\\';
-        }
-    }
-
-    @NotNull
-    private static Set<String> getStrings() {
-        Set<String> undesiredPatterns = new HashSet<>();
-        undesiredPatterns.add("\\\\\\");
-        undesiredPatterns.add("_\\\\");
-        undesiredPatterns.add("__\\");
-        undesiredPatterns.add("___");
-        undesiredPatterns.add("\\__");
-        undesiredPatterns.add("\\\\_");
-        undesiredPatterns.add("\\_\\");
-        undesiredPatterns.add("//\\\\");
-        undesiredPatterns.add("//_\\");
-        undesiredPatterns.add("_\\");
-        undesiredPatterns.add("//__");
-        undesiredPatterns.add("//\\_");
-        return undesiredPatterns;
     }
 
     //Interfaces
@@ -902,7 +831,7 @@ public class Main_data_handler {
         void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
     }
 
-    // OOP Models - reduced to one -> average 25% less Ram used
+    // OOP Models - reduced to one -> average 25% less RAM used
     public static class stock {
         ArrayList<StockUnit> stockUnits;
 
