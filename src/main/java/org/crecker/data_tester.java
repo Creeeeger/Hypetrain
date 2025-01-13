@@ -137,8 +137,11 @@ public class data_tester {
 
         // Reverse the list to get the Stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
         Collections.reverse(stockUnits);
-        stockUnits.subList(0, stockUnits.size() - remove).clear();
-
+        try {
+            stockUnits.subList(0, stockUnits.size() - remove).clear();
+        } catch (Exception e) {
+            stockUnits.subList(0, 0).clear();
+        }
         return stockUnits;
     }
 
