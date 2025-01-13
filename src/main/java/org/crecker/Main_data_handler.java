@@ -22,9 +22,10 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
-import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.stream.Collectors;
 
@@ -33,7 +34,6 @@ import static org.crecker.Main_UI.logTextArea;
 public class Main_data_handler {
     public static ArrayList<stock> stockList = new ArrayList<>();
     public static int frameSize = 20; // Frame size for analysis
-    public static int timeWindow = 1; //time window between alerts
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
 
     public static void InitAPi(String token) {
@@ -455,10 +455,7 @@ public class Main_data_handler {
             }
         }
 
-        timeWindow = 0;
-        // Before sort all notifications which are significant included
-        // After sort as well but mixed with other notifications
-        filterNotificationsByTimeWindow(notificationsForPLAnalysis);
+        sortNotifications(notificationsForPLAnalysis);
     }
 
     /**
@@ -514,16 +511,11 @@ public class Main_data_handler {
             }
         }
 
-        filterNotificationsByTimeWindow(stockNotification);
+        sortNotifications(stockNotification);
         notificationsForPLAnalysis.addAll(stockNotification);
     }
 
-    /**
-     * Filters notifications to ensure they are within a defined time window and removes duplicates.
-     *
-     * @param notifications List of notifications to filter.
-     */
-    public static void filterNotificationsByTimeWindow(List<Notification> notifications) {
+    public static void sortNotifications(List<Notification> notifications) {
         // Sort notifications by their time series end date
         notifications.sort((n1, n2) -> {
             Date date1 = n1.getTimeSeries()
@@ -534,62 +526,6 @@ public class Main_data_handler {
                     .getEnd();
             return date1.compareTo(date2); // Sort from old to new
         });
-
-        // Use a LinkedHashSet to maintain insertion order and ensure uniqueness
-        Set<Notification> filteredNotifications = new LinkedHashSet<>();
-        LocalDateTime lastNotificationTime = null;
-
-        for (Notification notification : notifications) {
-            LocalDateTime currentNotificationTime = parseNotificationTime(notification);
-
-            if (currentNotificationTime != null) {
-                // Check uniqueness and time window
-                if (lastNotificationTime == null || isOutsideTimeWindow(currentNotificationTime, lastNotificationTime)) {
-                    filteredNotifications.add(notification);
-                    lastNotificationTime = currentNotificationTime; // Update last notification time
-                }
-            } else {
-                // Log or track invalid notifications for debugging
-                System.err.println("Invalid notification format: " + notification);
-            }
-        }
-
-        // Replace the original list with filtered notifications
-        notifications.clear();
-        notifications.addAll(filteredNotifications);
-    }
-
-    /**
-     * Checks if a given notification timestamp is outside the specified time window.
-     *
-     * @param current The timestamp of the current notification.
-     * @param last    The timestamp of the last valid notification.
-     * @return True if the current notification is outside the time window; false otherwise.
-     */
-    private static boolean isOutsideTimeWindow(LocalDateTime current, LocalDateTime last) {
-        return current.isAfter(last.plusMinutes(timeWindow));
-    }
-
-    /**
-     * Parses the timestamp from the content of a notification.
-     *
-     * @param notification The notification whose timestamp needs to be parsed.
-     * @return The parsed timestamp as a LocalDateTime object, or null if parsing fails.
-     */
-    private static LocalDateTime parseNotificationTime(Notification notification) {
-        int atIndex = notification.getContent().indexOf("at the ");
-        if (atIndex == -1) {
-            return null; // Invalid format
-        }
-
-        String datePart = notification.getContent().substring(atIndex + "at the ".length()).trim();
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-        try {
-            return LocalDateTime.parse(datePart, formatter);
-        } catch (Exception e) {
-            return null; // Failed to parse
-        }
     }
 
     /**
@@ -611,7 +547,7 @@ public class Main_data_handler {
         double minorDipTolerance = 0.65;
 
         //rapid increase variables (optimized)
-        double minIncrease = 0.25;
+        double minIncrease = 2;
         int rapidWindowSize = 1;
         int minConsecutiveCount = 2;
 
@@ -739,20 +675,14 @@ public class Main_data_handler {
                                            double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount,
                                            int lastChangeLength, double lastChanges, List<Notification> alertsList, TimeSeries timeSeries) {
         if (i >= rapidWindowSize) { // Ensure the window is valid
-            double maxIncreaseInWindow = 0.0;
-
-            for (int j = i - rapidWindowSize + 1; j <= i; j++) {
-                double increase = stocks.get(j).getPercentageChange();
-                maxIncreaseInWindow = Math.max(maxIncreaseInWindow, increase);
-            }
-
             if (((volatility >= volatilityThreshold) || (lastChanges > 1.2)) &&
-                    ((maxIncreaseInWindow >= minIncrease)) &&
                     (consecutiveIncreaseCount >= minConsecutiveCount) &&
                     (i >= (stocks.size() - lastChangeLength)) &&
                     (lastChanges > minIncrease)) {
 
-                createNotification(stockName, maxIncreaseInWindow, alertsList, timeSeries, stocks.get(i).getDate(), false);
+                createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getDate(), false);
+
+         //       System.out.printf("Name: %s Volatility %.2f vs %.2f Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, volatility, volatilityThreshold, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDate());
             }
         }
     }
