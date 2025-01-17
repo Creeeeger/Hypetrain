@@ -18,13 +18,13 @@ import static org.crecker.data_tester.*;
 
 public class P_L_Tester {
     public static void main(String[] args) {
-        // getNewStocks();
+        //updateStocks();
         PLAnalysis();
     }
 
-    private static void getNewStocks() {
-        for (String s : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "APP")) {
-            getData(s);
+    private static void updateStocks() {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA")) {
+            getData(stock);
         }
     }
 
@@ -112,7 +112,7 @@ public class P_L_Tester {
                         capital = capital * (1 + (percentageChange / 100));
 
                         // Print the change and relevant details
-                          //    System.out.printf("%.2f%% %.2f %s %s %s%n", percentageChange, (capital - capitalOriginal), currentEvent.getContent(), stockList.get(dateInArray + 2).stockUnits.get(stockInArray).getDate(), stockName);
+                        //    System.out.printf("%.2f%% %.2f %s %s %s%n", percentageChange, (capital - capitalOriginal), currentEvent.getContent(), stockList.get(dateInArray + 2).stockUnits.get(stockInArray).getDate(), stockName);
 
                         // If the percentage change is above the dip level, continue processing
                         if (percentageChange <= dipLevel) {
@@ -124,7 +124,7 @@ public class P_L_Tester {
                         dateInArray++;
                     }
 
-                   //   getNext5Minutes(capital, dateInArray, stockInArray);
+                    //   getNext5Minutes(capital, dateInArray, stockInArray);
 
                     //  createNotification(currentEvent);
 
@@ -135,7 +135,7 @@ public class P_L_Tester {
             }
 
             revenue = (capital - capitalOriginal) * 0.75;
-            if(!(revenue / calls < 400)){
+            if (!(revenue / calls < 400)) {
                 System.out.printf("%.2f%n", i);
                 System.out.printf("Total Revenue %s€\n", String.format("%.2f", revenue)); // print out results
                 System.out.println("Calls:" + calls);
