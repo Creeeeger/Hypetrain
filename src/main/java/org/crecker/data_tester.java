@@ -27,9 +27,8 @@ import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
-import java.util.Map;
 
-import static org.crecker.Main_data_handler.stockList;
+import static org.crecker.Main_data_handler.symbolTimelines;
 
 public class data_tester {
     public static JLabel percentageChange;
@@ -127,39 +126,23 @@ public class data_tester {
     }
 
     public static void calculateStockPercentageChange() {
-        // Iterate through all consecutive batch pairs
-        for (int i = 1; i < stockList.size(); i++) {
-            Main_data_handler.stock currentBatch = stockList.get(i);
-            Main_data_handler.stock previousBatch = stockList.get(i - 1);
+        symbolTimelines.forEach((symbol, timeline) -> {
+            if (timeline.size() < 2) {
+                return;
+            }
 
-            // Get the map representations
-            Map<String, StockUnit> currentMap = currentBatch.getStockUnits();
-            Map<String, StockUnit> previousMap = previousBatch.getStockUnits();
+            for (int i = 1; i < timeline.size(); i++) {
+                StockUnit current = timeline.get(i);
+                StockUnit previous = timeline.get(i - 1);
 
-            // Iterate through all entries in current batch
-            for (Map.Entry<String, StockUnit> entry : currentMap.entrySet()) {
-                String symbol = entry.getKey();
-                StockUnit currentUnit = entry.getValue();
-
-                // Find matching symbol in previous batch
-                StockUnit previousUnit = previousMap.get(symbol);
-
-                if (previousUnit != null && previousUnit.getClose() > 0) {
-                    double currentClose = currentUnit.getClose();
-                    double previousClose = previousUnit.getClose();
-                    double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
-
-                    if (Math.abs(percentageChange) >= 14) {
-                        currentUnit.setPercentageChange(previousUnit.getPercentageChange());
-                    } else {
-                        currentUnit.setPercentageChange(percentageChange);
-                    }
-                } else {
-                    // Handle new symbols or missing previous data
-                    currentUnit.setPercentageChange(0.0);
+                if (previous.getClose() > 0) {
+                    double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                    change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
+                    current.setPercentageChange(change);
                 }
             }
-        }
+
+        });
     }
 
     public static void plotData(TimeSeries timeSeries, String chart_name, String X_axis, String Y_axis) {

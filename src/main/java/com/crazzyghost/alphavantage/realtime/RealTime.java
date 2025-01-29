@@ -12,6 +12,8 @@ import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 
+import static org.crecker.Main_data_handler.test;
+
 public final class RealTime implements Fetcher {
     private final Config config;
     private final RealTimeRequest.Builder builder;
@@ -56,31 +58,62 @@ public final class RealTime implements Fetcher {
     @Override
     public void fetch() {
         Config.checkNotNullOrKeyEmpty(config);
+        if (test) {
+            // Use the fixed URL for AlphaVantage API
+            String fixedUrl = "https://www.alphavantage.co/query?function=REALTIME_BULK_QUOTES&symbol=MSFT,AAPL,IBM&apikey=demo";
 
-        config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new Callback() {
-            @Override
-            public void onFailure(@NotNull Call call, @NotNull IOException e) {
-                if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException(e.getMessage()));
-            }
+            config.getOkHttpClient().newCall(new Request.Builder().url(fixedUrl).build()).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NotNull Call call, @NotNull IOException e) {
+                    if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException(e.getMessage()));
+                }
 
-            @Override
-            public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
-                if (response.isSuccessful()) {
-                    try (ResponseBody body = response.body()) {
-                        RealTimeResponse realTimeResponse = RealTimeResponse.of(Parser.parseJSON(body != null ? body.string() : null));
-                        if (realTimeResponse.getErrorMessage() != null && failureCallback != null) {
-                            failureCallback.onFailure(new AlphaVantageException(realTimeResponse.getErrorMessage()));
+                @Override
+                public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try (ResponseBody body = response.body()) {
+                            RealTimeResponse realTimeResponse = RealTimeResponse.of(Parser.parseJSON(body != null ? body.string() : null));
+                            if (realTimeResponse.getErrorMessage() != null && failureCallback != null) {
+                                failureCallback.onFailure(new AlphaVantageException(realTimeResponse.getErrorMessage()));
+                            }
+                            if (successCallback != null) {
+                                successCallback.onSuccess(realTimeResponse);
+                            }
                         }
-                        if (successCallback != null) {
-                            successCallback.onSuccess(realTimeResponse);
+                    } else {
+                        if (failureCallback != null) {
+                            failureCallback.onFailure(new AlphaVantageException("Request was unsuccessful"));
                         }
-                    }
-                } else {
-                    if (failureCallback != null) {
-                        failureCallback.onFailure(new AlphaVantageException("Request was unsuccessful"));
                     }
                 }
-            }
-        });
+            });
+        } else {
+            // Use the fixed URL for AlphaVantage API
+            config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new Callback() {
+                @Override
+                public void onFailure(@NotNull Call call, @NotNull IOException e) {
+                    if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException(e.getMessage()));
+                }
+
+                @Override
+                public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
+                    if (response.isSuccessful()) {
+                        try (ResponseBody body = response.body()) {
+                            RealTimeResponse realTimeResponse = RealTimeResponse.of(Parser.parseJSON(body != null ? body.string() : null));
+                            if (realTimeResponse.getErrorMessage() != null && failureCallback != null) {
+                                failureCallback.onFailure(new AlphaVantageException(realTimeResponse.getErrorMessage()));
+                            }
+                            if (successCallback != null) {
+                                successCallback.onSuccess(realTimeResponse);
+                            }
+                        }
+                    } else {
+                        if (failureCallback != null) {
+                            failureCallback.onFailure(new AlphaVantageException("Request was unsuccessful"));
+                        }
+                    }
+                }
+            });
+        }
     }
 }

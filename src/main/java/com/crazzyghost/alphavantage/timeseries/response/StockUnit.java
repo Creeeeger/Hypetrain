@@ -1,13 +1,16 @@
 package com.crazzyghost.alphavantage.timeseries.response;
 
 
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
+
 public class StockUnit {
 
     private final double open;
     private final double high;
     private final double low;
     private final double adjustedClose;
-    private final long volume;
+    private final double volume;
     private final double dividendAmount;
     private final double splitCoefficient;
     private final String dateTime;
@@ -54,7 +57,7 @@ public class StockUnit {
         return adjustedClose;
     }
 
-    public long getVolume() {
+    public double getVolume() {
         return volume;
     }
 
@@ -68,6 +71,10 @@ public class StockUnit {
 
     public String getDate() {
         return dateTime;
+    }
+
+    public LocalDateTime getDateTime() {
+        return LocalDateTime.parse(this.dateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
     public String getSymbol() {
@@ -110,7 +117,7 @@ public class StockUnit {
         double low;
         double close;
         double adjustedClose;
-        long volume;
+        double volume;
         double dividendAmount;
         double splitCoefficient;
         String dateTime;
@@ -147,7 +154,7 @@ public class StockUnit {
             return this;
         }
 
-        public Builder volume(long volume) {
+        public Builder volume(double volume) {
             this.volume = volume;
             return this;
         }

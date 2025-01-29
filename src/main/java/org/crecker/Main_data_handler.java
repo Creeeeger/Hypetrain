@@ -31,9 +31,10 @@ import java.util.stream.Collectors;
 import static org.crecker.Main_UI.logTextArea;
 
 public class Main_data_handler {
-    public static ArrayList<stock> stockList = new ArrayList<>();
-    public static int frameSize = 20; // Frame size for analysis
+    public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
+    public static int frameSize = 5; // Frame size for analysis
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
+    public static boolean test = false;
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -75,16 +76,12 @@ public class Main_data_handler {
                 .onSuccess(e -> {
                     CompanyOverviewResponse overview_response = (CompanyOverviewResponse) e;
                     CompanyOverview response = overview_response.getOverview();
+                    data[4] = response.getPERatio();
+                    data[5] = response.getPEGRatio();
+                    data[6] = response.getFiftyTwoWeekHigh();
+                    data[7] = response.getFiftyTwoWeekLow();
+                    data[8] = Double.valueOf(response.getMarketCapitalization());
 
-                    if (response != null) {
-                        data[4] = response.getPERatio();
-                        data[5] = response.getPEGRatio();
-                        data[6] = response.getFiftyTwoWeekHigh();
-                        data[7] = response.getFiftyTwoWeekLow();
-                        data[8] = Double.valueOf(response.getMarketCapitalization());
-                    } else {
-                        System.out.println("Company overview response is null.");
-                    }
                 })
                 .onFailure(Main_data_handler::handleFailure)
                 .fetch();
@@ -95,15 +92,10 @@ public class Main_data_handler {
                 .forSymbol(symbol_name)
                 .onSuccess(e -> {
                     QuoteResponse response = (QuoteResponse) e;
-
-                    if (response != null) {
-                        data[0] = response.getOpen();
-                        data[1] = response.getHigh();
-                        data[2] = response.getLow();
-                        data[3] = response.getVolume();
-                    } else {
-                        System.out.println("Quote response is null.");
-                    }
+                    data[0] = response.getOpen();
+                    data[1] = response.getHigh();
+                    data[2] = response.getLow();
+                    data[3] = response.getVolume();
 
                     // Call the callback with the fetched data
                     callback.onDataFetched(data);
@@ -264,7 +256,7 @@ public class Main_data_handler {
                                 .outputSize(OutputSize.COMPACT)
                                 .onSuccess(tsResponse -> {
                                     double close = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getClose();
-                                    long volume = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getVolume();
+                                    double volume = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getVolume();
 
                                     // Check conditions and add to actual symbols
                                     if (tradeVolume < market_cap) {
@@ -349,73 +341,50 @@ public class Main_data_handler {
     }
 
     public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
-        Map<String, StockUnit> currentBatch = new HashMap<>(matches.size());
+        Map<String, StockUnit> currentBatch = new HashMap<>();
 
         for (RealTimeResponse.RealTimeMatch match : matches) {
-            try {
-                String symbol = match.getSymbol().toUpperCase();
-                double close = match.getClose();
-                double open = match.getOpen();
-                long volume = (long) match.getVolume();
-                if (close <= 0) {
-                    logTextArea.append("Invalid close price for " + symbol + "\n");
-                    continue;
-                }
+            String symbol = match.getSymbol().toUpperCase();
+            StockUnit unit = new StockUnit.Builder()
+                    .symbol(symbol)
+                    .close(match.getClose() + 5 * Math.random())
+                    .time(match.getTimestamp())
+                    .volume(match.getVolume())
+                    .build();
 
-                currentBatch.put(symbol, new StockUnit.Builder()
-                        .symbol(symbol)
-                        .open(open)
-                        .volume(volume)
-                        .close(close)
-                        .time(match.getTimestamp())
-                        .build());
-            } catch (Exception e) {
-                e.printStackTrace();
-                logTextArea.append("Error processing " + match.getSymbol() + ": " + e.getMessage() + "\n");
-            }
+            // Update symbol timeline
+            symbolTimelines.computeIfAbsent(symbol, k -> new ArrayList<>()).add(unit);
+            currentBatch.put(symbol, unit);
         }
-
-        synchronized (stockList) {
-            stockList.add(new stock(currentBatch));
-        }
-
-        calculateStockPercentageChange();
         logTextArea.append("Processed " + currentBatch.size() + " valid stock entries\n");
+        calculateStockPercentageChange();
     }
 
     public static void calculateStockPercentageChange() {
-        stock previous, current;
+        synchronized (symbolTimelines) {
+            symbolTimelines.forEach((symbol, timeline) -> {
+                if (timeline.size() < 2) {
+                    logTextArea.append("Not enough data for " + symbol + "\n");
+                    return;
+                }
 
-        synchronized (stockList) {
-            if (stockList.size() < 2) {
-                logTextArea.append("Not enough data for calculation\n");
-                return;
-            }
+                int updates = 0;
+                for (int i = 1; i < timeline.size(); i++) {
+                    StockUnit current = timeline.get(i);
+                    StockUnit previous = timeline.get(i - 1);
 
-            previous = stockList.get(stockList.size() - 2);
-            current = stockList.get(stockList.size() - 1);
+                    if (previous.getClose() > 0) {
+                        double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                        change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
+                        current.setPercentageChange(change);
+                        updates++;
+                    }
+                }
+
+                logTextArea.append(symbol + ": Updated " + updates + " percentage changes\n");
+            });
         }
 
-        int updates = 0;
-        Map<String, StockUnit> currentMap = current.getStockUnits();
-        Map<String, StockUnit> previousMap = previous.getStockUnits();
-
-        for (Map.Entry<String, StockUnit> entry : currentMap.entrySet()) {
-            String symbol = entry.getKey();
-            StockUnit prevUnit = previousMap.get(symbol);
-            StockUnit currUnit = entry.getValue();
-
-            if (prevUnit != null && prevUnit.getClose() > 0) {
-                double change = ((currUnit.getClose() - prevUnit.getClose()) / prevUnit.getClose()) * 100;
-                change = Math.abs(change) >= 14 ? prevUnit.getPercentageChange() : change;
-                currUnit.setPercentageChange(change);
-                updates++;
-            } else {
-                currUnit.setPercentageChange(0.0); // Initialize new entries
-            }
-        }
-
-        logTextArea.append("Updated percentage changes for " + updates + " stocks\n");
         calculateSpikes();
     }
 
@@ -425,20 +394,33 @@ public class Main_data_handler {
     }
 
     public static void checkToClean() {
-        // Get the Java runtime
+        // Memory calculation remains the same
         Runtime runtime = Runtime.getRuntime();
-
-        // Calculate the used memory
-        long usedMemory = runtime.totalMemory() - runtime.freeMemory();  // In bytes
-        long usedMemoryInMB = usedMemory / (1024 * 1024);  // Convert bytes to MB
-
-        // Print the current used memory for debugging
+        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+        long usedMemoryInMB = usedMemory / (1024 * 1024);
         System.out.println("Used memory: " + usedMemoryInMB + " MB");
 
-        // Check if the used memory exceeds 400 MB
         if (usedMemoryInMB > 500) {
-            stockList.subList(0, 200).clear();
-            System.out.println("StockList cleared due to excessive memory usage");
+            synchronized (symbolTimelines) {
+                final int MAX_ENTRIES = 1000;  // Keep last 1000 entries per symbol
+                final int MIN_ENTRIES = 200;   // Minimum to maintain for analysis
+
+                symbolTimelines.replaceAll((symbol, timeline) -> {
+                    if (timeline.size() > MAX_ENTRIES) {
+                        int removeCount = timeline.size() - MIN_ENTRIES;
+                        return timeline.subList(removeCount, timeline.size());
+                    }
+                    return timeline;
+                });
+
+                // Optional: Remove empty entries
+                symbolTimelines.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+            }
+
+            System.out.println("Cleaned symbol timelines. Current counts:");
+            symbolTimelines.forEach((sym, list) ->
+                    System.out.println(sym + ": " + list.size() + " entries")
+            );
         }
     }
 
@@ -447,71 +429,51 @@ public class Main_data_handler {
      * It processes frames of stock data, filters notifications, and sorts them for analysis.
      */
     public static void spikeDetector() {
-        if (stockList.size() > frameSize && stockList.size() > 4) { //check if frame is in size
-            for (int k = 0; k < stockList.get(frameSize - 1).stockUnits.size(); k++) { //go through all symbols
-                // getFullFrame(k);
-                //getRealFrame(k);
+        symbolTimelines.keySet().forEach(symbol -> {
+            if (symbolTimelines.get(symbolTimelines.keySet().stream().findFirst().orElseThrow()).size() > frameSize) {
+                getFullFrame(symbol);
             }
-        }
+        });
 
         sortNotifications(notificationsForPLAnalysis);
     }
 
     /**
-     * Processes a single frame of stock data to generate real-time notifications.
+     * Processes multiple frames for a specific symbol to generate notifications
      *
-     * @param k Index of the stock symbol in the frame.
+     * @param symbol The stock symbol to analyze
      */
-    private static void getRealFrame(int k) {
-        List<StockUnit> frame = new ArrayList<>();
-
-        try {
-            // Create a frame of the last `frameSize` stock units
-            for (int j = stockList.size() - 1 - frameSize; j < stockList.size() - 1; j++) {
-                frame.add(stockList.get(j).stockUnits.get(k));
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        // Get notifications for the current frame
-        List<Notification> notifications = getNotificationForFrame(frame, stockList.get(stockList.size() - 1).stockUnits.get(k).getSymbol());
-
-        if (!notifications.isEmpty()) {
-            notificationsForPLAnalysis.addAll(notifications);
-        }
-    } //Build method for real data
-
-
-    /**
-     * Processes multiple frames of stock data to generate notifications for all frames.
-     *
-     * @param k Index of the stock symbol in the frame.
-     */
-    public static void getFullFrame(int k) {
+    public static void getFullFrame(String symbol) {
         List<Notification> stockNotification = new ArrayList<>();
+        List<StockUnit> timeline = getSymbolTimeline(symbol);
 
-        for (int i = frameSize + 1; i < stockList.size() - 1; i++) {
-            List<StockUnit> frame = new ArrayList<>();
+        if (timeline.size() <= frameSize) {
+            System.out.println("TimeLine to small");
+            return;
+        }
+
+        // Slide window through timeline
+        for (int i = frameSize; i < timeline.size(); i++) {
+            List<StockUnit> frame = timeline.subList(i - frameSize, i);
+
             try {
-                // Create a frame of the last `frameSize` stock units, rolling over each iteration
-                for (int j = i - frameSize; j < i; j++) {
-                    frame.add(stockList.get(j).stockUnits.get(k));
+                List<Notification> notifications = getNotificationForFrame(
+                        frame,
+                        symbol // Use actual symbol from timeline
+                );
+
+                if (!notifications.isEmpty()) {
+                    stockNotification.addAll(notifications);
                 }
             } catch (Exception e) {
-                continue;
-            }
-
-            // Get notifications for the current frame
-            List<Notification> notifications = getNotificationForFrame(frame, stockList.get(4).stockUnits.get(k).getSymbol());
-
-            if (!notifications.isEmpty()) { // Emptiness check
-                stockNotification.addAll(notifications);
+                e.printStackTrace();
+                System.out.print("Frame processing failed for " + symbol + " at index " + i + "\n");
             }
         }
 
-        sortNotifications(stockNotification);
-        notificationsForPLAnalysis.addAll(stockNotification);
+        synchronized (notificationsForPLAnalysis) {
+            notificationsForPLAnalysis.addAll(stockNotification);
+        }
     }
 
     public static void sortNotifications(List<Notification> notifications) {
@@ -733,6 +695,12 @@ public class Main_data_handler {
         }
     }
 
+    public static List<StockUnit> getSymbolTimeline(String symbol) {
+        return Collections.unmodifiableList(
+                symbolTimelines.getOrDefault(symbol.toUpperCase(), new ArrayList<>())
+        );
+    }
+
     //Interfaces
     public interface DataCallback {
         void onDataFetched(Double[] values);
@@ -762,7 +730,7 @@ public class Main_data_handler {
 
     // OOP Models - reduced to one -> average 25% less RAM used
     public static class stock {
-        private Map<String, StockUnit> stockUnits;
+        private final Map<String, StockUnit> stockUnits;
 
         public stock(Map<String, StockUnit> units) {
             this.stockUnits = new HashMap<>(units);
@@ -770,10 +738,6 @@ public class Main_data_handler {
 
         public Map<String, StockUnit> getStockUnits() {
             return Collections.unmodifiableMap(stockUnits);
-        }
-
-        public void setStockUnits(Map<String, StockUnit> stockUnits) {
-            this.stockUnits = stockUnits;
         }
     }
 }
