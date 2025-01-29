@@ -22,11 +22,12 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
-import java.io.*;
-import java.util.ArrayList;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.Map;
 
 import static org.crecker.Main_data_handler.stockList;
 
@@ -93,59 +94,7 @@ public class data_tester {
         return bufferedWriter;
     }
 
-    public static List<StockUnit> readStockUnitsFromFile(String filePath, int remove) throws IOException {
-        // Read the entire file content as a single string
-        BufferedReader bufferedReader = new BufferedReader(new FileReader(filePath));
-        StringBuilder fileContentBuilder = new StringBuilder();
-        String line;
-
-        while ((line = bufferedReader.readLine()) != null) {
-            fileContentBuilder.append(line).append("\n");
-        }
-
-        String fileContent = fileContentBuilder.toString().trim();
-
-        // Close the reader as we're done reading the file
-        bufferedReader.close();
-
-        // Trim the leading '[' and trailing ']' if present
-        if (fileContent.startsWith("[")) {
-            fileContent = fileContent.substring(1).trim();
-        }
-
-        if (fileContent.endsWith("]")) {
-            fileContent = fileContent.substring(0, fileContent.length() - 1).trim();
-        }
-
-        String[] stockUnitStrings = fileContent.split("}, ");
-
-        // Initialize the list to hold StockUnit objects
-        List<StockUnit> stockUnits = new ArrayList<>();
-
-        // Iterate over each StockUnit string and parse it
-        for (String stockUnitString : stockUnitStrings) {
-            // Clean up any trailing curly braces and whitespaces
-            stockUnitString = stockUnitString.trim();
-            if (stockUnitString.endsWith("}")) {
-                stockUnitString = stockUnitString.substring(0, stockUnitString.length() - 1);
-            }
-
-            // Parse the string and convert it to a StockUnit object
-            StockUnit stockUnit = parseStockUnit(stockUnitString);
-            stockUnits.add(stockUnit);
-        }
-
-        // Reverse the list to get the Stock units in chronological order since the dumb ass api gives us the stuff in the wrong direction
-        Collections.reverse(stockUnits);
-        try {
-            stockUnits.subList(0, stockUnits.size() - remove).clear();
-        } catch (Exception e) {
-            stockUnits.subList(0, 0).clear();
-        }
-        return stockUnits;
-    }
-
-    private static StockUnit parseStockUnit(String stockUnitString) {
+    public static StockUnit parseStockUnit(String stockUnitString) {
         // Remove "StockUnit{" from the beginning of the string
         stockUnitString = stockUnitString.replace("StockUnit{", "").trim();
 
@@ -177,75 +126,37 @@ public class data_tester {
                 .build();
     }
 
-    public static void processStockDataFromFile(String filePath, String symbol, int remove) throws IOException {
-        // Read stock data from file into stockUnits
-        List<StockUnit> stockUnits = readStockUnitsFromFile(filePath, remove);
-        Main_data_handler.stock stockObj;
-
-        // Ensure stockList is initialized
-        if (stockList == null) {
-            stockList = new ArrayList<>();
-        }
-        boolean isFirstRound = stockList.isEmpty();
-
-        for (int i = 0; i < stockUnits.size(); i++) {
-            List<StockUnit> stockBatch = new ArrayList<>();
-            stockUnits.get(i).setSymbol(symbol);
-            stockBatch.add(stockUnits.get(i));
-            stockObj = new Main_data_handler.stock(new ArrayList<>(stockBatch));
-
-            if (isFirstRound) {
-                stockList.add(stockObj); // Add the stock object to stockList
-            } else {
-                if (i > 0 && i < stockList.size()) {  // Ensure you're not accessing invalid indices
-                    int prevSize = stockList.get(i - 1).stockUnits.size();
-                    int currSize = stockList.get(i).stockUnits.size();
-
-                    if (prevSize != currSize + 1) {
-                        // Handle the mismatch, possibly adding the stock unit to the current stock object
-                        if (currSize > 0) {
-                            stockList.get(i).stockUnits.add(stockUnits.get(i));
-                        }
-
-                    } else {
-                        // Normal case where no mismatch
-                        stockList.get(i).stockUnits.add(stockUnits.get(i));
-                    }
-                }
-            }
-        }
-    }
-
     public static void calculateStockPercentageChange() {
-        // Check if there are at least two batches of stock data in stockList
+        // Iterate through all consecutive batch pairs
         for (int i = 1; i < stockList.size(); i++) {
-            // Get the last two batches
-            Main_data_handler.stock currentStockBatch = stockList.get(i);
-            Main_data_handler.stock previousStockBatch = stockList.get(i - 1);
+            Main_data_handler.stock currentBatch = stockList.get(i);
+            Main_data_handler.stock previousBatch = stockList.get(i - 1);
 
-            // Check if the current batch and previous batch have the same number of stock units
-            if (currentStockBatch.stockUnits.size() == previousStockBatch.stockUnits.size()) {
-                // Iterate through the stock units in the current and previous batches
-                for (int j = 0; j < currentStockBatch.stockUnits.size(); j++) {
-                    // Get the current and previous stock units
-                    StockUnit currentStockUnit = currentStockBatch.stockUnits.get(j);
-                    StockUnit previousStockUnit = previousStockBatch.stockUnits.get(j);
+            // Get the map representations
+            Map<String, StockUnit> currentMap = currentBatch.getStockUnits();
+            Map<String, StockUnit> previousMap = previousBatch.getStockUnits();
 
-                    // Get the current close price and the previous close price
-                    double currentClose = currentStockUnit.getClose();
-                    double previousClose = previousStockUnit.getClose();
+            // Iterate through all entries in current batch
+            for (Map.Entry<String, StockUnit> entry : currentMap.entrySet()) {
+                String symbol = entry.getKey();
+                StockUnit currentUnit = entry.getValue();
 
-                    // Calculate the percentage change between the consecutive stock units
+                // Find matching symbol in previous batch
+                StockUnit previousUnit = previousMap.get(symbol);
+
+                if (previousUnit != null && previousUnit.getClose() > 0) {
+                    double currentClose = currentUnit.getClose();
+                    double previousClose = previousUnit.getClose();
                     double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
 
-                    // Check for a 10% dip or peak
                     if (Math.abs(percentageChange) >= 14) {
-                        currentStockUnit.setPercentageChange(previousStockUnit.getPercentageChange());
-
+                        currentUnit.setPercentageChange(previousUnit.getPercentageChange());
                     } else {
-                        // Set the percentage change using the setter method
-                        currentStockUnit.setPercentageChange(percentageChange);
+                        currentUnit.setPercentageChange(percentageChange);
                     }
+                } else {
+                    // Handle new symbols or missing previous data
+                    currentUnit.setPercentageChange(0.0);
                 }
             }
         }
