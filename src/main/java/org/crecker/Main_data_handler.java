@@ -22,11 +22,10 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Date;
 import java.util.List;
+import java.util.*;
 import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.logTextArea;
@@ -118,13 +117,13 @@ public class Main_data_handler {
         try {
             return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(timestamp);
         } catch (ParseException e) {
-            System.out.println(e.getMessage());
+            e.printStackTrace();
             return new Date();
         }
     }
 
     public static void handleFailure(AlphaVantageException error) {
-        System.out.println("error: " + error.getMessage());
+        error.printStackTrace();
     }
 
     public static void findMatchingSymbols(String searchText, SymbolSearchCallback callback) {
@@ -205,7 +204,7 @@ public class Main_data_handler {
                         possibleSymbols.add(line);
                     }
                 } catch (IOException e) {
-                    System.out.println(e.getMessage());
+                    e.printStackTrace();
                 }
 
                 logTextArea.append("Loaded symbols from file\n");
@@ -225,7 +224,7 @@ public class Main_data_handler {
                             writer.write(symbol + System.lineSeparator());  // Write to file
                         }
                     } catch (IOException e) {
-                        System.out.println(e.getMessage());
+                        e.printStackTrace();
                     }
 
                     logTextArea.append("Finished getting possible symbols\n");
@@ -293,40 +292,50 @@ public class Main_data_handler {
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-        while (true) {
-            try {
-                List<RealTimeResponse.RealTimeMatch> matches = new ArrayList<>();
-                // CountDownLatch to wait for all API calls to finish
-                CountDownLatch latch = new CountDownLatch((int) Math.ceil(symbols.size() / 100.0));
+        // Use a thread-safe list for matches
+        List<RealTimeResponse.RealTimeMatch> matches = Collections.synchronizedList(new ArrayList<>());
 
-                for (int i = 0; i < Math.ceil(symbols.size() / 100.0); i++) {
-                    String symbolsBatch = String.join(",", symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()))).toUpperCase();
+        while (!Thread.currentThread().isInterrupted()) {
+            try {
+                matches.clear();
+                int totalBatches = (int) Math.ceil(symbols.size() / 100.0);
+                CountDownLatch latch = new CountDownLatch(totalBatches);
+
+                for (int i = 0; i < totalBatches; i++) {
+                    List<String> batchSymbols = symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()));
+                    String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
                     AlphaVantage.api()
                             .Realtime()
                             .setSymbols(symbolsBatch)
                             .onSuccess(response -> {
                                 matches.addAll(response.getMatches());
-                                latch.countDown(); // Decrement the latch count when a batch completes
+                                latch.countDown();
                             })
-                            .onFailure(Main_data_handler::handleFailure)
+                            .onFailure(e -> {
+                                handleFailure(e);
+                                latch.countDown(); // Ensure latch is counted down on failure
+                            })
                             .fetch();
                 }
 
-                // Wait for all async calls to complete
-                latch.await(); // This will block until all counts down to 0
+                // Wait with timeout to prevent hanging
+                if (!latch.await(5, TimeUnit.SECONDS)) {
+                    logTextArea.append("Warning: Timed out waiting for data\n");
+                }
 
-                // Once all async calls are completed, process the matches
                 processStockData(matches);
-
-                // Wait for 5 seconds before repeating the function
                 Thread.sleep(5000);
 
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt(); // Restore interrupted status
-                logTextArea.append("Error occurred during data pull\n");
-                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-                break; // Exit the loop if interrupted
+                Thread.currentThread().interrupt();
+                logTextArea.append("Data pull interrupted\n");
+                break;
+            } catch (Exception e) {
+                e.printStackTrace();
+                logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
             }
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
     }
 
@@ -340,83 +349,73 @@ public class Main_data_handler {
     }
 
     public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
-        // Create a new timeframe of StockUnit objects
-        List<StockUnit> stockBatch = new ArrayList<>();
+        Map<String, StockUnit> currentBatch = new HashMap<>(matches.size());
 
-        // Build StockUnit objects for each RealTimeMatch
         for (RealTimeResponse.RealTimeMatch match : matches) {
-            StockUnit stockUnit = new StockUnit.Builder()
-                    .symbol(match.getSymbol())
-                    .close(match.getClose())
-                    .time(match.getTimestamp())
-                    .build();
+            try {
+                String symbol = match.getSymbol().toUpperCase();
+                double close = match.getClose();
+                double open = match.getOpen();
+                long volume = (long) match.getVolume();
+                if (close <= 0) {
+                    logTextArea.append("Invalid close price for " + symbol + "\n");
+                    continue;
+                }
 
-            stockBatch.add(stockUnit);
+                currentBatch.put(symbol, new StockUnit.Builder()
+                        .symbol(symbol)
+                        .open(open)
+                        .volume(volume)
+                        .close(close)
+                        .time(match.getTimestamp())
+                        .build());
+            } catch (Exception e) {
+                e.printStackTrace();
+                logTextArea.append("Error processing " + match.getSymbol() + ": " + e.getMessage() + "\n");
+            }
         }
 
-        // Create a stock object for the current batch
-        stock stockObj = new stock(new ArrayList<>(stockBatch));
-
-        // Apply the same logic used for matchList
-        if (stockList.isEmpty() || stockList.size() == 1) {
-            stockList.add(stockObj); // Add the stock object to stockList
-        } else {
-            // Compare the size of the current stock batch with the previous one
-            if (stockList.get(stockList.size() - 1).stockUnits.size() == matches.size()) {
-                stockList.add(stockObj); // Add the stock object to stockList
-            } else {
-                System.out.println("stockSize doesn't match: " + stockList.get(stockList.size() - 1).stockUnits.size() + " vs. " + matches.size());
-            }
+        synchronized (stockList) {
+            stockList.add(new stock(currentBatch));
         }
 
         calculateStockPercentageChange();
-
-        logTextArea.append("New stock data got processed\n");
-        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        logTextArea.append("Processed " + currentBatch.size() + " valid stock entries\n");
     }
 
     public static void calculateStockPercentageChange() {
-        // Check if there are at least two batches of stock data in stockList
-        if (stockList.size() > 1) {
-            // Get the last two batches
-            stock currentStockBatch = stockList.get(stockList.size() - 1);
-            stock previousStockBatch = stockList.get(stockList.size() - 2);
+        stock previous, current;
 
-            // Check if the current batch and previous batch have the same number of stock units
-            if (currentStockBatch.stockUnits.size() == previousStockBatch.stockUnits.size()) {
-                // Iterate through the stock units in the current and previous batches
-                for (int i = 0; i < currentStockBatch.stockUnits.size(); i++) {
-                    // Get the current and previous stock units
-                    StockUnit currentStockUnit = currentStockBatch.stockUnits.get(i);
-                    StockUnit previousStockUnit = previousStockBatch.stockUnits.get(i);
-
-                    // Get the current close price and the previous close price
-                    double currentClose = currentStockUnit.getClose();
-                    double previousClose = previousStockUnit.getClose();
-
-                    // Calculate the percentage change between the consecutive stock units
-                    double percentageChange = ((currentClose - previousClose) / previousClose) * 100;
-
-                    // Check for a 14% dip or peak
-                    if (Math.abs(percentageChange) >= 14) {
-                        currentStockUnit.setPercentageChange(previousStockUnit.getPercentageChange());
-
-                    } else {
-                        // Set the percentage change using the setter method
-                        currentStockUnit.setPercentageChange(percentageChange);
-                    }
-                }
-
-                logTextArea.append("Stock percentage changes calculated and updated for the latest two batches.\n");
-            } else {
-                logTextArea.append("The number of stock units in the current and previous batches do not match.\n");
+        synchronized (stockList) {
+            if (stockList.size() < 2) {
+                logTextArea.append("Not enough data for calculation\n");
+                return;
             }
-            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        } else {
-            logTextArea.append("Not enough stock data available to calculate percentage change.\n");
-            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
+            previous = stockList.get(stockList.size() - 2);
+            current = stockList.get(stockList.size() - 1);
         }
 
+        int updates = 0;
+        Map<String, StockUnit> currentMap = current.getStockUnits();
+        Map<String, StockUnit> previousMap = previous.getStockUnits();
+
+        for (Map.Entry<String, StockUnit> entry : currentMap.entrySet()) {
+            String symbol = entry.getKey();
+            StockUnit prevUnit = previousMap.get(symbol);
+            StockUnit currUnit = entry.getValue();
+
+            if (prevUnit != null && prevUnit.getClose() > 0) {
+                double change = ((currUnit.getClose() - prevUnit.getClose()) / prevUnit.getClose()) * 100;
+                change = Math.abs(change) >= 14 ? prevUnit.getPercentageChange() : change;
+                currUnit.setPercentageChange(change);
+                updates++;
+            } else {
+                currUnit.setPercentageChange(0.0); // Initialize new entries
+            }
+        }
+
+        logTextArea.append("Updated percentage changes for " + updates + " stocks\n");
         calculateSpikes();
     }
 
@@ -439,7 +438,7 @@ public class Main_data_handler {
         // Check if the used memory exceeds 400 MB
         if (usedMemoryInMB > 500) {
             stockList.subList(0, 200).clear();
-            System.out.println("stockList cleared due to excessive memory usage");
+            System.out.println("StockList cleared due to excessive memory usage");
         }
     }
 
@@ -450,7 +449,7 @@ public class Main_data_handler {
     public static void spikeDetector() {
         if (stockList.size() > frameSize && stockList.size() > 4) { //check if frame is in size
             for (int k = 0; k < stockList.get(frameSize - 1).stockUnits.size(); k++) { //go through all symbols
-                getFullFrame(k);
+                // getFullFrame(k);
                 //getRealFrame(k);
             }
         }
@@ -472,7 +471,7 @@ public class Main_data_handler {
                 frame.add(stockList.get(j).stockUnits.get(k));
             }
         } catch (Exception e) {
-            System.out.println(e.getMessage());
+            e.printStackTrace();
         }
 
         // Get notifications for the current frame
@@ -682,7 +681,7 @@ public class Main_data_handler {
 
                 createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getDate(), false);
 
-         //       System.out.printf("Name: %s Volatility %.2f vs %.2f Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, volatility, volatilityThreshold, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDate());
+                //       System.out.printf("Name: %s Volatility %.2f vs %.2f Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, volatility, volatilityThreshold, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDate());
             }
         }
     }
@@ -763,9 +762,17 @@ public class Main_data_handler {
 
     // OOP Models - reduced to one -> average 25% less RAM used
     public static class stock {
-        ArrayList<StockUnit> stockUnits;
+        private Map<String, StockUnit> stockUnits;
 
-        public stock(ArrayList<StockUnit> stockUnits) {
+        public stock(Map<String, StockUnit> units) {
+            this.stockUnits = new HashMap<>(units);
+        }
+
+        public Map<String, StockUnit> getStockUnits() {
+            return Collections.unmodifiableMap(stockUnits);
+        }
+
+        public void setStockUnits(Map<String, StockUnit> stockUnits) {
             this.stockUnits = stockUnits;
         }
     }

@@ -4,6 +4,9 @@ TODO
 - update notification filter logic for real life usage later on -> build realFrame method
 - update logic to handle real time events instead of minutes
 
+- update PL_Analysis
+- update main algorithm
+
 - improve trading strategy and notification filter logic for event creation
     -> determine notification value based on the last 3 entries instead of the main entry
 
