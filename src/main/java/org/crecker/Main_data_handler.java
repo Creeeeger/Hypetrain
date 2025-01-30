@@ -33,7 +33,7 @@ public class Main_data_handler {
     public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     public static int frameSize = 20; // Frame size for analysis
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
-    public static boolean test = false; //if True use demo url for real Time Updates
+    public static boolean test = true; //if True use demo url for real Time Updates
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -376,7 +376,7 @@ public class Main_data_handler {
     }
 
     public static void calculateSpikes() {
-        spikeDetector();
+        spikeDetector(frameSize, true);
         checkToClean();
     }
 
@@ -411,59 +411,94 @@ public class Main_data_handler {
         }
     }
 
-    /**
-     * Detects potential spikes in stock data and generates notifications based on the analysis.
-     * It processes frames of stock data, filters notifications, and sorts them for analysis.
-     */
-    public static void spikeDetector() {
+    public static void spikeDetector(int minutesPeriod, boolean realFrame) {
         symbolTimelines.keySet()
                 .parallelStream()
                 .forEach(symbol -> {
-                    List<StockUnit> timeline = symbolTimelines.get(symbol);
-                    if (timeline != null && timeline.size() > frameSize) {
-                        getFrame(symbol);
+                    List<StockUnit> timeline = getSymbolTimeline(symbol);
+                    if (!timeline.isEmpty()) {
+                        processTimeWindows(symbol, timeline, minutesPeriod, realFrame);
                     }
                 });
 
         sortNotifications(notificationsForPLAnalysis);
     }
 
-    /**
-     * Processes multiple frames for a specific symbol to generate notifications
-     *
-     * @param symbol The stock symbol to analyze
-     */
-    public static void getFrame(String symbol) {
-        List<Notification> stockNotification = new ArrayList<>();
-        List<StockUnit> timeline = getSymbolTimeline(symbol);
+    private static void processTimeWindows(String symbol, List<StockUnit> timeline, int minutes, boolean useRealFrame) {
+        List<Notification> stockNotifications = new ArrayList<>();
 
-        if (timeline.size() <= frameSize) {
-            System.out.println("TimeLine to small");
-            return;
-        }
+        if (useRealFrame) {
+            // Process only the last relevant timeframe
+            if (!timeline.isEmpty()) {
+                LocalDateTime endTime = timeline.get(timeline.size() - 1).getLocalDateTimeDate();
+                LocalDateTime startTime = endTime.minusMinutes(minutes);
 
-        // Slide window through timeline
-        for (int i = frameSize; i < timeline.size(); i++) {
-            List<StockUnit> frame = timeline.subList(i - frameSize, i);
+                List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
 
-            try {
-                List<Notification> notifications = getNotificationForFrame(
-                        frame,
-                        symbol // Use actual symbol from timeline
-                );
-
-                if (!notifications.isEmpty()) {
-                    stockNotification.addAll(notifications);
+                if (timeWindow.size() >= frameSize) {
+                    try {
+                        List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
+                        stockNotifications.addAll(notifications);
+                    } catch (Exception e) {
+                        System.out.printf("Failed final window for %s: %s%n", symbol, e.getMessage());
+                    }
                 }
-            } catch (Exception e) {
-                e.printStackTrace();
-                System.out.print("Frame processing failed for " + symbol + " at index " + i + "\n");
             }
+        } else {
+            // Original notification-based processing
+            timeline.parallelStream()
+                    .forEach(notificationUnit -> {
+                        LocalDateTime startTime = notificationUnit.getLocalDateTimeDate();
+                        LocalDateTime endTime = startTime.plusMinutes(minutes);
+
+                        List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
+
+                        if (timeWindow.size() >= frameSize) {
+                            try {
+                                List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
+                                stockNotifications.addAll(notifications);
+                            } catch (Exception e) {
+                                System.out.printf("Failed %s window at %s%n", symbol, startTime.format(DateTimeFormatter.ISO_TIME));
+                            }
+                        }
+                    });
         }
 
         synchronized (notificationsForPLAnalysis) {
-            notificationsForPLAnalysis.addAll(stockNotification);
+            notificationsForPLAnalysis.addAll(stockNotifications);
         }
+    }
+
+    private static List<StockUnit> getTimeWindow(List<StockUnit> timeline, LocalDateTime start, LocalDateTime end) {
+        int startIndex = findTimeIndex(timeline, start);
+        if (startIndex == -1) return Collections.emptyList();
+
+        int endIndex = startIndex;
+        while (endIndex < timeline.size() && !timeline.get(endIndex).getLocalDateTimeDate().isAfter(end)) {
+            endIndex++;
+        }
+
+        return timeline.subList(startIndex, endIndex);
+    }
+
+    private static int findTimeIndex(List<StockUnit> timeline, LocalDateTime target) {
+        int low = 0;
+        int high = timeline.size() - 1;
+
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            LocalDateTime midTime = timeline.get(mid).getLocalDateTimeDate();
+
+            if (midTime.isBefore(target)) {
+                low = mid + 1;
+            } else if (midTime.isAfter(target)) {
+                high = mid - 1;
+            } else {
+                return mid;  // Exact match
+            }
+        }
+
+        return low < timeline.size() ? low : -1;  // Nearest index if exact not found
     }
 
     public static void sortNotifications(List<Notification> notifications) {
