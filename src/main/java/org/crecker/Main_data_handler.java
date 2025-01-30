@@ -18,10 +18,9 @@ import org.jfree.data.time.TimeSeries;
 
 import java.awt.*;
 import java.io.*;
-import java.text.ParseException;
-import java.text.SimpleDateFormat;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.CountDownLatch;
@@ -32,9 +31,9 @@ import static org.crecker.Main_UI.logTextArea;
 
 public class Main_data_handler {
     public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
-    public static int frameSize = 5; // Frame size for analysis
+    public static int frameSize = 20; // Frame size for analysis
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
-    public static boolean test = false;
+    public static boolean test = false; //if True use demo url for real Time Updates
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -102,16 +101,6 @@ public class Main_data_handler {
                 })
                 .onFailure(Main_data_handler::handleFailure)
                 .fetch();
-    }
-
-    public static Date convertToDate(String timestamp) {
-        // Convert timestamp to Date
-        try {
-            return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(timestamp);
-        } catch (ParseException e) {
-            e.printStackTrace();
-            return new Date();
-        }
     }
 
     public static void handleFailure(AlphaVantageException error) {
@@ -347,7 +336,7 @@ public class Main_data_handler {
             String symbol = match.getSymbol().toUpperCase();
             StockUnit unit = new StockUnit.Builder()
                     .symbol(symbol)
-                    .close(match.getClose() + 5 * Math.random())
+                    .close(match.getClose())
                     .time(match.getTimestamp())
                     .volume(match.getVolume())
                     .build();
@@ -431,7 +420,7 @@ public class Main_data_handler {
     public static void spikeDetector() {
         symbolTimelines.keySet().forEach(symbol -> {
             if (symbolTimelines.get(symbolTimelines.keySet().stream().findFirst().orElseThrow()).size() > frameSize) {
-                getFullFrame(symbol);
+                getFrame(symbol);
             }
         });
 
@@ -443,7 +432,7 @@ public class Main_data_handler {
      *
      * @param symbol The stock symbol to analyze
      */
-    public static void getFullFrame(String symbol) {
+    public static void getFrame(String symbol) {
         List<Notification> stockNotification = new ArrayList<>();
         List<StockUnit> timeline = getSymbolTimeline(symbol);
 
@@ -492,11 +481,11 @@ public class Main_data_handler {
     /**
      * Generates notifications based on patterns and criteria within a frame of stock data.
      *
-     * @param stocks    The frame of stock data.
-     * @param stockName The name of the stock being analyzed.
+     * @param stocks The frame of stock data.
+     * @param symbol The name of the stock being analyzed.
      * @return A list of notifications generated from the frame.
      */
-    public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String stockName) {
+    public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
         //prevent wrong dip variables (optimized)
         double lastChanges = 0;
         int lastChangeLength = 5;
@@ -526,7 +515,7 @@ public class Main_data_handler {
         //algorithm related variables
         List<Notification> alertsList = new ArrayList<>();
         List<Double> percentageChanges = new ArrayList<>();
-        TimeSeries timeSeries = new TimeSeries(stockName);
+        TimeSeries timeSeries = new TimeSeries(symbol);
 
         /*
         Algorithm parts:
@@ -550,7 +539,7 @@ public class Main_data_handler {
             percentageChanges.add(percentageChange);
 
             try {
-                timeSeries.add(new Minute(Main_data_handler.convertToDate(stocks.get(i).getDate())), stocks.get(i).getClose());
+                timeSeries.add(new Minute(stocks.get(i).getDateDate()), stocks.get(i).getClose());
             } catch (Exception ignored) {
             }
 
@@ -585,13 +574,13 @@ public class Main_data_handler {
                         stocks.get(i - 3).getPercentageChange()) <= dipDown) &&
                         (stocks.get(i).getPercentageChange() >= dipUp)) {
                     try {
-                        createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getDate(), true);
+                        createNotification(symbol, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), true);
                     } catch (Exception ignored) {
                     }
                 }
 
                 //rapid increase logic
-                rapidIncreaseLogic(stocks, stockName, i, rapidWindowSize,
+                rapidIncreaseLogic(stocks, symbol, i, rapidWindowSize,
                         volatility, volatilityThreshold, minIncrease, consecutiveIncreaseCount,
                         minConsecutiveCount, lastChangeLength, lastChanges, alertsList, timeSeries);
             }
@@ -606,9 +595,14 @@ public class Main_data_handler {
      * @return True if the time frame spans a weekend or multiple days; false otherwise.
      */
     private static boolean isWeekendSpan(List<StockUnit> stocks) {
-        // Parse the first and last stock unit's dates
-        LocalDateTime startDate = LocalDateTime.parse(stocks.get(0).getDate().replace(' ', 'T'));
-        LocalDateTime endDate = LocalDateTime.parse(stocks.get(stocks.size() - 1).getDate().replace(' ', 'T'));
+        // Validate list to avoid errors
+        if (stocks == null || stocks.isEmpty()) {
+            throw new IllegalArgumentException("Stock list cannot be null or empty");
+        }
+
+        // Parse dates using the provided method
+        LocalDateTime startDate = stocks.get(0).getLocalDateTimeDate();
+        LocalDateTime endDate = stocks.get(stocks.size() - 1).getLocalDateTimeDate();
 
         // Check if the time span includes a weekend or spans different days
         return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY) || !startDate.toLocalDate().equals(endDate.toLocalDate());
@@ -641,9 +635,9 @@ public class Main_data_handler {
                     (i >= (stocks.size() - lastChangeLength)) &&
                     (lastChanges > minIncrease)) {
 
-                createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getDate(), false);
+                createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), false);
 
-                //       System.out.printf("Name: %s Volatility %.2f vs %.2f Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, volatility, volatilityThreshold, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDate());
+                //       System.out.printf("Name: %s Volatility %.2f vs %.2f Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, volatility, volatilityThreshold, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getStringDate());
             }
         }
     }
@@ -680,18 +674,18 @@ public class Main_data_handler {
     /**
      * Creates a notification for a stock event (increase or dip) and adds it to the alerts list.
      *
-     * @param stockName   The name of the stock.
+     * @param symbol      The name of the stock.
      * @param totalChange The total percentage change triggering the notification.
      * @param alertsList  The list to store the notification.
      * @param timeSeries  The time series for graphical representation.
      * @param date        The date of the event.
      * @param dip         True if the event is a dip; false if it's an increase.
      */
-    private static void createNotification(String stockName, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, String date, boolean dip) {
+    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, boolean dip) {
         if ((totalChange > 0) && !dip) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, stockName), String.format("Increased by %.3f%% at the %s", totalChange, date), timeSeries, new Color(50, 205, 50)));
+            alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, symbol), String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))), timeSeries, new Color(50, 205, 50), date, symbol, totalChange));
         } else if (dip) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock dipped", totalChange, stockName), String.format("dipped by %.3f%% at the %s", totalChange, date), timeSeries, new Color(255, 217, 0)));
+            alertsList.add(new Notification(String.format("%.3f%% %s stock dipped", totalChange, symbol), String.format("dipped by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))), timeSeries, new Color(255, 217, 0), date, symbol, totalChange));
         }
     }
 
@@ -726,18 +720,5 @@ public class Main_data_handler {
 
     public interface RealTimeCallback {
         void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
-    }
-
-    // OOP Models - reduced to one -> average 25% less RAM used
-    public static class stock {
-        private final Map<String, StockUnit> stockUnits;
-
-        public stock(Map<String, StockUnit> units) {
-            this.stockUnits = new HashMap<>(units);
-        }
-
-        public Map<String, StockUnit> getStockUnits() {
-            return Collections.unmodifiableMap(stockUnits);
-        }
     }
 }

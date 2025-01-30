@@ -3,13 +3,11 @@ package org.crecker;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
-import org.jfree.data.time.TimeSeriesDataItem;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.IOException;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -39,54 +37,82 @@ public class P_L_Tester {
         final double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stockNumber = 0;
+        final double dipLevel = -0.5;
+        final int revPCall = 10;
 
         prepData(SYMBOLS, 20000);
+        System.out.println("Data prep done");
 
-        for (double dipLevel = 1.0; dipLevel >= 0.0; dipLevel -= 0.05) {
-            double capital = INITIAL_CAPITAL;
-            int successfulCalls = 0;
-            LocalDateTime lastTradeTime = null;
+        double capital = INITIAL_CAPITAL;
+        int successfulCalls = 0;
+        LocalDateTime lastTradeTime = null;
 
-            for (Notification notification : notificationsForPLAnalysis) {
-                try {
-                    String stockSymbol = extractStockSymbol(notification);
-                    LocalDateTime notificationTime = extractNotificationTime(notification);
+        System.out.println(notificationsForPLAnalysis.size() + " notification entries");
 
-                    // Get from symbol timeline instead of stockList
-                    StockUnit currentUnit = findInSymbolTimeline(stockSymbol, notificationTime);
-                    if (currentUnit == null) continue;
+        for (Notification notification : notificationsForPLAnalysis) {
+            try {
+                String stockSymbol = notification.getSymbol();
 
-                    if (shouldProcessDip(currentUnit, dipLevel, lastTradeTime)) {
-                        TradeResult result = processSymbolTradeSequence(currentUnit, dipLevel, capital);
-                        capital = result.newCapital() - FEE;
-                        successfulCalls++;
-                        lastTradeTime = result.lastTradeTime();
-                        //createNotification(notification);
-                        logTradeResult(stockSymbol, result);
-                        //getNext5Minutes(capital, result.lastTradeTime(), stockSymbol);
-                    }
-                } catch (Exception e) {
-                    System.err.println("Error processing notification: " + e.getMessage());
+                // Get from symbol timeline instead of stockList
+                StockUnit currentUnit = findInSymbolTimeline(stockSymbol, notification.getLocalDateTime());
+
+                if (currentUnit == null) {
+                    System.out.println("Error: Time is not in TimeLine");
+                    continue;
                 }
+
+                if (shouldProcessDip(currentUnit, dipLevel, lastTradeTime)) {
+                    TradeResult result = processSymbolTradeSequence(currentUnit, dipLevel, capital);
+                    capital = result.newCapital() - FEE;
+                    successfulCalls++;
+                    lastTradeTime = result.lastTradeTime();
+                    //createNotification(notification);
+                    logTradeResult(stockSymbol, result);
+                    //getNext5Minutes(capital, result.lastTradeTime(), stockSymbol);
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
             }
-            logFinalResults(dipLevel, capital, INITIAL_CAPITAL, successfulCalls);
         }
+        logFinalResults(dipLevel, capital, INITIAL_CAPITAL, successfulCalls, revPCall);
+
         //createTimeline(SYMBOLS[stockNumber]);
     }
 
-    private static LocalDateTime extractNotificationTime(Notification notification) {
-        TimeSeriesDataItem item = notification.getTimeSeries().getDataItem(
-                notification.getTimeSeries().getItemCount() - 1
-        );
-        return LocalDateTime.ofInstant(
-                item.getPeriod().getEnd().toInstant(),
-                ZoneId.systemDefault()
-        );
+    private static StockUnit findInSymbolTimeline(String symbol, LocalDateTime timestamp) {
+        List<StockUnit> timeline = getSymbolTimeline(symbol);
+
+        return timeline.stream()
+                .filter(unit -> unit.getLocalDateTimeDate().equals(timestamp))
+                .findFirst()
+                .orElse(null);
     }
 
     private static boolean shouldProcessDip(StockUnit unit, double dipLevel, LocalDateTime lastTradeTime) {
-        return unit.getPercentageChange() <= dipLevel &&
-                (lastTradeTime == null || unit.getDateTime().isAfter(lastTradeTime));
+        return unit.getPercentageChange() <= dipLevel && (lastTradeTime == null || unit.getLocalDateTimeDate().isAfter(lastTradeTime));
+    }
+
+    private static TradeResult processSymbolTradeSequence(StockUnit startUnit, double dipLevel, double capital) {
+        List<StockUnit> timeline = symbolTimelines.get(startUnit.getSymbol());
+        if (timeline == null) return new TradeResult(capital, startUnit.getLocalDateTimeDate());
+
+        int startIndex = timeline.indexOf(startUnit);
+        if (startIndex == -1) return new TradeResult(capital, startUnit.getLocalDateTimeDate());
+
+        double currentCapital = capital;
+        LocalDateTime currentTime = startUnit.getLocalDateTimeDate();
+
+        for (int i = startIndex + 1; i < timeline.size(); i++) {
+            StockUnit nextUnit = timeline.get(i);
+            currentCapital *= (1 + (nextUnit.getPercentageChange() / 100));
+            currentTime = nextUnit.getLocalDateTimeDate();
+
+            if (nextUnit.getPercentageChange() > dipLevel) {
+                break;
+            }
+        }
+
+        return new TradeResult(currentCapital, currentTime);
     }
 
     private static void logTradeResult(String symbol, TradeResult result) {
@@ -97,53 +123,14 @@ public class P_L_Tester {
         );
     }
 
-    private static void logFinalResults(double dipLevel, double capital, double initial, int calls) {
+    private static void logFinalResults(double dipLevel, double capital, double initial, int calls, int revPCall) {
         double revenue = (capital - initial) * 0.75;
-        if (calls > 0 && revenue / calls >= 400) {
+        if (calls > 0 && revenue / calls >= revPCall) {
             System.out.printf("Dip Level: %.2f%n", dipLevel);
             System.out.printf("Total Revenue: €%.2f%n", revenue);
             System.out.printf("Successful Calls: %d%n", calls);
             System.out.printf("Revenue/Call: €%.2f%n%n", revenue / calls);
         }
-    }
-
-    // Modified helper methods
-    private static String extractStockSymbol(Notification notification) {
-        String title = notification.getTitle();
-        int start = title.indexOf("%") + 2;
-        int end = title.indexOf(" stock");
-        return title.substring(start, end).toUpperCase();
-    }
-
-    private static StockUnit findInSymbolTimeline(String symbol, LocalDateTime timestamp) {
-        List<StockUnit> timeline = symbolTimelines.getOrDefault(symbol, Collections.emptyList());
-        return timeline.stream()
-                .filter(unit -> unit.getDateTime().equals(timestamp))
-                .findFirst()
-                .orElse(null);
-    }
-
-    private static TradeResult processSymbolTradeSequence(StockUnit startUnit, double dipLevel, double capital) {
-        List<StockUnit> timeline = symbolTimelines.get(startUnit.getSymbol());
-        if (timeline == null) return new TradeResult(capital, startUnit.getDateTime());
-
-        int startIndex = timeline.indexOf(startUnit);
-        if (startIndex == -1) return new TradeResult(capital, startUnit.getDateTime());
-
-        double currentCapital = capital;
-        LocalDateTime currentTime = startUnit.getDateTime();
-
-        for (int i = startIndex + 1; i < timeline.size(); i++) {
-            StockUnit nextUnit = timeline.get(i);
-            currentCapital *= (1 + (nextUnit.getPercentageChange() / 100));
-            currentTime = nextUnit.getDateTime();
-
-            if (nextUnit.getPercentageChange() > dipLevel) {
-                break;
-            }
-        }
-
-        return new TradeResult(currentCapital, currentTime);
     }
 
     private static void prepData(String[] fileNames, int cut) {
@@ -220,7 +207,10 @@ public class P_L_Tester {
 
     private static void createNotification(Notification currentEvent) {
         try {
-            addNotification(currentEvent.getTitle(), currentEvent.getContent(), currentEvent.getTimeSeries(), currentEvent.getColor());
+            addNotification(currentEvent.getTitle(), currentEvent.getContent(),
+                    currentEvent.getTimeSeries(), currentEvent.getColor(),
+                    currentEvent.getLocalDateTime(), currentEvent.getSymbol(),
+                    currentEvent.getChange());
         } catch (Exception ignored) {
         }
     }
@@ -239,7 +229,7 @@ public class P_L_Tester {
 
             for (StockUnit unit : timeline) {
                 timeSeries.addOrUpdate(
-                        new Minute(convertToDate(unit.getDate())),
+                        new Minute(unit.getDateDate()),
                         unit.getClose()
                 );
             }
@@ -262,7 +252,7 @@ public class P_L_Tester {
         // Find starting index
         int startIndex = -1;
         for (int i = 0; i < timeline.size(); i++) {
-            if (timeline.get(i).getDateTime().equals(startTime)) {
+            if (timeline.get(i).getLocalDateTimeDate().equals(startTime)) {
                 startIndex = i;
                 break;
             }
@@ -287,7 +277,7 @@ public class P_L_Tester {
 
             System.out.printf("\u001B[33m%d min later: %+.2f%% on %s → $%.2f\u001B[0m%n",
                     i, change,
-                    futureUnit.getDateTime().format(DateTimeFormatter.ISO_LOCAL_TIME),
+                    futureUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                     simulatedCapital
             );
         }

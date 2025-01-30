@@ -6,6 +6,7 @@
 - Hop onto the hype Train
 - damn boy make that cash
 - Donate 1% of your earnings to me if you are not gay
+- Now new without OOP models but hashmaps for insane performance
 
 
 - search for symbols

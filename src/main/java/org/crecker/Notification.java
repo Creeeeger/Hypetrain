@@ -8,22 +8,41 @@ import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
+import java.time.LocalDateTime;
 
 public class Notification {
     private final String title;
     private final String content;
     private final TimeSeries timeSeries;
     private final Color color;
+    private final LocalDateTime localDateTime;
+    private final String symbol;
+    private final double change;
     private JFrame notificationFrame; // Frame for the notification
 
-    public Notification(String title, String content, TimeSeries timeSeries, Color color) {
+    public Notification(String title, String content, TimeSeries timeSeries, Color color, LocalDateTime localDateTime, String symbol, double change) {
         this.title = title;
         this.content = content;
         this.timeSeries = timeSeries;
         this.color = color;
+        this.localDateTime = localDateTime;
+        this.symbol = symbol;
+        this.change = change;
     }
 
-    public String getTitle() { //get the title
+    public double getChange() {
+        return change;
+    }
+
+    public String getSymbol() {
+        return symbol;
+    }
+
+    public LocalDateTime getLocalDateTime() {
+        return localDateTime;
+    }
+
+    public String getTitle() {
         return title;
     }
 
