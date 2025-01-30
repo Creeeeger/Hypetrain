@@ -9,10 +9,8 @@ import java.io.FileReader;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.addNotification;
@@ -20,6 +18,9 @@ import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.*;
 
 public class P_L_Tester {
+    // Index map for quick timestamp lookups
+    private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
+
     public static void main(String[] args) {
         //updateStocks();
         PLAnalysis();
@@ -32,87 +33,88 @@ public class P_L_Tester {
     }
 
     public static void PLAnalysis() {
-        // Configuration - use symbol names without .txt extension
+        // Configuration
         final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
         final double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
-        final int stockNumber = 0;
-        final double dipLevel = -0.5;
-        final int revPCall = 10;
+        final int stock = 0;
+        final double DIP_LEVEL = -0.5;
 
         prepData(SYMBOLS, 20000);
-        System.out.println("Data prep done");
+
+        // Preprocess indices during data loading
+        Arrays.stream(SYMBOLS).forEach(symbol ->
+                buildTimeIndex(symbol.replace(".txt", ""), getSymbolTimeline(symbol.replace(".txt", "")))
+        );
 
         double capital = INITIAL_CAPITAL;
         int successfulCalls = 0;
         LocalDateTime lastTradeTime = null;
 
-        System.out.println(notificationsForPLAnalysis.size() + " notification entries");
+        // Cache timelines per notification
+        Map<String, List<StockUnit>> timelineCache = new HashMap<>();
 
         for (Notification notification : notificationsForPLAnalysis) {
-            try {
-                String stockSymbol = notification.getSymbol();
+            //createNotification(notification);
 
-                // Get from symbol timeline instead of stockList
-                StockUnit currentUnit = findInSymbolTimeline(stockSymbol, notification.getLocalDateTime());
+            String symbol = notification.getSymbol();
+            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, Main_data_handler::getSymbolTimeline);
 
-                if (currentUnit == null) {
-                    System.out.println("Error: Time is not in TimeLine");
-                    continue;
-                }
+            Integer index = getIndexForTime(symbol, notification.getLocalDateTime());
 
-                if (shouldProcessDip(currentUnit, dipLevel, lastTradeTime)) {
-                    TradeResult result = processSymbolTradeSequence(currentUnit, dipLevel, capital);
-                    capital = result.newCapital() - FEE;
-                    successfulCalls++;
-                    lastTradeTime = result.lastTradeTime();
-                    //createNotification(notification);
-                    logTradeResult(stockSymbol, result);
-                    //getNext5Minutes(capital, result.lastTradeTime(), stockSymbol);
-                }
-            } catch (Exception e) {
-                e.printStackTrace();
+            if (index == null || index >= timeline.size() - 1) {
+                System.out.println("Invalid time index for " + symbol);
+                continue;
+            }
+
+            StockUnit nextUnit = timeline.get(index + 1);
+
+            if (shouldProcessDip(nextUnit, DIP_LEVEL, lastTradeTime)) {
+                TradeResult result = processTradeSequence(timeline, index + 2, DIP_LEVEL, capital);
+                capital = result.newCapital() - FEE;
+                successfulCalls++;
+                lastTradeTime = result.lastTradeTime();
+                logTradeResult(symbol, result);
+                //getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
             }
         }
-        logFinalResults(dipLevel, capital, INITIAL_CAPITAL, successfulCalls, revPCall);
 
-        //createTimeline(SYMBOLS[stockNumber]);
+        //createTimeline(SYMBOLS[stock]);
+        logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
     }
 
-    private static StockUnit findInSymbolTimeline(String symbol, LocalDateTime timestamp) {
-        List<StockUnit> timeline = getSymbolTimeline(symbol);
-
-        return timeline.stream()
-                .filter(unit -> unit.getLocalDateTimeDate().equals(timestamp))
-                .findFirst()
-                .orElse(null);
+    private static void buildTimeIndex(String symbol, List<StockUnit> timeline) {
+        Map<LocalDateTime, Integer> indexMap = new HashMap<>();
+        for (int i = 0; i < timeline.size(); i++) {
+            indexMap.put(timeline.get(i).getLocalDateTimeDate(), i);
+        }
+        symbolTimeIndex.put(symbol, indexMap);
     }
 
-    private static boolean shouldProcessDip(StockUnit unit, double dipLevel, LocalDateTime lastTradeTime) {
-        return unit.getPercentageChange() <= dipLevel && (lastTradeTime == null || unit.getLocalDateTimeDate().isAfter(lastTradeTime));
+    private static Integer getIndexForTime(String symbol, LocalDateTime time) {
+        return symbolTimeIndex.getOrDefault(symbol, Collections.emptyMap()).get(time);
     }
 
-    private static TradeResult processSymbolTradeSequence(StockUnit startUnit, double dipLevel, double capital) {
-        List<StockUnit> timeline = symbolTimelines.get(startUnit.getSymbol());
-        if (timeline == null) return new TradeResult(capital, startUnit.getLocalDateTimeDate());
+    private static boolean shouldProcessDip(StockUnit nextUnit, double dipLevel, LocalDateTime lastTradeTime) {
+        return nextUnit.getPercentageChange() >= dipLevel && (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime));
+    }
 
-        int startIndex = timeline.indexOf(startUnit);
-        if (startIndex == -1) return new TradeResult(capital, startUnit.getLocalDateTimeDate());
-
+    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital) {
         double currentCapital = capital;
-        LocalDateTime currentTime = startUnit.getLocalDateTimeDate();
+        int currentIndex = startIndex;
+        final int maxSteps = Math.min(timeline.size(), startIndex + 100); // Safety limit
 
-        for (int i = startIndex + 1; i < timeline.size(); i++) {
-            StockUnit nextUnit = timeline.get(i);
-            currentCapital *= (1 + (nextUnit.getPercentageChange() / 100));
-            currentTime = nextUnit.getLocalDateTimeDate();
+        while (currentIndex < maxSteps) {
+            StockUnit unit = timeline.get(currentIndex);
+            currentCapital *= (1 + (unit.getPercentageChange() / 100));
 
-            if (nextUnit.getPercentageChange() > dipLevel) {
+            if (unit.getPercentageChange() < dipLevel) {
                 break;
             }
+            currentIndex++;
         }
 
-        return new TradeResult(currentCapital, currentTime);
+        return new TradeResult(currentCapital, timeline.get(currentIndex).getLocalDateTimeDate());
     }
 
     private static void logTradeResult(String symbol, TradeResult result) {
@@ -123,9 +125,9 @@ public class P_L_Tester {
         );
     }
 
-    private static void logFinalResults(double dipLevel, double capital, double initial, int calls, int revPCall) {
+    private static void logFinalResults(double dipLevel, double capital, double initial, int calls) {
         double revenue = (capital - initial) * 0.75;
-        if (calls > 0 && revenue / calls >= revPCall) {
+        if (calls > 0) {
             System.out.printf("Dip Level: %.2f%n", dipLevel);
             System.out.printf("Total Revenue: €%.2f%n", revenue);
             System.out.printf("Successful Calls: %d%n", calls);
@@ -135,13 +137,13 @@ public class P_L_Tester {
 
     private static void prepData(String[] fileNames, int cut) {
         // Calculation of spikes, Process data for each file
-        for (String fileName : fileNames) {
+        Arrays.stream(fileNames).parallel().forEach(fileName -> {
             try {
                 processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), cut);
             } catch (IOException e) {
                 throw new RuntimeException(e);
             }
-        }
+        });
 
         data_tester.calculateStockPercentageChange();
         spikeDetector();
@@ -249,16 +251,9 @@ public class P_L_Tester {
             return;
         }
 
-        // Find starting index
-        int startIndex = -1;
-        for (int i = 0; i < timeline.size(); i++) {
-            if (timeline.get(i).getLocalDateTimeDate().equals(startTime)) {
-                startIndex = i;
-                break;
-            }
-        }
+        Integer startIndex = symbolTimeIndex.getOrDefault(symbol, Collections.emptyMap()).get(startTime);
 
-        if (startIndex == -1) {
+        if (startIndex == null || startIndex < 0 || startIndex >= timeline.size()) {
             System.out.println("Start time not found in data: " + startTime);
             return;
         }
@@ -268,8 +263,9 @@ public class P_L_Tester {
 
         double simulatedCapital = capital;
         int predictionsMade = 0;
+        final int maxSteps = Math.min(5, timeline.size() - startIndex - 1);
 
-        for (int i = 1; i <= 5 && (startIndex + i) < timeline.size(); i++) {
+        for (int i = 1; i <= maxSteps; i++) {
             StockUnit futureUnit = timeline.get(startIndex + i);
             double change = futureUnit.getPercentageChange();
             simulatedCapital *= (1 + (change / 100));
