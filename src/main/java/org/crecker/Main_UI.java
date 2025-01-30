@@ -26,6 +26,8 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
+import java.text.SimpleDateFormat;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.ExecutorService;
@@ -238,7 +240,7 @@ public class Main_UI extends JFrame {
         }
 
         // Remove the trailing comma if the StringBuilder is not empty
-        if (symBuilder.length() > 0) {
+        if (!symBuilder.isEmpty()) {
             symBuilder.setLength(symBuilder.length() - 1); // Remove the last comma
         }
         return symBuilder.toString();
@@ -268,7 +270,7 @@ public class Main_UI extends JFrame {
     }
 
     // Method to add a notification
-    public static void addNotification(String title, String content, TimeSeries timeSeries, Color color) {
+    public static void addNotification(String title, String content, TimeSeries timeSeries, Color color, LocalDateTime localDateTime, String symbol, double change) {
         // Loop through existing notifications to check for duplicates
         for (int i = 0; i < notificationListModel.getSize(); i++) {
             Notification existingNotification = notificationListModel.getElementAt(i);
@@ -282,7 +284,7 @@ public class Main_UI extends JFrame {
         }
 
         // If no duplicate found, create and add the new notification
-        Notification newNotification = new Notification(title, content, timeSeries, color);
+        Notification newNotification = new Notification(title, content, timeSeries, color, localDateTime, symbol, change);
         notificationListModel.addElement(newNotification);
     }
 
@@ -544,7 +546,7 @@ public class Main_UI extends JFrame {
                         if (value != null) {
                             SwingUtilities.invokeLater(() -> {
                                 try {
-                                    Date date = Main_data_handler.convertToDate(value.getTimestamp());
+                                    Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
                                     // Get the latest closing price for the new data point
                                     double latestClose = value.getClose();  // Assuming 'value' contains the stock data
 
@@ -726,10 +728,9 @@ public class Main_UI extends JFrame {
                         break; // Stop if data limit exceeds available stock data
                     }
 
-                    String timestamp = stocks.get(i).getDate();
                     double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
 
-                    timeSeries.add(new Minute(Main_data_handler.convertToDate(timestamp)), closingPrice);
+                    timeSeries.add(new Minute(stocks.get(i).getDateDate()), closingPrice);
                 }
                 // Create a new chart with the updated time series
                 newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
@@ -752,9 +753,8 @@ public class Main_UI extends JFrame {
                         break; // Stop if data limit exceeds available stock data
                     }
 
-                    String timestamp = stocks.get(i).getDate();
                     double closingPrice = stocks.get(i).getClose();
-                    Date date = Main_data_handler.convertToDate(timestamp);
+                    Date date = stocks.get(i).getDateDate();
 
                     // Add new data only if it doesn't already exist
                     if (!existingTimestamps.contains(date)) {

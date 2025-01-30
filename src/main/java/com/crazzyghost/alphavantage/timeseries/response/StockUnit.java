@@ -1,8 +1,11 @@
 package com.crazzyghost.alphavantage.timeseries.response;
 
 
+import java.text.ParseException;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.Date;
 
 public class StockUnit {
 
@@ -69,12 +72,16 @@ public class StockUnit {
         return splitCoefficient;
     }
 
-    public String getDate() {
-        return dateTime;
+    public LocalDateTime getLocalDateTimeDate() {
+        return LocalDateTime.parse(this.dateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
     }
 
-    public LocalDateTime getDateTime() {
-        return LocalDateTime.parse(this.dateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+    public Date getDateDate() {
+        try {
+            return new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(this.dateTime);
+        } catch (ParseException e) {
+            throw new RuntimeException(e);
+        }
     }
 
     public String getSymbol() {
