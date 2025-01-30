@@ -108,19 +108,17 @@ public class Main_data_handler {
     }
 
     public static void findMatchingSymbols(String searchText, SymbolSearchCallback callback) {
-        List<String> allSymbols = new ArrayList<>();
-
         AlphaVantage.api()
                 .Stocks()
                 .setKeywords(searchText)
                 .onSuccess(e -> {
-                    List<StockResponse.StockMatch> list = e.getMatches();
+                    List<String> allSymbols = e.getMatches()
+                            .parallelStream()
+                            .map(StockResponse.StockMatch::getSymbol)
+                            .toList();
 
-                    for (StockResponse.StockMatch stockResponse : list) {
-                        allSymbols.add(stockResponse.getSymbol());
-                    }
-                    // Filter and invoke the callback on success
-                    List<String> filteredSymbols = allSymbols.stream()
+                    // Perform parallel filtering and pass result to callback
+                    List<String> filteredSymbols = allSymbols.parallelStream()
                             .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
                             .collect(Collectors.toList());
                     callback.onSuccess(filteredSymbols);
@@ -418,11 +416,14 @@ public class Main_data_handler {
      * It processes frames of stock data, filters notifications, and sorts them for analysis.
      */
     public static void spikeDetector() {
-        symbolTimelines.keySet().forEach(symbol -> {
-            if (symbolTimelines.get(symbolTimelines.keySet().stream().findFirst().orElseThrow()).size() > frameSize) {
-                getFrame(symbol);
-            }
-        });
+        symbolTimelines.keySet()
+                .parallelStream()
+                .forEach(symbol -> {
+                    List<StockUnit> timeline = symbolTimelines.get(symbol);
+                    if (timeline != null && timeline.size() > frameSize) {
+                        getFrame(symbol);
+                    }
+                });
 
         sortNotifications(notificationsForPLAnalysis);
     }
@@ -682,10 +683,13 @@ public class Main_data_handler {
      * @param dip         True if the event is a dip; false if it's an increase.
      */
     private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, boolean dip) {
+        String dateString = date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"));
+        String dateStringShort = date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm"));
+
         if ((totalChange > 0) && !dip) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock increase", totalChange, symbol), String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))), timeSeries, new Color(50, 205, 50), date, symbol, totalChange));
+            alertsList.add(new Notification(String.format("%.3f%% %s ↑ %s", totalChange, symbol, dateStringShort), String.format("Increased by %.3f%% at the %s", totalChange, dateString), timeSeries, new Color(50, 205, 50), date, symbol, totalChange));
         } else if (dip) {
-            alertsList.add(new Notification(String.format("%.3f%% %s stock dipped", totalChange, symbol), String.format("dipped by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"))), timeSeries, new Color(255, 217, 0), date, symbol, totalChange));
+            alertsList.add(new Notification(String.format("%.3f%% %s ↓ %s", totalChange, symbol, dateStringShort), String.format("dipped by %.3f%% at the %s", totalChange, dateString), timeSeries, new Color(255, 217, 0), date, symbol, totalChange));
         }
     }
 
