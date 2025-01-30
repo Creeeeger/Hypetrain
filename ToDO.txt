@@ -3,9 +3,3 @@ TODO
 
 - update main algorithm for detection
 - update & improve notification filter logic for real life usage
-
-- update logic to handle real time events instead of minutes for time distances in processing (since real time events aren't in a fixed timeframe)
-- build variable frame for test and real life
-
-
-set frame size to right size - public static int frameSize = 20; // Frame size for analysis

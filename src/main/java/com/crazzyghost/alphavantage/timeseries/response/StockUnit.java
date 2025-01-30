@@ -5,6 +5,7 @@ import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.Date;
 
 public class StockUnit {
@@ -73,7 +74,14 @@ public class StockUnit {
     }
 
     public LocalDateTime getLocalDateTimeDate() {
-        return LocalDateTime.parse(this.dateTime, DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+        DateTimeFormatter formatterWithMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+        DateTimeFormatter formatterWithoutMillis = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        try {
+            return LocalDateTime.parse(dateTime, formatterWithMillis).truncatedTo(ChronoUnit.SECONDS);
+        } catch (Exception e) {
+            return LocalDateTime.parse(dateTime, formatterWithoutMillis);
+        }
     }
 
     public Date getDateDate() {

@@ -75,7 +75,7 @@ public class P_L_Tester {
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
                 logTradeResult(symbol, result);
-                //getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
+                getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
             }
         }
 
@@ -146,7 +146,7 @@ public class P_L_Tester {
         });
 
         data_tester.calculateStockPercentageChange();
-        spikeDetector();
+        spikeDetector(frameSize, false);
     }
 
     public static void processStockDataFromFile(String filePath, String symbol, int retainLast) throws IOException {
