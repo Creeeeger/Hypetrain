@@ -191,7 +191,7 @@ public class P_L_Tester {
 
                     stockUnits.add(parseStockUnit(entry));
                 } catch (Exception e) {
-                    System.out.println("Failed to parse entry: " + entry + " | Error: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         }
