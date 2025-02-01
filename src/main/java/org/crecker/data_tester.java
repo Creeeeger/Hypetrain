@@ -64,6 +64,7 @@ public class data_tester {
                     try {
                         handleSuccess((TimeSeriesResponse) e);
                     } catch (IOException ex) {
+                        ex.printStackTrace();
                         throw new RuntimeException(ex);
                     }
                 })

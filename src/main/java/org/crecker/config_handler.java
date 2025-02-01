@@ -64,7 +64,7 @@ public class config_handler {
 
         } catch (Exception e) {
             // Handle any exceptions that occur during XML processing
-            System.out.println("Error occurred: " + e.getMessage());
+            e.printStackTrace();
 
             // If an error occurs, it's because the config file does not exist or is corrupted.
             // Call create_config() to generate a new default configuration file
@@ -124,6 +124,7 @@ public class config_handler {
         } catch (Exception e) {
             // Handle any exceptions that occur during the process by throwing a RuntimeException
             // This ensures any errors are clearly reported back to the user
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
@@ -189,6 +190,7 @@ public class config_handler {
 
         } catch (Exception e) {
             // Handle any exception that may occur by throwing a RuntimeException
+            e.printStackTrace();
             throw new RuntimeException(e);
         }
     }

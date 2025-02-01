@@ -5,6 +5,7 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
+import static org.crecker.Main_UI.gui;
 import static org.crecker.Main_UI.logTextArea;
 
 public class Settings_handler extends JFrame {
@@ -124,13 +125,14 @@ public class Settings_handler extends JFrame {
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
                 Main_UI.load_config();
-                Main_UI.refresh(true, true, true, false);
+                Main_UI.refreshAllComponents(gui.getContentPane());
 
                 logTextArea.append("Config updated and re-loaded\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
                 setVisible(false);
             } catch (Exception x) {
+                x.printStackTrace();
                 // Handle any parsing errors that occur if the input is not in the expected format
                 // Update the information label to inform the user of the error
                 infos.setForeground(Color.RED); // Change the text color to red to indicate an error
