@@ -46,6 +46,7 @@ public class Main_UI extends JFrame {
     static String selected_stock = "Select a Stock"; //selected_stock is the Stock to show in the chart bar
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JTextField searchField;
+    static JButton oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
     static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
@@ -561,11 +562,17 @@ public class Main_UI extends JFrame {
 
         // Buttons for time range selection (Day, Week, Month)
         JPanel buttonPanel = new JPanel();
-        JButton oneDayButton = new JButton("1 Day");
-        JButton threeDaysButton = new JButton("3 Days");
-        JButton oneWeekButton = new JButton("1 Week");
-        JButton twoWeeksButton = new JButton("2 Weeks");
-        JButton oneMonthButton = new JButton("1 Month");
+        oneDayButton = new JButton("1 Day");
+        threeDaysButton = new JButton("3 Days");
+        oneWeekButton = new JButton("1 Week");
+        twoWeeksButton = new JButton("2 Weeks");
+        oneMonthButton = new JButton("1 Month");
+
+        oneDayButton.setEnabled(false);
+        threeDaysButton.setEnabled(false);
+        oneWeekButton.setEnabled(false);
+        twoWeeksButton.setEnabled(false);
+        oneMonthButton.setEnabled(false);
 
         //add day buttons
         buttonPanel.add(oneDayButton);
@@ -679,11 +686,14 @@ public class Main_UI extends JFrame {
         if (!selected_stock.equals(currentStockSymbol)) {
             currentStockSymbol = selected_stock;
             timeSeries.clear();
+            chartDisplay.getChart().setTitle(selected_stock + " price Chart"); // Update chart title
 
             try {
-                for (StockUnit stock : stocks) {
-                    Minute minute = new Minute(stock.getDateDate());
-                    timeSeries.add(minute, stock.getClose());
+                if (stocks != null) {
+                    for (StockUnit stock : stocks) {
+                        Minute minute = new Minute(stock.getDateDate());
+                        timeSeries.add(minute, stock.getClose());
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -707,6 +717,11 @@ public class Main_UI extends JFrame {
         updateYAxisRange(plot, startDate, endDate);
 
         chartDisplay.repaint();
+        oneDayButton.setEnabled(true);
+        threeDaysButton.setEnabled(true);
+        oneWeekButton.setEnabled(true);
+        twoWeeksButton.setEnabled(true);
+        oneMonthButton.setEnabled(true);
     }
 
     // Method to update Y-axis dynamically based on data
