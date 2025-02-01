@@ -40,7 +40,7 @@ public class P_L_Tester {
         final int stock = 0;
         final double DIP_LEVEL = -0.5;
 
-        prepData(SYMBOLS, 20000);
+        prepData(SYMBOLS, 2000);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol ->
@@ -55,7 +55,7 @@ public class P_L_Tester {
         Map<String, List<StockUnit>> timelineCache = new HashMap<>();
 
         for (Notification notification : notificationsForPLAnalysis) {
-            //createNotification(notification);
+            createNotification(notification);
 
             String symbol = notification.getSymbol();
             List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, Main_data_handler::getSymbolTimeline);
@@ -74,8 +74,8 @@ public class P_L_Tester {
                 capital = result.newCapital() - FEE;
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
-                logTradeResult(symbol, result);
-                getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
+                //logTradeResult(symbol, result);
+                //getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
             }
         }
 
@@ -141,7 +141,7 @@ public class P_L_Tester {
             try {
                 processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), cut);
             } catch (IOException e) {
-                throw new RuntimeException(e);
+                e.printStackTrace();
             }
         });
 
@@ -213,7 +213,8 @@ public class P_L_Tester {
                     currentEvent.getTimeSeries(), currentEvent.getColor(),
                     currentEvent.getLocalDateTime(), currentEvent.getSymbol(),
                     currentEvent.getChange());
-        } catch (Exception ignored) {
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
@@ -238,7 +239,7 @@ public class P_L_Tester {
 
             plotData(timeSeries, symbol + " Historical Prices", "Time", "Price");
         } catch (Exception e) {
-            System.err.println("Error creating timeline: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 

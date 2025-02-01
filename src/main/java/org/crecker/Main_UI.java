@@ -4,12 +4,12 @@ import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.data.time.Minute;
-import org.jfree.data.time.RegularTimePeriod;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -34,33 +34,29 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.IntStream;
 
 public class Main_UI extends JFrame {
     public static JTextArea logTextArea;
+    public static Main_UI gui;
     static int vol;
     static float hyp;
-    static boolean isSorted, realtime;
+    static boolean shouldSort, useRealtime;
     static String sym, key;
     static String selected_stock = "Select a Stock"; //selected_stock is the Stock to show in the chart bar
-    static String[][] setting_data;
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
-    static JMenuBar menuBar;
-    static JMenu file, settings, hype_mode_menu, Notifications;
-    static JMenuItem load, save, exit, setting_handler, activate_hype_mode, clear, sort, import_c, export_c;
     static JTextField searchField;
     static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
-    static JButton removeButton, addButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
     static ChartPanel chartDisplay; // This will hold the chart
-    static TimeSeries timeSeries; // Your time series data
+    static TimeSeries timeSeries;
 
-    static DefaultListModel<Notification> notificationListModel;
     static JList<Notification> notificationList;
+    static DefaultListModel<Notification> notificationListModel;
     static Notification currentNotification; // Track currently opened notification
 
     static DefaultListModel<News> NewsListModel;
-    static JList<News> NewsList;
     static News CurrentNews;
 
     static List<StockUnit> stocks;
@@ -94,17 +90,17 @@ public class Main_UI extends JFrame {
     }
 
     public static void setValues() {
-        setting_data = config_handler.load_config();
+        String[][] setting_data = config_handler.load_config();
         vol = Integer.parseInt(setting_data[0][1]);
         hyp = Float.parseFloat(setting_data[1][1]);
         sym = setting_data[2][1];
-        isSorted = Boolean.parseBoolean(setting_data[3][1]);
+        shouldSort = Boolean.parseBoolean(setting_data[3][1]);
         key = setting_data[4][1];
-        realtime = Boolean.parseBoolean(setting_data[5][1]);
+        useRealtime = Boolean.parseBoolean(setting_data[5][1]);
     }
 
     public static void main(String[] args) {
-        Main_UI gui = new Main_UI();
+        gui = new Main_UI();
         gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         gui.setSize(1900, 1000); // Width and height of the window
         gui.setVisible(true);
@@ -116,6 +112,7 @@ public class Main_UI extends JFrame {
         if (!config.exists()) {
             config_handler.create_config();
             setValues();
+            load_table(sym);
 
             if (!key.isEmpty()) {
                 Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
@@ -123,9 +120,7 @@ public class Main_UI extends JFrame {
                 throw new RuntimeException("You need to add a key in the settings menu!!");
             }
 
-            refresh(true, true, true, false);
-
-            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), isSorted, key, realtime);
+            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), shouldSort, key, useRealtime);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
@@ -145,42 +140,22 @@ public class Main_UI extends JFrame {
             }
 
             load_table(sym);
-
-            refresh(true, true, true, false);
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
     }
 
-    public static void refresh(boolean symbols, boolean charts, boolean notification, boolean settings) { //Method for refreshing the ui based on the given panels to refresh
-        if (symbols) {
-            symbol_panel.revalidate();
-            symbol_panel.repaint();
-        }
-
-        if (charts) {
-            chart_tool_panel.revalidate();
-            chart_tool_panel.repaint();
-        }
-
-        if (notification) {
-            hype_panel.revalidate();
-            hype_panel.repaint();
-        }
-
-        if (settings) {
-            Settings_handler.settingsPanel.revalidate();
-            Settings_handler.settingsPanel.repaint();
-        }
-    }
-
-    public static void load_config() {
-        setValues();
-
-        refresh(true, true, true, false);
-        Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
-        logTextArea.append("Config reloaded\n");
-        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+    // Utility method to refresh all components in a container
+    public static void refreshAllComponents(Container container) {
+        SwingUtilities.invokeLater(() -> {
+            for (Component component : container.getComponents()) {
+                component.revalidate();
+                component.repaint();
+                if (component instanceof Container) {
+                    refreshAllComponents((Container) component);  // Recursively refresh nested containers
+                }
+            }
+        });
     }
 
     public static void save_config(String[][] data) {
@@ -191,6 +166,9 @@ public class Main_UI extends JFrame {
 
     public static void load_table(String config) {
         // Split the string into individual entries
+        stockColors.clear();
+        stockListModel.clear();
+
         try {
             config = config.substring(1, config.length() - 1); // Remove outer brackets
             String[] entries = config.split("],\\[");
@@ -224,6 +202,7 @@ public class Main_UI extends JFrame {
                 stockColors.put(objects[0].toString(), (Color) objects[1]);
             }
         } catch (Exception e) {
+            e.printStackTrace();
             logTextArea.append("No elements saved before\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
@@ -263,29 +242,14 @@ public class Main_UI extends JFrame {
                 {"volume", String.valueOf(vol)},
                 {"hype_strength", String.valueOf(hyp)},
                 {"symbols", sym = create_sym_array()},
-                {"sort", String.valueOf(isSorted)},
+                {"sort", String.valueOf(shouldSort)},
                 {"key", key},
-                {"realtime", String.valueOf(realtime)},
+                {"realtime", String.valueOf(useRealtime)},
         };
     }
 
-    // Method to add a notification
     public static void addNotification(String title, String content, TimeSeries timeSeries, Color color, LocalDateTime localDateTime, String symbol, double change) {
-        // Loop through existing notifications to check for duplicates
-        for (int i = 0; i < notificationListModel.getSize(); i++) {
-            Notification existingNotification = notificationListModel.getElementAt(i);
-
-            if (existingNotification.getTitle().equals(title) &&
-                    existingNotification.getContent().equals(content) &&
-                    existingNotification.getTimeSeries().equals(timeSeries)) {
-                // If a matching notification is found, return without adding
-                return;
-            }
-        }
-
-        // If no duplicate found, create and add the new notification
-        Notification newNotification = new Notification(title, content, timeSeries, color, localDateTime, symbol, change);
-        notificationListModel.addElement(newNotification);
+        SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, color, localDateTime, symbol, change)));
     }
 
     private static void addFirstMarker(XYPlot plot, double xPosition) {
@@ -335,6 +299,17 @@ public class Main_UI extends JFrame {
         plot.addDomainMarker(shadedRegion);
 
         logTextArea.append(String.format("Percentage Change: %.3f%%\n", percentageDiff));
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+    }
+
+    public static void load_config() {
+        setValues();
+
+        load_table(sym);
+        Main_UI.refreshAllComponents(gui.getContentPane());
+        Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
+
+        logTextArea.append("Config reloaded\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
 
@@ -392,41 +367,43 @@ public class Main_UI extends JFrame {
 
                 // Fetch Stock data asynchronously
                 Main_data_handler.get_Info_Array(selected_stock, values -> {
+                    if (values != null && values.length >= 9) {
+                        // Handle null values by assigning default value using parallel processing
+                        Arrays.setAll(values, i -> values[i] == null ? 0.00 : values[i]);
 
-                    // Update Stock info labels only if values are not null
-                    if (values != null && values.length == 9) {
+                        // Update Stock info labels with safely processed values
+                        updateStockInfoLabels(values[0], values[1], values[2], values[3],
+                                values[4], values[5], values[6], values[7], values[8]);
 
-                        for (int i = 0; i < values.length; i++) {
-                            if (values[i] == null) { // Check if values[i] is null
-                                values[i] = 0.00; // Assign a default value
-                            }
-                        }
-
-                        updateStockInfoLabels(values[0], values[1], values[2], values[3], values[4], values[5], values[6], values[7], values[8]);
                     } else {
-                        logTextArea.append("Received null or incomplete data.\n");
-                        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                        // Handle incomplete data case
+                        SwingUtilities.invokeLater(() -> {
+                            logTextArea.append("Received null or incomplete data.\n");
+                            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                        });
+
+                        // Log exception for debugging
+                        throw new RuntimeException("Received null or incomplete data.");
                     }
                 });
 
-                //Fetch timeLine aSync
                 Main_data_handler.get_timeline(selected_stock, values -> {
-                    for (int i = 1; i < values.size(); i++) {
-                        double current_close = values.get(i).getClose();
-
-                        // Ensure there is a previous Stock entry to compare with
-                        double previous_close = values.get(i - 1).getClose();
-
-                        // Check for a 10% dip or peak
-                        if (Math.abs((current_close - previous_close) / previous_close) >= 0.1) {
-                            // Replace the current close with the previous close using the setter method
-                            values.get(i).setClose(previous_close);
-                        }
+                    // Extract original close values to avoid interference from concurrent modifications
+                    List<Double> originalCloses = new ArrayList<>(values.size());
+                    for (StockUnit stock : values) {
+                        originalCloses.add(stock.getClose());
                     }
 
-                    stocks = values;
+                    // Process each element in parallel based on original data
+                    IntStream.range(1, values.size()).parallel().forEach(i -> {
+                        double currentOriginalClose = originalCloses.get(i);
+                        double previousOriginalClose = originalCloses.get(i - 1);
+                        if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
+                            values.get(i).setClose(previousOriginalClose);
+                        }
+                    });
 
-                    // Refresh the chart data for the selected Stock
+                    stocks = values;
                     refreshChartData(1);
                 });
 
@@ -440,7 +417,7 @@ public class Main_UI extends JFrame {
                     });
                 });
 
-                if (realtime) {
+                if (useRealtime) {
                     SwingUtilities.invokeLater(this::startRealTimeUpdates);
                 }
             }
@@ -450,7 +427,7 @@ public class Main_UI extends JFrame {
         JScrollPane stockScrollPane = new JScrollPane(stockList);
 
         // Create the "-" button for removing selected items
-        removeButton = new JButton("-");
+        JButton removeButton = new JButton("-");
         removeButton.addActionListener(e -> {
             // Get the selected value
             String selectedValue = stockList.getSelectedValue();
@@ -467,7 +444,7 @@ public class Main_UI extends JFrame {
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
         buttonPanel.add(removeButton);
 
-        addButton = new JButton("+");
+        JButton addButton = new JButton("+");
         buttonPanel.add(addButton);
         addButton.addActionListener(e -> {
             String selectedSymbol = searchList.getSelectedValue();
@@ -517,30 +494,25 @@ public class Main_UI extends JFrame {
                         @Override
                         public void onSuccess(List<String> matchedSymbols) {
                             // Ensure the UI update happens on the Event Dispatch Thread (EDT)
-                            SwingUtilities.invokeLater(() -> {
-                                for (String symbol : matchedSymbols) {
-                                    searchListModel.addElement(symbol);
-                                }
-                            });
+                            SwingUtilities.invokeLater(() -> searchListModel.addAll(matchedSymbols));
                         }
 
                         @Override
                         public void onFailure(Exception e) {
                             // Handle the error, e.g., show a message or log the error
-                            SwingUtilities.invokeLater(() -> System.err.println("Failed to load symbols: " + e.getMessage()));
+                            SwingUtilities.invokeLater(e::printStackTrace);
                         }
                     });
                 }
             }
         });
-
         return panel;
     }
 
     public void startRealTimeUpdates() {
-        if (realtime) {
+        if (useRealtime) {
             executorService.scheduleAtFixedRate(() -> {
-                if (realtime) {
+                if (useRealtime) {
                     // Asynchronous fetching of real-time stock data
                     Main_data_handler.getRealTimeUpdate(selected_stock, value -> {
                         if (value != null) {
@@ -555,6 +527,7 @@ public class Main_UI extends JFrame {
 
                                     chartPanel.repaint();
                                 } catch (Exception e) {
+                                    e.printStackTrace();
                                     logTextArea.append("Error updating chart: " + e.getMessage() + "\n");
                                     logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
                                 }
@@ -588,11 +561,11 @@ public class Main_UI extends JFrame {
 
         // Buttons for time range selection (Day, Week, Month)
         JPanel buttonPanel = new JPanel();
-        oneDayButton = new JButton("1 Day");
-        threeDaysButton = new JButton("3 Days");
-        oneWeekButton = new JButton("1 Week");
-        twoWeeksButton = new JButton("2 Weeks");
-        oneMonthButton = new JButton("1 Month");
+        JButton oneDayButton = new JButton("1 Day");
+        JButton threeDaysButton = new JButton("3 Days");
+        JButton oneWeekButton = new JButton("1 Week");
+        JButton twoWeeksButton = new JButton("2 Weeks");
+        JButton oneMonthButton = new JButton("1 Month");
 
         //add day buttons
         buttonPanel.add(oneDayButton);
@@ -626,8 +599,7 @@ public class Main_UI extends JFrame {
         // Right side of the first row - Company News
         // Initialize the News list model
         NewsListModel = new DefaultListModel<>();
-        NewsList = new JList<>(NewsListModel);
-        NewsList.setVisibleRowCount(10); // Set the visible row count
+        JList<News> NewsList = new JList<>(NewsListModel);
         NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
         // Add mouse listener to handle clicks
@@ -703,99 +675,71 @@ public class Main_UI extends JFrame {
     }
 
     public void refreshChartData(int choice) {
-        // Define an array to hold the iteration limits for each case
-        int[] limits = {960, 2880, 6720, 9600, 19200}; // Limits for cases 1 to 5
-
-        ChartPanel newChartDisplay = null;
-        // Validate the choice
-        if (choice < 1 || choice > 5) {
-            throw new RuntimeException("A case must be selected");
-        }
-
-        // Get the limit based on the choice
-        int limit = limits[choice - 1];
-
-        // Check if the stock symbol has changed
+        // Handle stock symbol change
         if (!selected_stock.equals(currentStockSymbol)) {
-            // Create a new time series for the new stock symbol
-            timeSeries = new TimeSeries(selected_stock + " price");
-            currentStockSymbol = selected_stock; // Update the tracked stock symbol
+            currentStockSymbol = selected_stock;
+            timeSeries.clear();
 
             try {
-                // Populate the time series with data for the new stock
-                for (int i = 0; i < limit; i++) {
-                    if (i >= stocks.size()) {
-                        break; // Stop if data limit exceeds available stock data
-                    }
-
-                    double closingPrice = stocks.get(i).getClose(); // Assuming getClose() returns closing price
-
-                    timeSeries.add(new Minute(stocks.get(i).getDateDate()), closingPrice);
+                for (StockUnit stock : stocks) {
+                    Minute minute = new Minute(stock.getDateDate());
+                    timeSeries.add(minute, stock.getClose());
                 }
-                // Create a new chart with the updated time series
-                newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
-
             } catch (Exception e) {
-                logTextArea.append("No data received: " + e.getMessage() + "\n");
-                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-            }
-        } else {
-            // If the stock symbol is the same, adjust the view frame
-            Set<Date> existingTimestamps = new HashSet<>();
-            for (int i = 0; i < timeSeries.getItemCount(); i++) {
-                existingTimestamps.add(timeSeries.getTimePeriod(i).getStart());
-            }
-
-            try {
-                // Append new data within the limit while keeping live data
-                for (int i = 0; i < limit; i++) {
-                    if (i >= stocks.size()) {
-                        break; // Stop if data limit exceeds available stock data
-                    }
-
-                    double closingPrice = stocks.get(i).getClose();
-                    Date date = stocks.get(i).getDateDate();
-
-                    // Add new data only if it doesn't already exist
-                    if (!existingTimestamps.contains(date)) {
-                        timeSeries.addOrUpdate(new Minute(date), closingPrice);
-                        existingTimestamps.add(date);
-                    }
-                }
-
-                if (timeSeries.getItemCount() > limit) {
-                    // Show only the last 'limit' data points
-                    TimeSeries filteredSeries = new TimeSeries(selected_stock + " Price");
-                    for (int i = timeSeries.getItemCount() - limit; i < timeSeries.getItemCount(); i++) {
-                        RegularTimePeriod period = timeSeries.getTimePeriod(i);
-                        filteredSeries.addOrUpdate(period, timeSeries.getValue(period));
-                    }
-                    // Update chart with the filtered series
-                    // Create a new chart with the updated time series
-                    newChartDisplay = createChart(filteredSeries, selected_stock + " Price Chart");
-                } else {
-                    // If the number of data points is less than the limit, just use the entire series
-                    // Create a new chart with the updated time series
-                    newChartDisplay = createChart(timeSeries, selected_stock + " Price Chart");
-                }
-
-            } catch (Exception e) {
-                logTextArea.append("Error adjusting view frame: " + e.getMessage() + "\n");
-                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                e.printStackTrace();
+                logTextArea.append("Error loading data: " + e.getMessage() + "\n");
             }
         }
 
-        if (newChartDisplay != null) {
-            chartPanel.remove(chartDisplay);
-            chartDisplay = newChartDisplay; // Update the reference to the new chart
-            chartPanel.add(chartDisplay, BorderLayout.CENTER);
-        } else {
-            logTextArea.append("Chart could not be generated.\n");
+        // Calculate time range based on selection
+        long duration = getDurationMillis(choice);
+        Date endDate = timeSeries.getItemCount() > 0
+                ? timeSeries.getTimePeriod(timeSeries.getItemCount() - 1).getEnd()
+                : new Date();
+        Date startDate = new Date(endDate.getTime() - duration);
+
+        // Update chart axis
+        XYPlot plot = chartDisplay.getChart().getXYPlot();
+        DateAxis axis = (DateAxis) plot.getDomainAxis();
+        axis.setRange(startDate, endDate);
+
+        // Update the Y-axis range
+        updateYAxisRange(plot, startDate, endDate);
+
+        chartDisplay.repaint();
+    }
+
+    // Method to update Y-axis dynamically based on data
+    private void updateYAxisRange(XYPlot plot, Date startDate, Date endDate) {
+        // Determine the min and max Y-values within the date range
+        double minY = Double.MAX_VALUE;
+        double maxY = -Double.MAX_VALUE;
+
+        for (int i = 0; i < timeSeries.getItemCount(); i++) {
+            Date date = timeSeries.getTimePeriod(i).getEnd();
+            if (!date.before(startDate) && !date.after(endDate)) {
+                double closeValue = timeSeries.getValue(i).doubleValue();
+                minY = Math.min(minY, closeValue);
+                maxY = Math.max(maxY, closeValue);
+            }
         }
 
-        // Refresh the chart panel
-        chartPanel.revalidate();
-        chartPanel.repaint();
+        // Set the new range for the Y-axis
+        if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
+            ValueAxis yAxis = plot.getRangeAxis();
+            yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1); // Add a little margin
+        }
+    }
+
+    private long getDurationMillis(int choice) {
+        return switch (choice) {
+            case 1 -> TimeUnit.DAYS.toMillis(1);    // 1 day
+            case 2 -> TimeUnit.DAYS.toMillis(3);    // 3 days
+            case 3 -> TimeUnit.DAYS.toMillis(7);    // 1 week
+            case 4 -> TimeUnit.DAYS.toMillis(14);   // 2 weeks
+            case 5 -> TimeUnit.DAYS.toMillis(30);   // ~1 month
+            default -> throw new IllegalArgumentException("Invalid time range");
+        };
     }
 
     private ChartPanel createChart(TimeSeries timeSeries, String chartName) {
@@ -867,14 +811,13 @@ public class Main_UI extends JFrame {
         // Initialize the notification list model
         notificationListModel = new DefaultListModel<>();
         notificationList = new JList<>(notificationListModel);
-        notificationList.setVisibleRowCount(10); // Set the visible row count
         notificationList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
 
         // Add mouse listener to handle clicks
         notificationList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                if (isSorted) {
+                if (shouldSort) {
                     sort_notifications();
                 }
 
@@ -947,8 +890,7 @@ public class Main_UI extends JFrame {
 
     // Method to add a News
     public void addNews(String title, String content, String url) { //Method to add News to the panel
-        News newNews = new News(title, content, url);
-        NewsListModel.addElement(newNews);
+        NewsListModel.addElement(new News(title, content, url));
     }
 
     // Open News and close previous one
@@ -964,30 +906,30 @@ public class Main_UI extends JFrame {
 
     // Create the menu bar
     private JMenuBar createMenuBar() {
-        menuBar = new JMenuBar();
+        JMenuBar menuBar = new JMenuBar();
 
         // Create menus
-        file = new JMenu("File");
-        settings = new JMenu("Settings");
-        hype_mode_menu = new JMenu("Hype mode");
-        Notifications = new JMenu("Notifications");
+        JMenu file = new JMenu("File");
+        JMenu settings = new JMenu("Settings");
+        JMenu hype_mode_menu = new JMenu("Hype mode");
+        JMenu Notifications = new JMenu("Notifications");
 
         //JMenuItems File
-        load = new JMenuItem("Load the config (manually again)");
-        import_c = new JMenuItem("Import config");
-        export_c = new JMenuItem("Export config");
-        save = new JMenuItem("Save the config");
-        exit = new JMenuItem("Exit (saves)");
+        JMenuItem load = new JMenuItem("Load the config (manually again)");
+        JMenuItem import_c = new JMenuItem("Import config");
+        JMenuItem export_c = new JMenuItem("Export config");
+        JMenuItem save = new JMenuItem("Save the config");
+        JMenuItem exit = new JMenuItem("Exit (saves)");
 
         //Settings
-        setting_handler = new JMenuItem("Open settings");
+        JMenuItem setting_handler = new JMenuItem("Open settings");
 
         //Hype mode
-        activate_hype_mode = new JMenuItem("Activate hype mode");
+        JMenuItem activate_hype_mode = new JMenuItem("Activate hype mode");
 
         //Notifications
-        clear = new JMenuItem("Clear Notifications");
-        sort = new JMenuItem("Sort Notifications");
+        JMenuItem clear = new JMenuItem("Clear Notifications");
+        JMenuItem sort = new JMenuItem("Sort Notifications");
 
         //add it to the menus File
         file.add(load);
@@ -1025,75 +967,16 @@ public class Main_UI extends JFrame {
         return menuBar;
     }
 
-    // Helper method to extract percentage value from the notification title
-    public float extractPercentage(String title) {
-        int percentIndex = title.indexOf("%");
-        if (percentIndex != -1) {
-            try {
-                // Parse the substring into a float value
-                return Float.parseFloat(title.substring(0, percentIndex));
-            } catch (NumberFormatException e) {
-                System.out.println(e.getMessage());
-            }
-        }
-        return 0.0f; // Default to 0 if extraction fails
-    }
-
     public void sort_notifications() {
-        // Convert the notification list model to a List for easier manipulation
-        List<Notification> notifications = new ArrayList<>();
+        // Convert the model's elements to a List using Collections.list
+        List<Notification> notifications = Collections.list(notificationListModel.elements());
 
-        for (int i = 0; i < notificationListModel.size(); i++) {
-            notifications.add(notificationListModel.getElementAt(i));
-        }
+        // Sort notifications in descending order of percentage change using a concise comparator
+        notifications.sort(Comparator.comparingDouble(Notification::getChange).reversed());
 
-        // Sort the notifications based on percentage change
-        notifications.sort((n1, n2) -> {
-            // Extract the percentage from each notification title
-            float percent1 = extractPercentage(n1.getTitle());
-            float percent2 = extractPercentage(n2.getTitle());
-
-            // Sort in descending order of percentage
-            return Float.compare(percent2, percent1);
-        });
-
-        // Clear the model and repopulate it with sorted notifications
+        // Clear the model and add all sorted notifications back
         notificationListModel.clear();
-        for (Notification notification : notifications) {
-            notificationListModel.addElement(notification);
-        }
-    }
-
-    public static class event_import implements ActionListener {
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            // Create a JFileChooser for importing files
-            JFileChooser fileChooser = new JFileChooser();
-            fileChooser.setDialogTitle("Import Configuration");
-
-            // Show the open dialog (for choosing a file)
-            int userSelection = fileChooser.showOpenDialog(null);
-
-            // If a file was selected
-            if (userSelection == JFileChooser.APPROVE_OPTION) {
-                File selectedFile = fileChooser.getSelectedFile();
-
-                // Define the target file in the root directory with the name "config.xml"
-                File configFile = new File("config.xml");
-
-                try {
-                    // Copy and rename the file, overwriting if it exists
-                    Files.copy(selectedFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-
-                    load_config();
-
-                    JOptionPane.showMessageDialog(null, "Configuration imported and saved as config.xml successfully!");
-
-                } catch (IOException ex) {
-                    JOptionPane.showMessageDialog(null, "Error processing configuration file: " + ex.getMessage());
-                }
-            }
-        }
+        notificationListModel.addAll(notifications);
     }
 
     public static class event_export implements ActionListener {
@@ -1124,8 +1007,8 @@ public class Main_UI extends JFrame {
                     Files.copy(configFile.toPath(), selectedFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
                     JOptionPane.showMessageDialog(null, "Configuration exported successfully!");
                 } catch (IOException ex) {
+                    ex.printStackTrace();
                     JOptionPane.showMessageDialog(null, "Error exporting configuration file: " + ex.getMessage());
-                    System.out.println(ex.getMessage());
                 }
             }
         }
@@ -1141,7 +1024,7 @@ public class Main_UI extends JFrame {
                 try {
                     Main_data_handler.start_Hype_Mode(vol, hyp);
                 } catch (Exception ex) {
-                    System.out.println(ex.getMessage());
+                    ex.printStackTrace();
                 }
             });
         }
@@ -1151,19 +1034,11 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(vol, hyp, sym, isSorted, key, realtime);
+            Settings_handler gui = new Settings_handler(vol, hyp, sym, shouldSort, key, useRealtime);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");
             gui.setVisible(true);
-        }
-    }
-
-    public static class event_Load implements ActionListener {
-
-        @Override
-        public void actionPerformed(ActionEvent e) {
-            load_config();
         }
     }
 
@@ -1182,6 +1057,47 @@ public class Main_UI extends JFrame {
             save_config(getValues()); //Save them in case user forgot
             System.out.println("Exit application");
             System.exit(0); // Exit the application
+        }
+    }
+
+    public static class event_import implements ActionListener {
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            // Create a JFileChooser for importing files
+            JFileChooser fileChooser = new JFileChooser();
+            fileChooser.setDialogTitle("Import Configuration");
+
+            // Show the open dialog (for choosing a file)
+            int userSelection = fileChooser.showOpenDialog(null);
+
+            // If a file was selected
+            if (userSelection == JFileChooser.APPROVE_OPTION) {
+                File selectedFile = fileChooser.getSelectedFile();
+
+                // Define the target file in the root directory with the name "config.xml"
+                File configFile = new File("config.xml");
+
+                try {
+                    // Copy and rename the file, overwriting if it exists
+                    Files.copy(selectedFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+
+                    load_config();
+
+                    JOptionPane.showMessageDialog(null, "Configuration imported and saved as config.xml successfully!");
+
+                } catch (IOException ex) {
+                    ex.printStackTrace();
+                    JOptionPane.showMessageDialog(null, "Error processing configuration file: " + ex.getMessage());
+                }
+            }
+        }
+    }
+
+    public static class event_Load implements ActionListener {
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            load_config();
         }
     }
 

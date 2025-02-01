@@ -307,6 +307,7 @@ public class Main_data_handler {
                 Thread.sleep(5000);
 
             } catch (InterruptedException e) {
+                e.printStackTrace();
                 Thread.currentThread().interrupt();
                 logTextArea.append("Data pull interrupted\n");
                 break;
@@ -440,7 +441,7 @@ public class Main_data_handler {
                         List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
                         stockNotifications.addAll(notifications);
                     } catch (Exception e) {
-                        System.out.printf("Failed final window for %s: %s%n", symbol, e.getMessage());
+                        e.printStackTrace();
                     }
                 }
             }
@@ -458,7 +459,7 @@ public class Main_data_handler {
                                 List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
                                 stockNotifications.addAll(notifications);
                             } catch (Exception e) {
-                                System.out.printf("Failed %s window at %s%n", symbol, startTime.format(DateTimeFormatter.ISO_TIME));
+                                e.printStackTrace();
                             }
                         }
                     });
