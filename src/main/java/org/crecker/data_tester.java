@@ -106,7 +106,7 @@ public class data_tester {
         double low = Double.parseDouble(attributes[2].split("=")[1]);
         double close = Double.parseDouble(attributes[3].split("=")[1]);
         double adjustedClose = Double.parseDouble(attributes[4].split("=")[1]);
-        long volume = Long.parseLong(attributes[5].split("=")[1]);
+        double volume = Double.parseDouble(attributes[5].split("=")[1]);
         double dividendAmount = Double.parseDouble(attributes[6].split("=")[1]);
         double splitCoefficient = Double.parseDouble(attributes[7].split("=")[1]);
         String dateTime = attributes[8].split("=")[1];
