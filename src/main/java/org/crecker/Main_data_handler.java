@@ -504,12 +504,8 @@ public class Main_data_handler {
     public static void sortNotifications(List<Notification> notifications) {
         // Sort notifications by their time series end date
         notifications.sort((n1, n2) -> {
-            Date date1 = n1.getTimeSeries()
-                    .getTimePeriod(n1.getTimeSeries().getItemCount() - 1)
-                    .getEnd();
-            Date date2 = n2.getTimeSeries()
-                    .getTimePeriod(n2.getTimeSeries().getItemCount() - 1)
-                    .getEnd();
+            LocalDateTime date1 = n1.getLocalDateTime();
+            LocalDateTime date2 = n2.getLocalDateTime();
             return date1.compareTo(date2); // Sort from old to new
         });
     }
@@ -625,26 +621,6 @@ public class Main_data_handler {
     }
 
     /**
-     * Checks if the time frame of stock data spans over a weekend or across days.
-     *
-     * @param stocks The frame of stock data.
-     * @return True if the time frame spans a weekend or multiple days; false otherwise.
-     */
-    private static boolean isWeekendSpan(List<StockUnit> stocks) {
-        // Validate list to avoid errors
-        if (stocks == null || stocks.isEmpty()) {
-            throw new IllegalArgumentException("Stock list cannot be null or empty");
-        }
-
-        // Parse dates using the provided method
-        LocalDateTime startDate = stocks.get(0).getLocalDateTimeDate();
-        LocalDateTime endDate = stocks.get(stocks.size() - 1).getLocalDateTimeDate();
-
-        // Check if the time span includes a weekend or spans different days
-        return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY) || !startDate.toLocalDate().equals(endDate.toLocalDate());
-    }
-
-    /**
      * Implements logic to detect rapid increases in stock prices within a specified frame.
      *
      * @param stocks                   The frame of stock data.
@@ -705,6 +681,26 @@ public class Main_data_handler {
         double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
         double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
         return Math.sqrt(variance); // Standard deviation as volatility measure
+    }
+
+    /**
+     * Checks if the time frame of stock data spans over a weekend or across days.
+     *
+     * @param stocks The frame of stock data.
+     * @return True if the time frame spans a weekend or multiple days; false otherwise.
+     */
+    private static boolean isWeekendSpan(List<StockUnit> stocks) {
+        // Validate list to avoid errors
+        if (stocks == null || stocks.isEmpty()) {
+            throw new IllegalArgumentException("Stock list cannot be null or empty");
+        }
+
+        // Parse dates using the provided method
+        LocalDateTime startDate = stocks.get(0).getLocalDateTimeDate();
+        LocalDateTime endDate = stocks.get(stocks.size() - 1).getLocalDateTimeDate();
+
+        // Check if the time span includes a weekend or spans different days
+        return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY) || !startDate.toLocalDate().equals(endDate.toLocalDate());
     }
 
     /**

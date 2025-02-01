@@ -1,5 +1,9 @@
 TODO
-- implement premium api check if it works
+KEY
+- check if a premium API key works
 
-- update main algorithm for detection
-- update & improve notification filter logic for real life usage
+CODE
+- update main detection algorithm
+
+TESTING
+- test out new trading simulation parameters
