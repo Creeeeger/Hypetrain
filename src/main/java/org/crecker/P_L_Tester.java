@@ -14,6 +14,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.addNotification;
+import static org.crecker.Main_UI.gui;
 import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.*;
 
@@ -34,13 +35,15 @@ public class P_L_Tester {
 
     public static void PLAnalysis() {
         // Configuration
-        final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
+        //   final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
+        final String[] SYMBOLS = {"SMCI.txt", "IONQ.txt"};
+
         final double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
-        final double DIP_LEVEL = -0.5;
+        final double DIP_LEVEL = -0.8;
 
-        prepData(SYMBOLS, 2000);
+        prepData(SYMBOLS, 20000);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol ->
@@ -55,7 +58,9 @@ public class P_L_Tester {
         Map<String, List<StockUnit>> timelineCache = new HashMap<>();
 
         for (Notification notification : notificationsForPLAnalysis) {
-            createNotification(notification);
+            if (gui != null) {
+                createNotification(notification);
+            }
 
             String symbol = notification.getSymbol();
             List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, Main_data_handler::getSymbolTimeline);
@@ -70,16 +75,16 @@ public class P_L_Tester {
             StockUnit nextUnit = timeline.get(index + 1);
 
             if (shouldProcessDip(nextUnit, DIP_LEVEL, lastTradeTime)) {
-                TradeResult result = processTradeSequence(timeline, index + 2, DIP_LEVEL, capital);
+                TradeResult result = processTradeSequence(timeline, index + 2, DIP_LEVEL, capital, notification.getSymbol());
                 capital = result.newCapital() - FEE;
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
-                //logTradeResult(symbol, result);
-                //getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
+                logTradeResult(symbol, result);
+                getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
             }
         }
 
-        //createTimeline(SYMBOLS[stock]);
+        createTimeline(SYMBOLS[stock]);
         logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
     }
 
@@ -99,7 +104,7 @@ public class P_L_Tester {
         return nextUnit.getPercentageChange() >= dipLevel && (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime));
     }
 
-    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital) {
+    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol) {
         double currentCapital = capital;
         int currentIndex = startIndex;
         final int maxSteps = Math.min(timeline.size(), startIndex + 100); // Safety limit
@@ -107,6 +112,8 @@ public class P_L_Tester {
         while (currentIndex < maxSteps) {
             StockUnit unit = timeline.get(currentIndex);
             currentCapital *= (1 + (unit.getPercentageChange() / 100));
+
+            System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, capital, unit.getPercentageChange(), unit.getDateDate());
 
             if (unit.getPercentageChange() < dipLevel) {
                 break;
@@ -136,7 +143,7 @@ public class P_L_Tester {
     }
 
     private static void prepData(String[] fileNames, int cut) {
-        // Calculation of spikes, Process data for each file
+        // Calculation of rallies, Process data for each file
         Arrays.stream(fileNames).parallel().forEach(fileName -> {
             try {
                 processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), cut);
@@ -146,7 +153,7 @@ public class P_L_Tester {
         });
 
         data_tester.calculateStockPercentageChange();
-        spikeDetector(frameSize, false);
+        rallyDetector(frameSize, false);
     }
 
     public static void processStockDataFromFile(String filePath, String symbol, int retainLast) throws IOException {

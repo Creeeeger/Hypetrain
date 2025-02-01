@@ -226,7 +226,8 @@ public class Main_UI extends JFrame {
         return symBuilder.toString();
     }
 
-    public static void updateStockInfoLabels(double open, double high, double low, double volume, double peRatio, double pegRatio, double fiftyTwoWkHigh, double fiftyTwoWkLow, double marketCap) {
+    public static void updateStockInfoLabels(double open, double high, double low, double volume,
+                                             double peRatio, double pegRatio, double fiftyTwoWkHigh, double fiftyTwoWkLow, double marketCap) {
         openLabel.setText("Open: " + String.format("%.2f", open));
         highLabel.setText("High: " + String.format("%.2f", high));
         lowLabel.setText("Low: " + String.format("%.2f", low));
@@ -249,7 +250,8 @@ public class Main_UI extends JFrame {
         };
     }
 
-    public static void addNotification(String title, String content, TimeSeries timeSeries, Color color, LocalDateTime localDateTime, String symbol, double change) {
+    public static void addNotification(String title, String content, TimeSeries timeSeries,
+                                       Color color, LocalDateTime localDateTime, String symbol, double change) {
         SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, color, localDateTime, symbol, change)));
     }
 

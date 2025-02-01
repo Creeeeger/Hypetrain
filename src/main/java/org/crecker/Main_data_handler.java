@@ -26,6 +26,7 @@ import java.util.*;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import static org.crecker.Main_UI.logTextArea;
 
@@ -373,11 +374,11 @@ public class Main_data_handler {
             });
         }
 
-        calculateSpikes();
+        calculateSpikesInRally();
     }
 
-    public static void calculateSpikes() {
-        spikeDetector(frameSize, true);
+    public static void calculateSpikesInRally() {
+        rallyDetector(frameSize, true);
         checkToClean();
     }
 
@@ -412,7 +413,7 @@ public class Main_data_handler {
         }
     }
 
-    public static void spikeDetector(int minutesPeriod, boolean realFrame) {
+    public static void rallyDetector(int minutesPeriod, boolean realFrame) {
         symbolTimelines.keySet()
                 .parallelStream()
                 .forEach(symbol -> {
@@ -448,8 +449,8 @@ public class Main_data_handler {
         } else {
             // Original notification-based processing
             timeline.parallelStream()
-                    .forEach(notificationUnit -> {
-                        LocalDateTime startTime = notificationUnit.getLocalDateTimeDate();
+                    .forEach(stockUnit -> {
+                        LocalDateTime startTime = stockUnit.getLocalDateTimeDate();
                         LocalDateTime endTime = startTime.plusMinutes(minutes);
 
                         List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
@@ -519,32 +520,35 @@ public class Main_data_handler {
      * @return A list of notifications generated from the frame.
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
-        //prevent wrong dip variables (optimized)
+        //prevent wrong dip variables
         double lastChanges = 0;
         int lastChangeLength = 5;
 
-        //minor dip detection variables (optimized)
+        //minor dip detection variables
         int consecutiveIncreaseCount = 0;
         double cumulativeIncrease = 0;
         double cumulativeDecrease = 0;
-        double minorDipTolerance = 0.65;
+        //  double minorDipTolerance = 0.65; // in %
 
-        //rapid increase variables (optimized)
-        double minIncrease = 2;
-        int rapidWindowSize = 1;
+        //rapid increase variables
+        //  double minIncrease = 2; // in %
+        // int rapidWindowSize = 1;
         int minConsecutiveCount = 2;
 
-        //Volatility variables (optimized)
+        //Volatility variables
         double volatility;
-        double volatilityThreshold = 0.07;
+        //  double volatilityThreshold = 0.07;
 
-        //Crash variables (optimized)
-        double dipDown = -1.5;
-        double dipUp = 0.8;
-        // Target is to minimize the crashes and maximize
-        // the profit or keep the ratio balanced since
-        // we don't want any extremes of both
+        //Crash variables
+        //   double dipDown = -1.5; //in %
+        double dipUp = 0.8; //in %
 
+
+        double minIncrease = 3.5;
+        double minorDipTolerance = 1.2;
+        double dipDown = -3.0;
+        int rapidWindowSize = 3;
+        double volatilityThreshold = 0.15;
         //algorithm related variables
         List<Notification> alertsList = new ArrayList<>();
         List<Double> percentageChanges = new ArrayList<>();
@@ -672,16 +676,161 @@ public class Main_data_handler {
         return lastChanges;
     }
 
-    /**
-     * Calculates the volatility (standard deviation) of percentage changes in stock data.
-     *
-     * @param changes A list of percentage changes in stock prices.
-     * @return The calculated volatility.
-     */
     private static double calculateVolatility(List<Double> changes) {
-        double mean = changes.stream().mapToDouble(Double::doubleValue).average().orElse(0.0);
-        double variance = changes.stream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
+        double mean = changes.parallelStream().mapToDouble(Double::doubleValue).average().orElse(0.0);
+        double variance = changes.parallelStream().mapToDouble(change -> Math.pow(change - mean, 2)).average().orElse(0.0);
         return Math.sqrt(variance); // Standard deviation as volatility measure
+    }
+
+
+
+    //Trend-Following Indicators
+    //1. Simple Moving Average (SMA) Crossovers
+    public static boolean isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
+        if (window.size() < longPeriod) return false;
+
+        double shortSMA = window.parallelStream()
+                .skip(window.size() - shortPeriod)
+                .mapToDouble(StockUnit::getClose)
+                .average()
+                .orElse(0);
+
+        double longSMA = window.parallelStream()
+                .skip(window.size() - longPeriod)
+                .mapToDouble(StockUnit::getClose)
+                .average()
+                .orElse(0);
+
+        // Get previous values for crossover detection
+        double prevShort = window.get(window.size() - shortPeriod - 1).getClose();
+        double prevLong = window.get(window.size() - longPeriod - 1).getClose();
+
+        return shortSMA > longSMA && prevShort <= prevLong;
+    }
+
+    // 2. EMA Crossover with Fast Calculation
+    public static boolean isEMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
+        if (window.size() < longPeriod) return false;
+
+        double shortEMA = calculateEMA(window, shortPeriod);
+        double longEMA = calculateEMA(window, longPeriod);
+
+        // Previous EMA values
+        List<StockUnit> prevWindow = window.subList(0, window.size() - 1);
+        double prevShort = calculateEMA(prevWindow, shortPeriod);
+        double prevLong = calculateEMA(prevWindow, longPeriod);
+
+        return shortEMA > longEMA && prevShort <= prevLong;
+    }
+
+    private static double calculateEMA(List<StockUnit> window, int period) {
+        double smoothing = 2.0 / (period + 1);
+        return window.parallelStream()
+                .skip(window.size() - period)
+                .mapToDouble(StockUnit::getClose)
+                .reduce((ema, price) -> price * smoothing + ema * (1 - smoothing))
+                .orElse(0);
+    }
+
+    //3. Price Crossing Key Moving Average
+    public static boolean isPriceAboveSMA(List<StockUnit> window, int period) {
+        if (window.size() < period) return false;
+
+        double sma = window.parallelStream()
+                .skip(window.size() - period)
+                .mapToDouble(StockUnit::getClose)
+                .average()
+                .orElse(0);
+
+        double currentPrice = window.get(window.size()-1).getClose();
+        double previousPrice = window.get(window.size()-2).getClose();
+
+        return currentPrice > sma && previousPrice <= sma;
+    }
+
+    //4. MACD with Histogram
+    public static Map<String, Double> calculateMACD(List<StockUnit> window) {
+        final int SHORT_EMA = 12;
+        final int LONG_EMA = 26;
+        final int SIGNAL_EMA = 9;
+
+        double macdLine = calculateEMA(window, SHORT_EMA) - calculateEMA(window, LONG_EMA);
+
+        // Calculate Signal Line (EMA of MACD)
+        List<Double> macdValues = window.parallelStream()
+                .map(su -> calculateEMA(Collections.singletonList(su), SHORT_EMA) -
+                        calculateEMA(Collections.singletonList(su), LONG_EMA))
+                .collect(Collectors.toList());
+
+        double signalLine = calculateEMAForValues(macdValues, SIGNAL_EMA);
+
+        return Map.of(
+                "macd", macdLine,
+                "signal", signalLine,
+                "histogram", macdLine - signalLine
+        );
+    }
+
+    private static double calculateEMAForValues(List<Double> values, int period) {
+        double smoothing = 2.0 / (period + 1);
+        return values.parallelStream()
+                .skip(values.size() - period)
+                .reduce((ema, price) -> price * smoothing + ema * (1 - smoothing))
+                .orElse(0.0);
+    }
+
+    //5. TRIX Indicator
+    public static double calculateTRIX(List<StockUnit> window, int period) {
+        // Triple smoothing with EMAs
+        List<Double> singleEMA = window.parallelStream()
+                .map(su -> calculateEMA(Collections.singletonList(su), period))
+                .toList();
+
+        List<Double> doubleEMA = singleEMA.parallelStream()
+                .map(val -> calculateEMAForValues(Collections.singletonList(val), period))
+                .toList();
+
+        List<Double> tripleEMA = doubleEMA.parallelStream()
+                .map(val -> calculateEMAForValues(Collections.singletonList(val), period))
+                .toList();
+
+        // Rate of Change
+        double current = tripleEMA.get(tripleEMA.size()-1);
+        double previous = tripleEMA.get(tripleEMA.size()-2);
+
+        return ((current - previous) / previous) * 100;
+    }
+
+    //6. Kaufman's Adaptive MA (KAMA)
+    public static double calculateKAMA(List<StockUnit> window, int period) {
+        List<Double> closes = window.parallelStream()
+                .map(StockUnit::getClose)
+                .collect(Collectors.toList());
+
+        double efficiencyRatio = calculateEfficiencyRatio(closes, period);
+        double fastSC = 2.0 / (2 + 1);
+        double slowSC = 2.0 / (30 + 1);
+        double smoothSC = efficiencyRatio * (fastSC - slowSC) + slowSC;
+
+        double kama = closes.subList(0, period).parallelStream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0);
+
+        for (int i = period; i < closes.size(); i++) {
+            kama = kama + smoothSC * (closes.get(i) - kama);
+        }
+
+        return kama;
+    }
+
+    private static double calculateEfficiencyRatio(List<Double> prices, int period) {
+        double direction = Math.abs(prices.get(prices.size()-1) - prices.get(prices.size()-period));
+        double volatility = IntStream.range(0, period).parallel()
+                .mapToDouble(i -> Math.abs(prices.get(prices.size()-i-1) - prices.get(prices.size()-i-2)))
+                .sum();
+
+        return direction / volatility;
     }
 
     /**
