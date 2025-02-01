@@ -4,6 +4,10 @@ KEY
 
 CODE
 - update main detection algorithm
+- add variable exit value (greater rise > greater drop allowed)
+- implement all indicators
+- create indicator weights
+- create ML detector
 
 TESTING
 - test out new trading simulation parameters
