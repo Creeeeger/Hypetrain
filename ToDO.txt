@@ -5,8 +5,8 @@ KEY
 CODE
 - update main detection algorithm
 - add variable exit value (greater rise > greater drop allowed)
+
 - create ML confirmation interference
-- upload Venv to gh as well
 
 TESTING
 - test out new trading simulation parameters
