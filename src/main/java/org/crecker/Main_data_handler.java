@@ -550,7 +550,7 @@ public class Main_data_handler {
         if (isWeekendSpan(stocks)) {
             return new ArrayList<>(); // Return empty list to skip notifications
         }
-
+        
         for (int i = 1; i < stocks.size(); i++) {
             //Changes & percentages calculations
             double percentageChange = stocks.get(i).getPercentageChange();
@@ -612,13 +612,14 @@ public class Main_data_handler {
 
                 createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), false);
 
-                //  System.out.printf("Name: %s Volatility %.2f vs %.2f Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, volatility, volatilityThreshold, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDateDate());
+//                System.out.printf("Name: %s Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n",
+//                        stockName, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDateDate());
             }
         }
     }
 
-    //Trend-Following Indicators
-    //1. Simple Moving Average (SMA) Crossovers
+    //Indicators
+    // 1. Simple Moving Average (SMA) Crossovers
     public static boolean isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
         if (window.size() < longPeriod) return false;
 
@@ -656,7 +657,7 @@ public class Main_data_handler {
         return shortEMA > longEMA && prevShort <= prevLong;
     }
 
-    //3. Price Crossing Key Moving Average
+    // 3. Price Crossing Key Moving Average
     public static boolean isPriceAboveSMA(List<StockUnit> window, int period) {
         if (window.size() < period) return false;
 
@@ -672,7 +673,7 @@ public class Main_data_handler {
         return currentPrice > sma && previousPrice <= sma;
     }
 
-    //4. MACD with Histogram
+    // 4. MACD with Histogram
     public static Map<String, Double> calculateMACD(List<StockUnit> window) {
         final int SHORT_EMA = 12;
         final int LONG_EMA = 26;
@@ -729,7 +730,7 @@ public class Main_data_handler {
         return sum / (window.size() - start);
     }
 
-    //5. TRIX Indicator
+    // 5. TRIX Indicator
     public static double calculateTRIX(List<StockUnit> window, int period) {
         // Triple smoothing with EMAs
         List<Double> singleEMA = window.stream()
@@ -751,7 +752,7 @@ public class Main_data_handler {
         return ((current - previous) / previous) * 100;
     }
 
-    //6. Kaufman's Adaptive MA (KAMA)
+    // 6. Kaufman's Adaptive MA (KAMA)
     public static double calculateKAMA(List<StockUnit> window, int period) {
         List<Double> closes = window.parallelStream()
                 .map(StockUnit::getClose)
@@ -1145,8 +1146,8 @@ public class Main_data_handler {
                 .sum();  // Sum all the results
     }
 
-    //25. Breakout Above Moving Average
-    public static boolean isBreakoutAboveMA(List<StockUnit> window, int period, String symbol, boolean useEMA) {
+    // 25. Breakout Above Moving Average
+    public static boolean isBreakoutAboveMA(List<StockUnit> window, int period, boolean useEMA) {
         // Validation
         if (window == null || window.size() < period || period <= 0) {
             return false;
@@ -1158,18 +1159,105 @@ public class Main_data_handler {
                 window.get(window.size() - 2).getClose() : currentClose;
 
         // Calculate MAs with caching
-        double currentMA = calculateMA(window, period, symbol, useEMA);
-        double previousMA = calculateMA(window.subList(0, window.size() - 1), period, symbol, useEMA);
+        double currentMA = calculateMA(window, period, useEMA);
+        double previousMA = calculateMA(window.subList(0, window.size() - 1), period, useEMA);
 
         return currentClose > currentMA && previousClose <= previousMA;
     }
 
-    private static double calculateMA(List<StockUnit> window, int period, String symbol, boolean useEMA) {
+    private static double calculateMA(List<StockUnit> window, int period, boolean useEMA) {
         return useEMA ? calculateEMA(window, period) : calculateSMA(window, period);
     }
 
+    // 26. Parabolic SAR Approximation using Close Prices
+    public static boolean isParabolicSARBullish(List<StockUnit> window, int period, double acceleration) {
+        if (window.size() < period + 2) return false;
 
-    
+        double[] sarValues = new double[window.size()];
+        sarValues[0] = window.get(0).getClose();
+        boolean uptrend = true;
+        double extremePoint = window.get(0).getClose();
+
+        for (int i = 1; i < window.size(); i++) {
+            double close = window.get(i).getClose();
+            double prevSAR = sarValues[i - 1];
+
+            if (uptrend) {
+                sarValues[i] = prevSAR + acceleration * (extremePoint - prevSAR);
+                if (close < sarValues[i]) {
+                    uptrend = false;
+                    sarValues[i] = extremePoint;
+                    extremePoint = close;
+                } else {
+                    extremePoint = Math.max(extremePoint, close);
+                }
+            } else {
+                sarValues[i] = prevSAR - acceleration * (prevSAR - extremePoint);
+                if (close > sarValues[i]) {
+                    uptrend = true;
+                    sarValues[i] = extremePoint;
+                    extremePoint = close;
+                } else {
+                    extremePoint = Math.min(extremePoint, close);
+                }
+            }
+        }
+
+        StockUnit current = window.get(window.size() - 1);
+        return current.getClose() > sarValues[sarValues.length - 1];
+    }
+
+    // 27. Keltner Channels Breakout
+    public static boolean isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier) {
+        double ema = calculateEMA(window, emaPeriod);
+        double atr = calculateATR(window, atrPeriod);
+        double upperBand = ema + (multiplier * atr);
+        return window.get(window.size() - 1).getClose() > upperBand;
+    }
+
+    // 28. Elder-Ray Index Approximation
+    public static double elderRayIndex(List<StockUnit> window, int emaPeriod) {
+        double ema = calculateEMA(window, emaPeriod);
+        return window.get(window.size() - 1).getClose() - ema;
+    }
+
+    // 29. Volume Spike Detection with Adaptive Threshold
+    public static boolean isVolumeSpike(List<StockUnit> window, int period, double thresholdFactor) {
+        if (window.size() < period) return false;
+
+        // Calculate average volume
+        double avgVolume = calculateAverageVolume(window, period);
+
+        // Get the current volume (last element in the window)
+        double currentVolume = window.get(window.size() - 1).getVolume();
+
+        // Return true if the current volume is greater than the average volume times the threshold factor
+        return currentVolume > (avgVolume * thresholdFactor);
+    }
+
+    private static double calculateAverageVolume(List<StockUnit> window, int period) {
+        double totalVolume = 0;
+
+        // Iterate over the window to sum the volume over the period
+        for (int i = window.size() - period; i < window.size(); i++) {
+            totalVolume += window.get(i).getVolume();
+        }
+
+        // Calculate and return the average volume
+        return totalVolume / period;
+    }
+
+    // ATR Calculator using Close Prices (adjusted from traditional)
+    private static double calculateATR(List<StockUnit> window, int period) {
+        double atr = Math.abs(window.get(1).getClose() - window.get(0).getClose());
+
+        for (int i = 2; i < window.size(); i++) {
+            atr += Math.abs(window.get(i).getClose() - window.get(i - 1).getClose());
+        }
+
+        return atr / period;
+    }
+
     /**
      * Checks if the time frame of stock data spans over a weekend or across days.
      *
