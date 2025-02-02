@@ -21,6 +21,7 @@ import static org.crecker.data_tester.*;
 public class P_L_Tester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
+    public static boolean debug = false; // Flag for printing PL
 
     public static void main(String[] args) {
         //updateStocks();
@@ -34,14 +35,13 @@ public class P_L_Tester {
     }
 
     public static void PLAnalysis() {
-        // Configuration
         //   final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
-        final String[] SYMBOLS = {"SMCI.txt", "IONQ.txt"};
+        final String[] SYMBOLS = {"SMCI.txt"};
 
         final double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
-        final double DIP_LEVEL = -0.8;
+        final double DIP_LEVEL = -0.5;
 
         prepData(SYMBOLS, 20000);
 
@@ -79,13 +79,16 @@ public class P_L_Tester {
                 capital = result.newCapital() - FEE;
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
-                logTradeResult(symbol, result);
-                getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
+                if (debug) {
+                    logTradeResult(symbol, result);
+                    getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
+                }
             }
         }
-
-        createTimeline(SYMBOLS[stock]);
-        logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
+        if (debug) {
+            createTimeline(SYMBOLS[stock]);
+            logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
+        }
     }
 
     private static void buildTimeIndex(String symbol, List<StockUnit> timeline) {
@@ -113,7 +116,9 @@ public class P_L_Tester {
             StockUnit unit = timeline.get(currentIndex);
             currentCapital *= (1 + (unit.getPercentageChange() / 100));
 
-            System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, capital, unit.getPercentageChange(), unit.getDateDate());
+            if (debug) {
+                System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, capital, unit.getPercentageChange(), unit.getDateDate());
+            }
 
             if (unit.getPercentageChange() < dipLevel) {
                 break;
