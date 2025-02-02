@@ -24,6 +24,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -35,10 +36,79 @@ public class Main_data_handler {
     private static final Map<String, Deque<Double>> donchianCache = new ConcurrentHashMap<>();
     private static final Map<String, DoubleArrayWindow> volatilityWindows = new ConcurrentHashMap<>();
     private static final Map<String, DoubleArrayWindow> returnsWindows = new ConcurrentHashMap<>();
+
+    private static final ConcurrentMap<String, Double> INDICATOR_WEIGHTS = new ConcurrentHashMap<>();
+
+    private static final Map<String, Map<String, Double>> INDICATOR_RANGES = Map.ofEntries(
+            Map.entry("RSI", Map.of("min", 0.0, "max", 100.0)),
+            Map.entry("MACD", Map.of("min", -2.0, "max", 2.0)),
+            Map.entry("BOLLINGER", Map.of("min", -100.0, "max", 100.0)),
+            Map.entry("TRIX", Map.of("min", -1.0, "max", 1.0)),
+            Map.entry("KAMA", Map.of("min", -10.0, "max", 10.0)),
+            Map.entry("CMO", Map.of("min", -100.0, "max", 100.0)),
+            Map.entry("ACCELERATION", Map.of("min", -5.0, "max", 5.0)),
+            Map.entry("DONCHIAN", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("Z_SCORE", Map.of("min", -3.0, "max", 3.0)),
+            Map.entry("KELTNER", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("ELDER_RAY", Map.of("min", -10.0, "max", 10.0)),
+            Map.entry("PARABOLIC", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("TRENDLINE", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("EMA_CROSS", Map.of("min", 0.0, "max", 100.0)),
+            Map.entry("ROC", Map.of("min", -100.0, "max", 100.0)),
+            Map.entry("MOMENTUM", Map.of("min", -100.0, "max", 100.0)),
+            Map.entry("SMA_CROSS", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("PRICE_SMA_DISTANCE", Map.of("min", -10.0, "max", 10.0)),
+            Map.entry("FRACTAL_BREAKOUT", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("HIGHER_HIGHS", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("BREAKOUT_MA", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("VOLUME_SPIKE", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("BREAKOUT_RESISTANCE", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("VOLATILITY_THRESHOLD", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("VOLATILITY_MONITOR", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("CANDLE_PATTERN", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("ATR", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("CONSECUTIVE_POSITIVE_CLOSES", Map.of("min", 0.0, "max", 1.0)), // Added
+            Map.entry("CUMULATIVE_THRESHOLD", Map.of("min", 0.0, "max", 1.0)) // Added
+    );
+
     public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     public static int frameSize = 30; // Frame size for analysis
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     public static boolean test = true; //if True use demo url for real Time Updates
+
+    static {
+        INDICATOR_WEIGHTS.put("RSI", 0.08);          // Originally 0.09 → Retained high priority
+        INDICATOR_WEIGHTS.put("BOLLINGER", 0.09);    // Originally 0.10 → Slightly reduced
+        INDICATOR_WEIGHTS.put("Z_SCORE", 0.07);      // Originally 0.08 → Reduced but still strong
+        INDICATOR_WEIGHTS.put("TRIX", 0.06);         // Originally 0.07 → Adjusted
+        INDICATOR_WEIGHTS.put("MACD", 0.05);         // Added for Item 4 → Matched to mid-tier
+        INDICATOR_WEIGHTS.put("FRACTAL_BREAKOUT", 0.05); // Originally 0.06 → Slightly reduced
+        INDICATOR_WEIGHTS.put("VOLUME_SPIKE", 0.05); // Matches Item 29 → Maintained
+        INDICATOR_WEIGHTS.put("CUMULATIVE_PERCENTAGE", 0.04); // Matches Item 24 → Maintained
+        INDICATOR_WEIGHTS.put("DONCHIAN", 0.04);     // Matches Item 14 → Reduced
+        INDICATOR_WEIGHTS.put("EMA_CROSS", 0.03);    // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("KAMA", 0.04);         // Reduced from 0.06
+        INDICATOR_WEIGHTS.put("CMO", 0.03);          // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("ACCELERATION", 0.03); // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("KELTNER", 0.03);      // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("ELDER_RAY", 0.01);    // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("PARABOLIC", 0.01);    // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("TRENDLINE", 0.03);    // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("ROC", 0.02);          // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("MOMENTUM", 0.03);     // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("SMA_CROSS", 0.01);    // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("HIGHER_HIGHS", 0.03); // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("BREAKOUT_MA", 0.01);  // Reduced from 0.05
+        INDICATOR_WEIGHTS.put("PRICE_SMA_DISTANCE", 0.03); // Up from 0.04 → Balanced
+        INDICATOR_WEIGHTS.put("BREAKOUT_RESISTANCE", 0.02); // Reduced from 0.04
+        INDICATOR_WEIGHTS.put("VOLATILITY_THRESHOLD", 0.02); // Reduced from 0.04
+        INDICATOR_WEIGHTS.put("VOLATILITY_MONITOR", 0.02); // Reduced from 0.04
+        INDICATOR_WEIGHTS.put("CANDLE_PATTERN", 0.02);    // Reduced from 0.04
+        INDICATOR_WEIGHTS.put("ATR", 0.02);           // Reduced from 0.04
+        INDICATOR_WEIGHTS.put("CONSECUTIVE_POSITIVE_CLOSES", 0.02); // Reduced from 0.04
+        INDICATOR_WEIGHTS.put("CUMULATIVE_THRESHOLD", 0.02); // Reduced from 0.04
+    }
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -524,6 +594,7 @@ public class Main_data_handler {
      * @return A list of notifications generated from the frame.
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
+
         //prevent wrong dip variables
         int lastChangeLength = 5;
 
@@ -550,7 +621,7 @@ public class Main_data_handler {
         if (isWeekendSpan(stocks)) {
             return new ArrayList<>(); // Return empty list to skip notifications
         }
-        
+
         for (int i = 1; i < stocks.size(); i++) {
             //Changes & percentages calculations
             double percentageChange = stocks.get(i).getPercentageChange();

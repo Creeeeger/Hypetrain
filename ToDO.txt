@@ -5,7 +5,6 @@ KEY
 CODE
 - update main detection algorithm
 - add variable exit value (greater rise > greater drop allowed)
-- create indicator weights table
 - create ML confirmation interference
 - upload Venv to gh as well
 
