@@ -1145,9 +1145,31 @@ public class Main_data_handler {
                 .sum();  // Sum all the results
     }
 
+    //25. Breakout Above Moving Average
+    public static boolean isBreakoutAboveMA(List<StockUnit> window, int period, String symbol, boolean useEMA) {
+        // Validation
+        if (window == null || window.size() < period || period <= 0) {
+            return false;
+        }
+
+        // Get current and previous prices
+        double currentClose = window.get(window.size() - 1).getClose();
+        double previousClose = window.size() >= 2 ?
+                window.get(window.size() - 2).getClose() : currentClose;
+
+        // Calculate MAs with caching
+        double currentMA = calculateMA(window, period, symbol, useEMA);
+        double previousMA = calculateMA(window.subList(0, window.size() - 1), period, symbol, useEMA);
+
+        return currentClose > currentMA && previousClose <= previousMA;
+    }
+
+    private static double calculateMA(List<StockUnit> window, int period, String symbol, boolean useEMA) {
+        return useEMA ? calculateEMA(window, period) : calculateSMA(window, period);
+    }
 
 
-
+    
     /**
      * Checks if the time frame of stock data spans over a weekend or across days.
      *
