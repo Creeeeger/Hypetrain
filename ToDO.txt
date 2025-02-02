@@ -5,9 +5,9 @@ KEY
 CODE
 - update main detection algorithm
 - add variable exit value (greater rise > greater drop allowed)
-- implement all indicators
-- create indicator weights
-- create ML detector
+- create indicator weights table
+- create ML confirmation interference
+- upload Venv to gh as well
 
 TESTING
 - test out new trading simulation parameters

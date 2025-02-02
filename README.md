@@ -20,6 +20,58 @@
 - set in settings your volume to only check for stocks where you can buy full volume to make maximum profit
 - pre-defined set of stocks for volumes of 200-300k €
 
+## Indicators in use
+
+### Trend-Following Indicators
+
+1. Simple Moving Average (SMA) Crossovers
+2. Exponential Moving Average (EMA) Crossovers
+3. Price Crossing Key Moving Averages
+4. MACD (Moving Average Convergence Divergence)
+5. TRIX Indicator
+6. Kaufman’s Adaptive Moving Average (KAMA)
+
+### Momentum Oscillators
+
+7. Relative Strength Index (RSI)
+8. Rate of Change (ROC)
+9. Momentum Oscillator
+10. Chande Momentum Oscillator (CMO)
+11. Momentum Acceleration (2nd Derivative)
+
+### Volatility & Breakout Strategies
+
+12. Bollinger Bands
+13. Breakout Above Resistance Levels
+14. Donchian Channel Breakout
+15. Statistical Volatility Threshold
+16. Rolling Standard Deviation / Volatility Monitoring
+
+### Pattern Recognition
+
+17. Consecutive Positive Closes
+18. Higher Highs Pattern
+19. Fractal Breakout
+20. Candle Patterns
+21. Trendline Analysis
+
+### Statistical & Quantitative Models
+
+22. Z-Score of Returns
+23. Cumulative Percentage Change
+
+### Threshold-Based Rules
+
+24. Percentage Change Threshold
+25. Breakout Above Moving Average
+
+### Miscellaneous Indicators
+
+26. Parabolic SAR Approximation
+27. Keltner Channels
+28. Elder-Ray Index Approximation
+29. Volume Spike
+
 ---
 
 # Disclaimer
