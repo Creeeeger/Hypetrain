@@ -72,6 +72,12 @@
 28. Elder-Ray Index Approximation
 29. Volume Spike
 
+
+## Python env. instructions
+- Open it in pycharm
+- Install dependencies which throw errors
+- run main.py
+
 ---
 
 # Disclaimer
