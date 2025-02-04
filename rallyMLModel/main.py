@@ -11,9 +11,9 @@ from keras.src.layers.core.dense import Dense
 from keras.src.layers.rnn.lstm import LSTM
 from keras.src.callbacks.early_stopping import EarlyStopping
 
-tf.config.optimizer.set_jit(True)  # Enable XLA compilation
-mixed_precision.set_global_policy('mixed_float16')  # Use mixed precision
 tf.config.set_visible_devices([], 'GPU')  # Use only GPU
+tf.config.experimental.set_memory_growth(tf.config.list_physical_devices('GPU')[0], True)
+
 
 # 1. Feature Engineering (Aligned with your Java indicators)
 def create_features(df, window_size=60):
@@ -70,19 +70,18 @@ def prepare_sequences(data, features, target, window_size=60):
     scaler = MinMaxScaler(feature_range=(0, 1))
     scaled_data = scaler.fit_transform(data[features])
 
-    X, y = [], []
+    x, y = [], []
     for i in range(window_size, len(data)):
-        X.append(scaled_data[i - window_size:i])
+        x.append(scaled_data[i - window_size:i])
         y.append(data[target].iloc[i])
 
-    return np.array(X), np.array(y), scaler
+    return np.array(x), np.array(y), scaler
 
 
 # 3. LSTM Model Architecture
 def build_spike_model(input_shape):
     model = Sequential([
-        LSTM(128, return_sequences=True, input_shape=input_shape,
-             recurrent_dropout=0.2),
+        LSTM(128, return_sequences=True, input_shape=input_shape, recurrent_dropout=0.2),
         Dropout(0.3),
         LSTM(64, recurrent_dropout=0.2),
         Dense(32, activation='relu'),
@@ -105,13 +104,12 @@ def train_spike_predictor(data_path):
     df = create_features(df)
 
     # Feature selection
-    features = ['close', 'returns', 'volatility', 'sma_20',
-                'macd', 'rsi', 'upper_band', 'lower_band']
+    features = ['close', 'returns', 'volatility', 'sma_20', 'macd', 'rsi', 'upper_band', 'lower_band']
     target = 'target'
 
     # Create sequences
-    X, y, scaler = prepare_sequences(df, features, target)
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2)
+    x, y, scaler = prepare_sequences(df, features, target)
+    X_train, X_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
 
     # Build and train model
     model = build_spike_model((X_train.shape[1], X_train.shape[2]))
@@ -123,14 +121,14 @@ def train_spike_predictor(data_path):
 
     history = model.fit(
         X_train, y_train,
-        epochs=50,
+        epochs=1,
         batch_size=256,
         validation_data=(X_test, y_test),
         callbacks=[early_stop]
     )
 
     # Save for production
-    model.save('spike_predictor.h5')
+    model.save('spike_predictor.keras')
 
     # Export scaler
     import joblib
@@ -139,46 +137,12 @@ def train_spike_predictor(data_path):
     return model, scaler
 
 
-# 5. Real-Time Prediction (To integrate with Java)
-class SpikePredictor:
-    def __init__(self, model_path, scaler_path, window_size=60):
-        self.model = tf.keras.models.load_model(model_path)
-        self.scaler = joblib.load(scaler_path)
-        self.window_size = window_size
-        self.buffer = []
-
-    def update(self, new_data_point):
-        """Update prediction buffer with new minute data"""
-        self.buffer.append(new_data_point)
-        if len(self.buffer) > self.window_size:
-            self.buffer.pop(0)
-
-    def predict_spike(self):
-        """Return spike probability if buffer is full"""
-        if len(self.buffer) < self.window_size:
-            return None
-
-        # Convert to features
-        features = self._create_features_from_buffer()
-        scaled = self.scaler.transform([features])
-        prediction = self.model.predict(scaled[np.newaxis, ...])[0][0]
-
-        return float(prediction)
-
-    def _create_features_from_buffer(self):
-        """Recreate feature engineering logic for real-time data"""
-        # Implement your Java indicator calculations here
-        # This should match the features used in training
-        return np.array([...])  # Feature vector
-
-
 # Usage Example
 if __name__ == "__main__":
+    import tf2onnx
+
     # Train model
     model, scaler = train_spike_predictor('high_frequency_stocks.csv')
-
-    # Export to ONNX for Java integration
-    import tf2onnx
 
     model_proto, _ = tf2onnx.convert.from_keras(model)
     with open("spike_predictor.onnx", "wb") as f:
