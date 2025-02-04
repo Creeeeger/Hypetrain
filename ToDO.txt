@@ -6,6 +6,10 @@ CODE
 - update main detection algorithm - integrate indicator merges
 - add variable exit value (greater rise > greater drop allowed)
 
+1 apply weights of indicators
+2 do manual comparison of return data
+
+
 - create ML confirmation interference
 
 TESTING

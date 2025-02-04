@@ -32,11 +32,7 @@ import java.util.stream.IntStream;
 import static org.crecker.Main_UI.logTextArea;
 
 public class Main_data_handler {
-    private static final Map<String, Deque<Double>> donchianCache = new ConcurrentHashMap<>();
-    private static final Map<String, DoubleArrayWindow> volatilityWindows = new ConcurrentHashMap<>();
-    private static final Map<String, DoubleArrayWindow> returnsWindows = new ConcurrentHashMap<>();
-
-    private static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = Map.ofEntries(
+    public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = Map.ofEntries(
             // Trend Following Indicators
             Map.entry("SMA_CROSS", Map.of("min", 0.0, "max", 1.0)),
             Map.entry("EMA_CROSS", Map.of("min", 0.0, "max", 1.0)),
@@ -79,9 +75,8 @@ public class Main_data_handler {
             Map.entry("VOLUME_SPIKE", Map.of("min", 0.0, "max", 5.0)),
             Map.entry("ATR", Map.of("min", 0.0, "max", 1.0))
     );
-
     // Trend Following Indicators
-    private static final Map<String, Double> TREND_FOLLOWING_WEIGHTS = Map.ofEntries(
+    public static final Map<String, Double> TREND_FOLLOWING_WEIGHTS = Map.ofEntries(
             Map.entry("SMA_CROSS", 0.15),
             Map.entry("EMA_CROSS", 0.15),
             Map.entry("PRICE_SMA_DISTANCE", 0.20),
@@ -89,43 +84,38 @@ public class Main_data_handler {
             Map.entry("TRIX", 0.20),
             Map.entry("KAMA", 0.15)
     );
-
     // Momentum Indicators
-    private static final Map<String, Double> MOMENTUM_WEIGHTS = Map.ofEntries(
+    public static final Map<String, Double> MOMENTUM_WEIGHTS = Map.ofEntries(
             Map.entry("RSI", 0.25),
             Map.entry("ROC", 0.15),
             Map.entry("MOMENTUM", 0.15),
             Map.entry("CMO", 0.15),
             Map.entry("ACCELERATION", 0.30)
     );
-
     // Volatility & Breakouts Indicators
-    private static final Map<String, Double> VOLATILITY_BREAKOUTS_WEIGHTS = Map.ofEntries(
+    public static final Map<String, Double> VOLATILITY_BREAKOUTS_WEIGHTS = Map.ofEntries(
             Map.entry("BOLLINGER", 0.20),
             Map.entry("BREAKOUT_RESISTANCE", 0.15),
             Map.entry("DONCHIAN", 0.20),
             Map.entry("VOLATILITY_THRESHOLD", 0.20),
             Map.entry("VOLATILITY_MONITOR", 0.25)
     );
-
     // Patterns Indicators
-    private static final Map<String, Double> PATTERNS_WEIGHTS = Map.ofEntries(
+    public static final Map<String, Double> PATTERNS_WEIGHTS = Map.ofEntries(
             Map.entry("CONSECUTIVE_POSITIVE_CLOSES", 0.25),
             Map.entry("HIGHER_HIGHS", 0.15),
             Map.entry("FRACTAL_BREAKOUT", 0.20),
             Map.entry("CANDLE_PATTERN", 0.15),
             Map.entry("TRENDLINE", 0.25)
     );
-
     // Statistical Indicators
-    private static final Map<String, Double> STATISTICAL_WEIGHTS = Map.ofEntries(
+    public static final Map<String, Double> STATISTICAL_WEIGHTS = Map.ofEntries(
             Map.entry("Z_SCORE", 0.40),
             Map.entry("CUMULATIVE_PERCENTAGE", 0.40),
             Map.entry("CUMULATIVE_THRESHOLD", 0.20)
     );
-
     // Advanced Indicators
-    private static final Map<String, Double> ADVANCED_WEIGHTS = Map.ofEntries(
+    public static final Map<String, Double> ADVANCED_WEIGHTS = Map.ofEntries(
             Map.entry("BREAKOUT_MA", 0.10),
             Map.entry("PARABOLIC", 0.10),
             Map.entry("KELTNER", 0.20),
@@ -133,9 +123,8 @@ public class Main_data_handler {
             Map.entry("VOLUME_SPIKE", 0.25),
             Map.entry("ATR", 0.15)
     );
-
     // Aggregated weights map
-    private static final Map<String, Map<String, Double>> INDICATOR_RANGE_FULL = Map.of(
+    public static final Map<String, Map<String, Double>> INDICATOR_RANGE_FULL = Map.of(
             "TrendFollowing", TREND_FOLLOWING_WEIGHTS,
             "Momentum", MOMENTUM_WEIGHTS,
             "VolatilityBreakouts", VOLATILITY_BREAKOUTS_WEIGHTS,
@@ -143,9 +132,8 @@ public class Main_data_handler {
             "Statistical", STATISTICAL_WEIGHTS,
             "Advanced", ADVANCED_WEIGHTS
     );
-
     // Category Level Weights
-    private static final Map<String, Double> INDICATOR_WEIGHTS_FULL = Map.of(
+    public static final Map<String, Double> INDICATOR_WEIGHTS_FULL = Map.of(
             "TrendFollowing", 0.20,
             "Momentum", 0.15,
             "VolatilityBreakouts", 0.25,
@@ -153,7 +141,9 @@ public class Main_data_handler {
             "Statistical", 0.10,
             "Advanced", 0.15
     );
-
+    private static final Map<String, Deque<Double>> donchianCache = new ConcurrentHashMap<>();
+    private static final Map<String, DoubleArrayWindow> volatilityWindows = new ConcurrentHashMap<>();
+    private static final Map<String, DoubleArrayWindow> returnsWindows = new ConcurrentHashMap<>();
     public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     public static int frameSize = 30; // Frame size for analysis
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
@@ -635,21 +625,165 @@ public class Main_data_handler {
         });
     }
 
-//    // Normalize to [0,1] range based on indicator type
-//    private static double normalizeScore(String indicator, double rawValue) {
-//        Map<String, Double> range = INDICATOR_RANGE_MAP.get(indicator);
-//        if (range == null) return rawValue; // No normalization
-//
-//        double min = range.get("min");
-//        double max = range.get("max");
-//
-//        // Special handling for centered indicators
-//        if ("MACD".equals(indicator)) {
-//            return 0.5 + (rawValue / (max - min)); // Center at 0.5
-//        }
-//
-//        return (rawValue - min) / (max - min);
-//    }
+    // Normalize to [0,1] range based on indicator type
+    public static double normalizeScore(String indicator, double rawValue) {
+        Map<String, Double> range = INDICATOR_RANGE_MAP.get(indicator);
+        if (range == null) return rawValue; // No normalization if indicator not found
+
+        double min = range.get("min");
+        double max = range.get("max");
+
+        // Avoid division by zero in case of incorrect ranges
+        if (max == min) return 0.0;
+
+        switch (indicator) {
+            // Center-based indicators (values centered around zero)
+            case "MACD":
+            case "TRIX":
+            case "VOLATILITY_THRESHOLD":
+            case "Z_SCORE":
+            case "ELDER_RAY":
+                // Normalize to center at 0.5
+                return 0.5 + (rawValue / (2 * (max - min)));
+
+            // Indicators where negative values represent a different condition
+            case "PRICE_SMA_DISTANCE":
+            case "CUMULATIVE_PERCENTAGE":
+            case "ACCELERATION":
+                // Handle negative value normalization
+                if (rawValue < min) return 0.0;
+                if (rawValue > max) return 1.0;
+                return (rawValue - min) / (max - min);
+
+            // Indicators with bounded ranges between [0, 100] or similar percentages
+            case "RSI":
+            case "ROC":
+            case "MOMENTUM":
+            case "CMO":
+            case "CONSECUTIVE_POSITIVE_CLOSES":
+                return Math.max(0.0, Math.min(1.0, (rawValue - min) / (max - min)));
+
+            // Indicators where raw values represent binary signals (0 or 1)
+            case "HIGHER_HIGHS":
+            case "FRACTAL_BREAKOUT":
+            case "CANDLE_PATTERN":
+            case "TRENDLINE":
+            case "BREAKOUT_RESISTANCE":
+            case "KELTNER":
+            case "PARABOLIC":
+            case "BREAKOUT_MA":
+            case "ATR":
+                return rawValue > 0.5 ? 1.0 : 0.0;
+
+            default:
+                // Default linear normalization
+                return (rawValue - min) / (max - min);
+        }
+    }
+
+    private static double[] computeFeatures(List<StockUnit> stocks, String symbol) {
+        // Initialize feature array
+        double[] features = new double[INDICATOR_RANGE_MAP.size()];
+        int featureIndex = 0;
+
+        // Trend Following Indicators
+        double smaCrossover = isSMACrossover(stocks, 5, 20);
+        features[featureIndex++] = normalizeScore("SMA_CROSS", normalizeScore("SMA_CROSS", smaCrossover));
+
+        double emaCrossover = isEMACrossover(stocks, 10, 30);
+        features[featureIndex++] = normalizeScore("EMA_CROSS", normalizeScore("EMA_CROSS", emaCrossover));
+
+        double priceAboveSMA = isPriceAboveSMA(stocks, 20);
+        features[featureIndex++] = normalizeScore("PRICE_SMA_DISTANCE", priceAboveSMA);
+
+        double macdHistogram = calculateMACD(stocks).get("histogram");
+        features[featureIndex++] = normalizeScore("MACD", macdHistogram);
+
+        double trix = calculateTRIX(stocks, 10);
+        features[featureIndex++] = normalizeScore("TRIX", trix);
+
+        double kama = calculateKAMA(stocks, 10);
+        features[featureIndex++] = normalizeScore("KAMA", kama);
+
+        // Momentum Indicators
+        double rsi = calculateRSI(stocks, 14);
+        features[featureIndex++] = normalizeScore("RSI", rsi);
+
+        double roc = calculateROC(stocks, 10);
+        features[featureIndex++] = normalizeScore("ROC", roc);
+
+        double momentum = calculateMomentum(stocks, 10);
+        features[featureIndex++] = normalizeScore("MOMENTUM", momentum);
+
+        double cmo = calculateCMO(stocks, 14);
+        features[featureIndex++] = normalizeScore("CMO", cmo);
+
+        double acceleration = calculateAcceleration(stocks, 20);
+        features[featureIndex++] = normalizeScore("ACCELERATION", acceleration);
+
+        // Volatility & Breakouts Indicators
+        double bollingerBandwidth = calculateBollingerBands(stocks, 10).get("bandwidth");
+        features[featureIndex++] = normalizeScore("BOLLINGER", bollingerBandwidth);
+
+        double breakoutResistance = isBreakout(stocks, 10);
+        features[featureIndex++] = normalizeScore("BREAKOUT_RESISTANCE", breakoutResistance);
+
+        double donchianBreakout = donchianBreakout(stocks, 10, symbol);
+        features[featureIndex++] = normalizeScore("DONCHIAN", donchianBreakout);
+
+        double volatilitySpike = isVolatilitySpike(stocks, 10);
+        features[featureIndex++] = normalizeScore("VOLATILITY_THRESHOLD", volatilitySpike);
+
+        double volatilityMonitor = rollingVolatilityRatio(stocks, 5, 10, symbol);
+        features[featureIndex++] = normalizeScore("VOLATILITY_MONITOR", volatilityMonitor);
+
+        // Patterns Indicators
+        double consecutivePositiveCloses = consecutivePositiveCloses(stocks, 0.2);
+        features[featureIndex++] = normalizeScore("CONSECUTIVE_POSITIVE_CLOSES", consecutivePositiveCloses);
+
+        double higherHighs = isHigherHighs(stocks, 3);
+        features[featureIndex++] = normalizeScore("HIGHER_HIGHS", higherHighs);
+
+        double fractalBreakout = isFractalBreakout(stocks, 5, 10);
+        features[featureIndex++] = normalizeScore("FRACTAL_BREAKOUT", fractalBreakout);
+
+        double candlePattern = detectCandlePatterns(stocks.get(stocks.size() - 1), stocks.get(stocks.size() - 2));
+        features[featureIndex++] = normalizeScore("CANDLE_PATTERN", candlePattern);
+
+        double trendlineBreakout = isTrendlineBreakout(stocks, 5);
+        features[featureIndex++] = normalizeScore("TRENDLINE", trendlineBreakout);
+
+        // Statistical Indicators
+        double zScoreSpike = isZScoreSpike(stocks, 10, symbol);
+        features[featureIndex++] = normalizeScore("Z_SCORE", zScoreSpike);
+
+        double cumulativePercentage = isCumulativeSpike(stocks, 10, 5);
+        features[featureIndex++] = normalizeScore("CUMULATIVE_PERCENTAGE", cumulativePercentage);
+
+        double cumulativeThreshold = cumulativePercentageChange(stocks, 5);
+        features[featureIndex++] = normalizeScore("CUMULATIVE_THRESHOLD", cumulativeThreshold);
+
+        // Advanced Indicators
+        double breakoutMA = isBreakoutAboveMA(stocks, 10, true);
+        features[featureIndex++] = normalizeScore("BREAKOUT_MA", breakoutMA);
+
+        double parabolicSARBullish = isParabolicSARBullish(stocks, 10, 0.2);
+        features[featureIndex++] = normalizeScore("PARABOLIC", parabolicSARBullish);
+
+        double keltnerBreakout = isKeltnerBreakout(stocks, 20, 10, 0.3);
+        features[featureIndex++] = normalizeScore("KELTNER", keltnerBreakout);
+
+        double elderRayIndex = elderRayIndex(stocks, 20);
+        features[featureIndex++] = normalizeScore("ELDER_RAY", elderRayIndex);
+
+        double volumeSpike = isVolumeSpike(stocks, 10, 0.03);
+        features[featureIndex++] = normalizeScore("VOLUME_SPIKE", volumeSpike);
+
+        double atr = calculateATR(stocks, 15);
+        features[featureIndex++] = normalizeScore("ATR", atr);
+
+        return features;
+    }
 
     /**
      * Generates notifications based on patterns and criteria within a frame of stock data.
@@ -686,22 +820,21 @@ public class Main_data_handler {
             return new ArrayList<>(); // Return empty list to skip notifications
         }
 
-//        Map<String, Double> aggregatedWeights = new HashMap<>();
-//        // Step 1: Compute weighted values per category
-//        INDICATOR_RANGE_FULL.forEach((category, indicators) -> {
-//            double categoryWeight = INDICATOR_WEIGHTS_FULL.getOrDefault(category, 0.0);
-//            indicators.forEach((indicator, weight) -> {
-//                double finalWeight = weight * categoryWeight;
-//                aggregatedWeights.merge(indicator, finalWeight, Double::sum);
-//            });
-//        });
-//
-//        // Step 2: Display result weights
-//        System.out.println("Final Indicator Weights:");
-//        aggregatedWeights.entrySet().stream()
-//                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
-//                .forEach(entry -> System.out.printf("%s: %.4f%n", entry.getKey(), entry.getValue()));
+        Map<String, Double> aggregatedWeights = new HashMap<>();
 
+        // Step 1: Compute weighted values per category
+        INDICATOR_RANGE_FULL.forEach((category, indicators) -> {
+            double categoryWeight = INDICATOR_WEIGHTS_FULL.getOrDefault(category, 0.0);
+            indicators.forEach((indicator, weight) -> {
+                double finalWeight = weight * categoryWeight;
+                aggregatedWeights.merge(indicator, finalWeight, Double::sum);
+            });
+        });
+
+        // Step 2: Display result weights
+        aggregatedWeights.entrySet().stream()
+                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
+                .forEach(entry -> System.out.printf("%s: %.4f%n", entry.getKey(), entry.getValue()));
 
         for (int i = 1; i < stocks.size(); i++) {
             //Changes & percentages calculations
@@ -730,7 +863,7 @@ public class Main_data_handler {
             //pattern detection & volatility calculation of percentage changes logic
             if (i == stocks.size() - 1) {
                 double lastChanges = cumulativePercentageChange(stocks, lastChangeLength);
-                boolean volTest = isVolatilitySpike(stocks, 5);
+                boolean volTest = isVolatilitySpike(stocks, 5) == 1;
 
                 if (((stocks.get(i - 1).getPercentageChange() +
                         stocks.get(i - 2).getPercentageChange() +
@@ -758,10 +891,7 @@ public class Main_data_handler {
                                            int lastChangeLength, double lastChanges, List<Notification> alertsList,
                                            TimeSeries timeSeries, boolean volTest) {
         if (i >= rapidWindowSize) { // Ensure the window is valid
-            if (volTest && (consecutiveIncreaseCount >= minConsecutiveCount) &&
-                    (i >= (stocks.size() - lastChangeLength)) &&
-                    (lastChanges > minIncrease)) {
-
+            if (volTest && (consecutiveIncreaseCount >= minConsecutiveCount) && (i >= (stocks.size() - lastChangeLength)) && (lastChanges > minIncrease)) {
                 createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), false);
 
 //                System.out.printf("Name: %s Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDateDate());
@@ -771,8 +901,8 @@ public class Main_data_handler {
 
     //Indicators
     // 1. Simple Moving Average (SMA) Crossovers
-    public static boolean isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
-        if (window.size() < longPeriod) return false;
+    public static int isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
+        if (window.size() < longPeriod) return 0;
 
         double shortSMA = window.stream()
                 .skip(window.size() - shortPeriod)
@@ -790,12 +920,13 @@ public class Main_data_handler {
         double prevShort = window.get(window.size() - shortPeriod - 1).getClose();
         double prevLong = window.get(window.size() - longPeriod - 1).getClose();
 
-        return shortSMA > longSMA && prevShort <= prevLong;
+        // Return 1 if true, 0 if false
+        return (shortSMA > longSMA && prevShort <= prevLong) ? 1 : 0;
     }
 
     // 2. EMA Crossover with Fast Calculation
-    public static boolean isEMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
-        if (window.size() < longPeriod) return false;
+    public static int isEMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
+        if (window.size() < longPeriod) return 0;
 
         double shortEMA = calculateEMA(window, shortPeriod);
         double longEMA = calculateEMA(window, longPeriod);
@@ -805,12 +936,13 @@ public class Main_data_handler {
         double prevShort = calculateEMA(prevWindow, shortPeriod);
         double prevLong = calculateEMA(prevWindow, longPeriod);
 
-        return shortEMA > longEMA && prevShort <= prevLong;
+        // Return 1 if true, 0 if false
+        return (shortEMA > longEMA && prevShort <= prevLong) ? 1 : 0;
     }
 
     // 3. Price Crossing Key Moving Average
-    public static boolean isPriceAboveSMA(List<StockUnit> window, int period) {
-        if (window.size() < period) return false;
+    public static int isPriceAboveSMA(List<StockUnit> window, int period) {
+        if (window.size() < period) return 0;
 
         double sma = window.stream()
                 .skip(window.size() - period)
@@ -821,7 +953,8 @@ public class Main_data_handler {
         double currentPrice = window.get(window.size() - 1).getClose();
         double previousPrice = window.get(window.size() - 2).getClose();
 
-        return currentPrice > sma && previousPrice <= sma;
+        // Return 1 if true, 0 if false
+        return (currentPrice > sma && previousPrice <= sma) ? 1 : 0;
     }
 
     // 4. MACD with Histogram
@@ -1049,8 +1182,8 @@ public class Main_data_handler {
     }
 
     // 13. Breakout Above Resistance (Optimized with Sliding Window)
-    public static boolean isBreakout(List<StockUnit> window, int resistancePeriod) {
-        if (window.size() < resistancePeriod + 1) return false;
+    public static int isBreakout(List<StockUnit> window, int resistancePeriod) {
+        if (window.size() < resistancePeriod + 1) return 0;
 
         double currentClose = window.get(window.size() - 1).getClose();
         double resistance = window.stream()
@@ -1060,12 +1193,12 @@ public class Main_data_handler {
                 .max()
                 .orElse(Double.MIN_VALUE);
 
-        return currentClose > resistance &&
-                window.get(window.size() - 2).getClose() <= resistance;
+        // Return 1 if true, 0 if false
+        return (currentClose > resistance && window.get(window.size() - 2).getClose() <= resistance) ? 1 : 0;
     }
 
     // 14. Donchian Channel Breakout (Efficient Rolling Max)
-    public static boolean donchianBreakout(List<StockUnit> window, int period, String symbol) {
+    public static int donchianBreakout(List<StockUnit> window, int period, String symbol) {
         Deque<Double> maxQueue = donchianCache.computeIfAbsent(symbol, k -> new ArrayDeque<>());
         double currentClose = window.get(window.size() - 1).getClose();
 
@@ -1077,16 +1210,17 @@ public class Main_data_handler {
 
         double currentMax = new ArrayList<>(maxQueue)
                 .stream()
-                .filter(Objects::nonNull)  // Filter out null values
+                .filter(Objects::nonNull) // Filter out null values
                 .max(Double::compare)
                 .orElse(0.0);
 
-        return currentClose > currentMax && window.get(window.size() - 2).getClose() <= currentMax;
+        // Return 1 if true, 0 if false
+        return (currentClose > currentMax && window.get(window.size() - 2).getClose() <= currentMax) ? 1 : 0;
     }
 
     // 15. Statistical Volatility Threshold (Reuse Bollinger stdDev)
-    public static boolean isVolatilitySpike(List<StockUnit> window, int period) {
-        if (window.size() < period) return false;
+    public static int isVolatilitySpike(List<StockUnit> window, int period) {
+        if (window.size() < period) return 0;
 
         double currentChange = window.get(window.size() - 1).getPercentageChange();
         double mean = window.stream()
@@ -1101,7 +1235,8 @@ public class Main_data_handler {
                 .average()
                 .orElse(0));
 
-        return Math.abs(currentChange) > 2 * stdDev;
+        // Return 1 if true, 0 if false
+        return Math.abs(currentChange) > 2 * stdDev ? 1 : 0;
     }
 
     // 16. Rolling Volatility Monitor (Incremental Calculation)
@@ -1139,20 +1274,20 @@ public class Main_data_handler {
     }
 
     // 18. Higher Highs Pattern with Adaptive Window
-    public static boolean isHigherHighs(List<StockUnit> window, int minConsecutive) {
-        if (window.size() < minConsecutive) return false;
+    public static int isHigherHighs(List<StockUnit> window, int minConsecutive) {
+        if (window.size() < minConsecutive) return 0;
 
         for (int i = window.size() - minConsecutive; i < window.size() - 1; i++) {
             if (window.get(i + 1).getClose() <= window.get(i).getClose()) {
-                return false;
+                return 0;
             }
         }
-        return true;
+        return 1;
     }
 
     // 19. Fractal Breakout Detection with Consolidation Phase
-    public static boolean isFractalBreakout(List<StockUnit> window, int consolidationPeriod, double volatilityThreshold) {
-        if (window.size() < consolidationPeriod + 2) return false;
+    public static int isFractalBreakout(List<StockUnit> window, int consolidationPeriod, double volatilityThreshold) {
+        if (window.size() < consolidationPeriod + 2) return 0;
 
         // Calculate consolidation range
         double consolidationHigh = window.stream()
@@ -1170,8 +1305,8 @@ public class Main_data_handler {
         double currentClose = window.get(window.size() - 1).getClose();
         double rangeSize = consolidationHigh - consolidationLow;
 
-        // Breakout conditions
-        return currentClose > consolidationHigh && rangeSize / consolidationLow < volatilityThreshold;
+        // Return 1 if true, 0 if false
+        return (currentClose > consolidationHigh && rangeSize / consolidationLow < volatilityThreshold) ? 1 : 0;
     }
 
     // 20. Candle Pattern Recognition (Optimized Bitmask Approach)
@@ -1201,8 +1336,8 @@ public class Main_data_handler {
     }
 
     // 21. Automated Trend-line Analysis
-    public static boolean isTrendlineBreakout(List<StockUnit> window, int lookback) {
-        if (window.size() < lookback + 2) return false;
+    public static int isTrendlineBreakout(List<StockUnit> window, int lookback) {
+        if (window.size() < lookback + 2) return 0;
 
         // Find pivot highs for trend line
         List<Double> pivotHighs = new ArrayList<>();
@@ -1214,14 +1349,14 @@ public class Main_data_handler {
             }
         }
 
-        if (pivotHighs.size() < 2) return false;
+        if (pivotHighs.size() < 2) return 0;
 
         // Linear regression of pivot highs
         double expectedHigh = getExpectedHigh(pivotHighs);
         double currentClose = window.get(window.size() - 1).getClose();
 
-        return currentClose > expectedHigh &&
-                currentClose > window.get(window.size() - 2).getClose();
+        // Return 1 if true, 0 if false
+        return (currentClose > expectedHigh && currentClose > window.get(window.size() - 2).getClose()) ? 1 : 0;
     }
 
     private static double getExpectedHigh(List<Double> pivotHighs) {
@@ -1242,9 +1377,8 @@ public class Main_data_handler {
     }
 
     // 22. Z-Score of Returns using incremental calculation
-    public static boolean isZScoreSpike(List<StockUnit> window, int period, String symbol) {
-        DoubleArrayWindow returnsWindow = returnsWindows.computeIfAbsent(symbol,
-                k -> new DoubleArrayWindow(period * 2));
+    public static int isZScoreSpike(List<StockUnit> window, int period, String symbol) {
+        DoubleArrayWindow returnsWindow = returnsWindows.computeIfAbsent(symbol, k -> new DoubleArrayWindow(period * 2));
 
         // Update window with latest return
         double currentReturn = window.get(window.size() - 1).getPercentageChange();
@@ -1254,7 +1388,8 @@ public class Main_data_handler {
         double mean = returnsWindow.historicalAverage(period);
         double stdDev = calculateStdDev(returnsWindow, period);
 
-        return stdDev != 0 && (currentReturn - mean) / stdDev >= 2.0;
+        // Return 1 if true, 0 if false
+        return (stdDev != 0 && (currentReturn - mean) / stdDev >= 2.0) ? 1 : 0;
     }
 
     private static double calculateStdDev(DoubleArrayWindow window, int period) {
@@ -1270,15 +1405,16 @@ public class Main_data_handler {
     }
 
     // 23. Cumulative Percentage Change with threshold check
-    public static boolean isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
-        if (window.size() < period) return false;
+    public static int isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
+        if (window.size() < period) return 0;
 
         double sum = window.stream()
                 .skip(window.size() - period)
                 .mapToDouble(StockUnit::getPercentageChange)
                 .sum();
 
-        return sum >= threshold;
+        // Return 1 if true, 0 if false
+        return sum >= threshold ? 1 : 0;
     }
 
     // 24. Cumulative Percentage Change
@@ -1298,10 +1434,10 @@ public class Main_data_handler {
     }
 
     // 25. Breakout Above Moving Average
-    public static boolean isBreakoutAboveMA(List<StockUnit> window, int period, boolean useEMA) {
+    public static int isBreakoutAboveMA(List<StockUnit> window, int period, boolean useEMA) {
         // Validation
         if (window == null || window.size() < period || period <= 0) {
-            return false;
+            return 0;  // Return 0 if invalid
         }
 
         // Get current and previous prices
@@ -1313,7 +1449,8 @@ public class Main_data_handler {
         double currentMA = calculateMA(window, period, useEMA);
         double previousMA = calculateMA(window.subList(0, window.size() - 1), period, useEMA);
 
-        return currentClose > currentMA && previousClose <= previousMA;
+        // Return 1 if true, 0 if false
+        return (currentClose > currentMA && previousClose <= previousMA) ? 1 : 0;
     }
 
     private static double calculateMA(List<StockUnit> window, int period, boolean useEMA) {
@@ -1321,8 +1458,8 @@ public class Main_data_handler {
     }
 
     // 26. Parabolic SAR Approximation using Close Prices
-    public static boolean isParabolicSARBullish(List<StockUnit> window, int period, double acceleration) {
-        if (window.size() < period + 2) return false;
+    public static int isParabolicSARBullish(List<StockUnit> window, int period, double acceleration) {
+        if (window.size() < period + 2) return 0;
 
         double[] sarValues = new double[window.size()];
         sarValues[0] = window.get(0).getClose();
@@ -1355,15 +1492,18 @@ public class Main_data_handler {
         }
 
         StockUnit current = window.get(window.size() - 1);
-        return current.getClose() > sarValues[sarValues.length - 1];
+        // Return 1 if bullish, 0 if not
+        return (current.getClose() > sarValues[sarValues.length - 1]) ? 1 : 0;
     }
 
     // 27. Keltner Channels Breakout
-    public static boolean isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier) {
+    public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier) {
         double ema = calculateEMA(window, emaPeriod);
         double atr = calculateATR(window, atrPeriod);
         double upperBand = ema + (multiplier * atr);
-        return window.get(window.size() - 1).getClose() > upperBand;
+
+        // Return 1 if the close is greater than the upper band, otherwise return 0
+        return (window.get(window.size() - 1).getClose() > upperBand) ? 1 : 0;
     }
 
     // 28. Elder-Ray Index Approximation
@@ -1373,8 +1513,8 @@ public class Main_data_handler {
     }
 
     // 29. Volume Spike Detection with Adaptive Threshold
-    public static boolean isVolumeSpike(List<StockUnit> window, int period, double thresholdFactor) {
-        if (window.size() < period) return false;
+    public static int isVolumeSpike(List<StockUnit> window, int period, double thresholdFactor) {
+        if (window.size() < period) return 0;
 
         // Calculate average volume
         double avgVolume = calculateAverageVolume(window, period);
@@ -1382,8 +1522,8 @@ public class Main_data_handler {
         // Get the current volume (last element in the window)
         double currentVolume = window.get(window.size() - 1).getVolume();
 
-        // Return true if the current volume is greater than the average volume times the threshold factor
-        return currentVolume > (avgVolume * thresholdFactor);
+        // Return 1 if true, 0 if false
+        return currentVolume > (avgVolume * thresholdFactor) ? 1 : 0;
     }
 
     private static double calculateAverageVolume(List<StockUnit> window, int period) {
