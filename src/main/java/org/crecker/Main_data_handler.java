@@ -24,7 +24,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -37,78 +36,128 @@ public class Main_data_handler {
     private static final Map<String, DoubleArrayWindow> volatilityWindows = new ConcurrentHashMap<>();
     private static final Map<String, DoubleArrayWindow> returnsWindows = new ConcurrentHashMap<>();
 
-    private static final ConcurrentMap<String, Double> INDICATOR_WEIGHTS = new ConcurrentHashMap<>();
+    private static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = Map.ofEntries(
+            // Trend Following Indicators
+            Map.entry("SMA_CROSS", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("EMA_CROSS", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("PRICE_SMA_DISTANCE", Map.of("min", -20.0, "max", 20.0)),
+            Map.entry("MACD", Map.of("min", -5.0, "max", 5.0)),
+            Map.entry("TRIX", Map.of("min", -5.0, "max", 5.0)),
+            Map.entry("KAMA", Map.of("min", -20.0, "max", 20.0)),
 
-    private static final Map<String, Map<String, Double>> INDICATOR_RANGES = Map.ofEntries(
+            // Momentum Indicators
             Map.entry("RSI", Map.of("min", 0.0, "max", 100.0)),
-            Map.entry("MACD", Map.of("min", -2.0, "max", 2.0)),
-            Map.entry("BOLLINGER", Map.of("min", -100.0, "max", 100.0)),
-            Map.entry("TRIX", Map.of("min", -1.0, "max", 1.0)),
-            Map.entry("KAMA", Map.of("min", -10.0, "max", 10.0)),
-            Map.entry("CMO", Map.of("min", -100.0, "max", 100.0)),
-            Map.entry("ACCELERATION", Map.of("min", -5.0, "max", 5.0)),
-            Map.entry("DONCHIAN", Map.of("min", 0.0, "max", 1.0)),
-            Map.entry("Z_SCORE", Map.of("min", -3.0, "max", 3.0)),
-            Map.entry("KELTNER", Map.of("min", 0.0, "max", 1.0)),
-            Map.entry("ELDER_RAY", Map.of("min", -10.0, "max", 10.0)),
-            Map.entry("PARABOLIC", Map.of("min", 0.0, "max", 1.0)),
-            Map.entry("TRENDLINE", Map.of("min", 0.0, "max", 1.0)),
-            Map.entry("EMA_CROSS", Map.of("min", 0.0, "max", 100.0)),
             Map.entry("ROC", Map.of("min", -100.0, "max", 100.0)),
             Map.entry("MOMENTUM", Map.of("min", -100.0, "max", 100.0)),
-            Map.entry("SMA_CROSS", Map.of("min", 0.0, "max", 1.0)),
-            Map.entry("PRICE_SMA_DISTANCE", Map.of("min", -10.0, "max", 10.0)),
-            Map.entry("FRACTAL_BREAKOUT", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("CMO", Map.of("min", -100.0, "max", 100.0)),
+            Map.entry("ACCELERATION", Map.of("min", -10.0, "max", 10.0)),
+
+            // Volatility & Breakouts Indicators
+            Map.entry("BOLLINGER", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("BREAKOUT_RESISTANCE", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("DONCHIAN", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("VOLATILITY_THRESHOLD", Map.of("min", -3.0, "max", 3.0)),
+            Map.entry("VOLATILITY_MONITOR", Map.of("min", 0.0, "max", 5.0)),
+
+            // Patterns Indicators
+            Map.entry("CONSECUTIVE_POSITIVE_CLOSES", Map.of("min", 0.0, "max", 10.0)),
             Map.entry("HIGHER_HIGHS", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("FRACTAL_BREAKOUT", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("CANDLE_PATTERN", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("TRENDLINE", Map.of("min", 0.0, "max", 1.0)),
+
+            // Statistical Indicators
+            Map.entry("Z_SCORE", Map.of("min", -3.0, "max", 3.0)),
+            Map.entry("CUMULATIVE_PERCENTAGE", Map.of("min", -20.0, "max", 20.0)),
+            Map.entry("CUMULATIVE_THRESHOLD", Map.of("min", 0.0, "max", 1.0)),
+
+            // Advanced Indicators
             Map.entry("BREAKOUT_MA", Map.of("min", 0.0, "max", 1.0)),
-            Map.entry("VOLUME_SPIKE", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("BREAKOUT_RESISTANCE", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("VOLATILITY_THRESHOLD", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("VOLATILITY_MONITOR", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("CANDLE_PATTERN", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("ATR", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("CONSECUTIVE_POSITIVE_CLOSES", Map.of("min", 0.0, "max", 1.0)), // Added
-            Map.entry("CUMULATIVE_THRESHOLD", Map.of("min", 0.0, "max", 1.0)) // Added
+            Map.entry("PARABOLIC", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("KELTNER", Map.of("min", 0.0, "max", 1.0)),
+            Map.entry("ELDER_RAY", Map.of("min", -10.0, "max", 10.0)),
+            Map.entry("VOLUME_SPIKE", Map.of("min", 0.0, "max", 5.0)),
+            Map.entry("ATR", Map.of("min", 0.0, "max", 1.0))
+    );
+
+    // Trend Following Indicators
+    private static final Map<String, Double> TREND_FOLLOWING_WEIGHTS = Map.ofEntries(
+            Map.entry("SMA_CROSS", 0.15),
+            Map.entry("EMA_CROSS", 0.15),
+            Map.entry("PRICE_SMA_DISTANCE", 0.20),
+            Map.entry("MACD", 0.15),
+            Map.entry("TRIX", 0.20),
+            Map.entry("KAMA", 0.15)
+    );
+
+    // Momentum Indicators
+    private static final Map<String, Double> MOMENTUM_WEIGHTS = Map.ofEntries(
+            Map.entry("RSI", 0.25),
+            Map.entry("ROC", 0.15),
+            Map.entry("MOMENTUM", 0.15),
+            Map.entry("CMO", 0.15),
+            Map.entry("ACCELERATION", 0.30)
+    );
+
+    // Volatility & Breakouts Indicators
+    private static final Map<String, Double> VOLATILITY_BREAKOUTS_WEIGHTS = Map.ofEntries(
+            Map.entry("BOLLINGER", 0.20),
+            Map.entry("BREAKOUT_RESISTANCE", 0.15),
+            Map.entry("DONCHIAN", 0.20),
+            Map.entry("VOLATILITY_THRESHOLD", 0.20),
+            Map.entry("VOLATILITY_MONITOR", 0.25)
+    );
+
+    // Patterns Indicators
+    private static final Map<String, Double> PATTERNS_WEIGHTS = Map.ofEntries(
+            Map.entry("CONSECUTIVE_POSITIVE_CLOSES", 0.25),
+            Map.entry("HIGHER_HIGHS", 0.15),
+            Map.entry("FRACTAL_BREAKOUT", 0.20),
+            Map.entry("CANDLE_PATTERN", 0.15),
+            Map.entry("TRENDLINE", 0.25)
+    );
+
+    // Statistical Indicators
+    private static final Map<String, Double> STATISTICAL_WEIGHTS = Map.ofEntries(
+            Map.entry("Z_SCORE", 0.40),
+            Map.entry("CUMULATIVE_PERCENTAGE", 0.40),
+            Map.entry("CUMULATIVE_THRESHOLD", 0.20)
+    );
+
+    // Advanced Indicators
+    private static final Map<String, Double> ADVANCED_WEIGHTS = Map.ofEntries(
+            Map.entry("BREAKOUT_MA", 0.10),
+            Map.entry("PARABOLIC", 0.10),
+            Map.entry("KELTNER", 0.20),
+            Map.entry("ELDER_RAY", 0.20),
+            Map.entry("VOLUME_SPIKE", 0.25),
+            Map.entry("ATR", 0.15)
+    );
+
+    // Aggregated weights map
+    private static final Map<String, Map<String, Double>> INDICATOR_RANGE_FULL = Map.of(
+            "TrendFollowing", TREND_FOLLOWING_WEIGHTS,
+            "Momentum", MOMENTUM_WEIGHTS,
+            "VolatilityBreakouts", VOLATILITY_BREAKOUTS_WEIGHTS,
+            "Patterns", PATTERNS_WEIGHTS,
+            "Statistical", STATISTICAL_WEIGHTS,
+            "Advanced", ADVANCED_WEIGHTS
+    );
+
+    // Category Level Weights
+    private static final Map<String, Double> INDICATOR_WEIGHTS_FULL = Map.of(
+            "TrendFollowing", 0.20,
+            "Momentum", 0.15,
+            "VolatilityBreakouts", 0.25,
+            "Patterns", 0.15,
+            "Statistical", 0.10,
+            "Advanced", 0.15
     );
 
     public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     public static int frameSize = 30; // Frame size for analysis
     public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     public static boolean test = true; //if True use demo url for real Time Updates
-
-    static {
-        INDICATOR_WEIGHTS.put("RSI", 0.08);          // Originally 0.09 → Retained high priority
-        INDICATOR_WEIGHTS.put("BOLLINGER", 0.09);    // Originally 0.10 → Slightly reduced
-        INDICATOR_WEIGHTS.put("Z_SCORE", 0.07);      // Originally 0.08 → Reduced but still strong
-        INDICATOR_WEIGHTS.put("TRIX", 0.06);         // Originally 0.07 → Adjusted
-        INDICATOR_WEIGHTS.put("MACD", 0.05);         // Added for Item 4 → Matched to mid-tier
-        INDICATOR_WEIGHTS.put("FRACTAL_BREAKOUT", 0.05); // Originally 0.06 → Slightly reduced
-        INDICATOR_WEIGHTS.put("VOLUME_SPIKE", 0.05); // Matches Item 29 → Maintained
-        INDICATOR_WEIGHTS.put("CUMULATIVE_PERCENTAGE", 0.04); // Matches Item 24 → Maintained
-        INDICATOR_WEIGHTS.put("DONCHIAN", 0.04);     // Matches Item 14 → Reduced
-        INDICATOR_WEIGHTS.put("EMA_CROSS", 0.03);    // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("KAMA", 0.04);         // Reduced from 0.06
-        INDICATOR_WEIGHTS.put("CMO", 0.03);          // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("ACCELERATION", 0.03); // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("KELTNER", 0.03);      // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("ELDER_RAY", 0.01);    // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("PARABOLIC", 0.01);    // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("TRENDLINE", 0.03);    // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("ROC", 0.02);          // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("MOMENTUM", 0.03);     // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("SMA_CROSS", 0.01);    // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("HIGHER_HIGHS", 0.03); // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("BREAKOUT_MA", 0.01);  // Reduced from 0.05
-        INDICATOR_WEIGHTS.put("PRICE_SMA_DISTANCE", 0.03); // Up from 0.04 → Balanced
-        INDICATOR_WEIGHTS.put("BREAKOUT_RESISTANCE", 0.02); // Reduced from 0.04
-        INDICATOR_WEIGHTS.put("VOLATILITY_THRESHOLD", 0.02); // Reduced from 0.04
-        INDICATOR_WEIGHTS.put("VOLATILITY_MONITOR", 0.02); // Reduced from 0.04
-        INDICATOR_WEIGHTS.put("CANDLE_PATTERN", 0.02);    // Reduced from 0.04
-        INDICATOR_WEIGHTS.put("ATR", 0.02);           // Reduced from 0.04
-        INDICATOR_WEIGHTS.put("CONSECUTIVE_POSITIVE_CLOSES", 0.02); // Reduced from 0.04
-        INDICATOR_WEIGHTS.put("CUMULATIVE_THRESHOLD", 0.02); // Reduced from 0.04
-    }
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -586,6 +635,22 @@ public class Main_data_handler {
         });
     }
 
+//    // Normalize to [0,1] range based on indicator type
+//    private static double normalizeScore(String indicator, double rawValue) {
+//        Map<String, Double> range = INDICATOR_RANGE_MAP.get(indicator);
+//        if (range == null) return rawValue; // No normalization
+//
+//        double min = range.get("min");
+//        double max = range.get("max");
+//
+//        // Special handling for centered indicators
+//        if ("MACD".equals(indicator)) {
+//            return 0.5 + (rawValue / (max - min)); // Center at 0.5
+//        }
+//
+//        return (rawValue - min) / (max - min);
+//    }
+
     /**
      * Generates notifications based on patterns and criteria within a frame of stock data.
      *
@@ -594,7 +659,6 @@ public class Main_data_handler {
      * @return A list of notifications generated from the frame.
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
-
         //prevent wrong dip variables
         int lastChangeLength = 5;
 
@@ -621,6 +685,23 @@ public class Main_data_handler {
         if (isWeekendSpan(stocks)) {
             return new ArrayList<>(); // Return empty list to skip notifications
         }
+
+//        Map<String, Double> aggregatedWeights = new HashMap<>();
+//        // Step 1: Compute weighted values per category
+//        INDICATOR_RANGE_FULL.forEach((category, indicators) -> {
+//            double categoryWeight = INDICATOR_WEIGHTS_FULL.getOrDefault(category, 0.0);
+//            indicators.forEach((indicator, weight) -> {
+//                double finalWeight = weight * categoryWeight;
+//                aggregatedWeights.merge(indicator, finalWeight, Double::sum);
+//            });
+//        });
+//
+//        // Step 2: Display result weights
+//        System.out.println("Final Indicator Weights:");
+//        aggregatedWeights.entrySet().stream()
+//                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
+//                .forEach(entry -> System.out.printf("%s: %.4f%n", entry.getKey(), entry.getValue()));
+
 
         for (int i = 1; i < stocks.size(); i++) {
             //Changes & percentages calculations
@@ -683,8 +764,7 @@ public class Main_data_handler {
 
                 createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), false);
 
-//                System.out.printf("Name: %s Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n",
-//                        stockName, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDateDate());
+//                System.out.printf("Name: %s Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDateDate());
             }
         }
     }
@@ -1318,7 +1398,7 @@ public class Main_data_handler {
         return totalVolume / period;
     }
 
-    // ATR Calculator using Close Prices (adjusted from traditional)
+    // 30. ATR Calculator using Close Prices (adjusted from traditional)
     private static double calculateATR(List<StockUnit> window, int period) {
         double atr = Math.abs(window.get(1).getClose() - window.get(0).getClose());
 

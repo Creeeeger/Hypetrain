@@ -6,6 +6,7 @@ import org.jfree.data.time.TimeSeries;
 
 import java.io.BufferedReader;
 import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -170,6 +171,46 @@ public class P_L_Tester {
         symbolTimelines.put(symbol, existing);
 
         System.out.println("Loaded " + fileUnits.size() + " entries for " + symbol);
+
+        exportToCSV(fileUnits);
+    }
+
+    public static void exportToCSV(List<StockUnit> stocks) {
+        try {
+            FileWriter csvWriter = new FileWriter(System.getProperty("user.dir") + "/rallyMLModel/high_frequency_stocks.csv");
+            csvWriter.append("timestamp,open,high,low,close,volume\n"); // Write the header line to the CSV file
+
+            for (StockUnit stock : stocks) {
+                // Escape the data for CSV formatting
+                csvWriter.append(escapeCSV(String.valueOf(stock.getDateDate()))).append(",")
+                        .append(escapeCSV(String.valueOf(stock.getOpen()))).append(",")
+                        .append(escapeCSV(String.valueOf(stock.getHigh()))).append(",")
+                        .append(escapeCSV(String.valueOf(stock.getLow()))).append(",")
+                        .append(escapeCSV(String.valueOf(stock.getClose()))).append(",")
+                        .append(escapeCSV(String.valueOf(stock.getVolume()))).append("\n");
+            }
+
+            // Close resources
+            csvWriter.flush();
+            csvWriter.close();
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static String escapeCSV(String data) {
+        if (data == null) {
+            return "";  // Handle null values by returning an empty string
+        }
+
+        String escapedData = data; // Initialize escapedData with the original data
+
+        // If data contains commas, quotes, or newlines, enclose it in double quotes
+        if (data.contains(",") || data.contains("\"") || data.contains("\n")) {
+            escapedData = "\"" + data.replace("\"", "\"\"") + "\""; // Replace quotes with escaped quotes and enclose in double quotes
+        }
+        return escapedData; // Return the escaped data
     }
 
     public static List<StockUnit> readStockUnitsFromFile(String filePath, int retainLast) throws IOException {
