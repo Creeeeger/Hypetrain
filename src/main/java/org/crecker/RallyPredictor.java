@@ -72,7 +72,7 @@ public class RallyPredictor implements AutoCloseable {
             }
         } finally {
             bufferLock.unlock();
-        }git 
+        }
 
         return null;
     }
