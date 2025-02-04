@@ -9,6 +9,7 @@ CODE
 1 apply weights of indicators
 2 do manual comparison of return data
 3 finish creating a working interference
+4 integrate and evaluate return from ML interference
 
 - create ML confirmation interference
 
