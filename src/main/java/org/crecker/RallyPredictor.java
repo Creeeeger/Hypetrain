@@ -4,26 +4,26 @@ import ai.onnxruntime.OnnxTensor;
 import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
-import org.apache.commons.lang3.ArrayUtils;
 
-import java.util.Arrays;
 import java.util.Collections;
 import java.util.LinkedList;
+import java.util.concurrent.locks.ReentrantLock;
 
 import static org.crecker.Main_data_handler.INDICATOR_RANGE_MAP;
 import static org.crecker.Main_data_handler.frameSize;
 
-class RallyPredictor implements AutoCloseable {
-    private static LinkedList<double[]> buffer = null;
+public class RallyPredictor implements AutoCloseable {
     private final OrtEnvironment env;
     private final OrtSession session;
+    private final LinkedList<double[]> buffer;
     private final int windowSize;
     private final int numFeatures;
+    private final ReentrantLock bufferLock = new ReentrantLock();
 
     public RallyPredictor(String modelPath, int windowSize, int numFeatures) throws OrtException {
         this.env = OrtEnvironment.getEnvironment();
         this.session = env.createSession(modelPath, new OrtSession.SessionOptions());
-        buffer = new LinkedList<>();
+        this.buffer = new LinkedList<>();
         this.windowSize = windowSize;
         this.numFeatures = numFeatures;
     }
@@ -34,22 +34,55 @@ class RallyPredictor implements AutoCloseable {
     }
 
     public static void predict(double[] features) {
-        final int WINDOW_SIZE = frameSize;
+        final int WINDOW_SIZE = frameSize; // Match your frameSize
         final int NUM_FEATURES = INDICATOR_RANGE_MAP.size();
 
         try (RallyPredictor predictor = new RallyPredictor("spike_predictor.onnx", WINDOW_SIZE, NUM_FEATURES)) {
-            buffer.add(ArrayUtils.toPrimitive(Arrays.stream(features).boxed().toArray(Double[]::new)));
-            Double prediction = predictor.predictSpike();
+            Double spikeProbability = predictor.updateAndPredict(features);
 
-            if (prediction != null && prediction > 0.0002) {
-                System.out.println("High spike probability: " + prediction);
+            if (spikeProbability != null && spikeProbability > 0.005) {
+                System.out.println("High spike probability: " + spikeProbability);
             }
+
         } catch (Exception e) {
-            throw new RuntimeException(e);
+            e.printStackTrace();
         }
     }
 
-    public synchronized Double predictSpike() throws OrtException {
+    /**
+     * Adds new features to the buffer and predicts spike probability if the buffer is full.
+     *
+     * @param features The feature vector for the current time step.
+     * @return The spike probability, or null if the buffer is not yet full.
+     */
+    public synchronized Double updateAndPredict(double[] features) throws OrtException {
+        if (features.length != numFeatures) {
+            throw new IllegalArgumentException("Feature vector length must be " + numFeatures);
+        }
+
+        bufferLock.lock();
+        try {
+            buffer.add(features);
+            if (buffer.size() > windowSize) {
+                buffer.removeFirst();
+            }
+
+            if (buffer.size() == windowSize) {
+                return predictSpike();
+            }
+        } finally {
+            bufferLock.unlock();
+        }git 
+
+        return null;
+    }
+
+    /**
+     * Predicts the spike probability using the current buffer.
+     *
+     * @return The spike probability, or null if the buffer is not yet full.
+     */
+    private Double predictSpike() throws OrtException {
         if (buffer.size() < windowSize) {
             return null;
         }
