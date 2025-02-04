@@ -141,6 +141,7 @@ public class Main_data_handler {
             "Statistical", 0.10,
             "Advanced", 0.15
     );
+
     private static final Map<String, Deque<Double>> donchianCache = new ConcurrentHashMap<>();
     private static final Map<String, DoubleArrayWindow> volatilityWindows = new ConcurrentHashMap<>();
     private static final Map<String, DoubleArrayWindow> returnsWindows = new ConcurrentHashMap<>();
