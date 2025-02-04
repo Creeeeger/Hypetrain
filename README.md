@@ -71,6 +71,7 @@
 27. Keltner Channels
 28. Elder-Ray Index Approximation
 29. Volume Spike
+30. ATR Calculator using Close Prices
 
 
 ## Python env. instructions

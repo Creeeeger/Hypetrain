@@ -2,9 +2,7 @@ import joblib
 import numpy as np
 import pandas as pd
 import tensorflow as tf
-from keras import Input
 from keras.api import mixed_precision
-from keras.src.layers import LayerNormalization
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import train_test_split
 from keras.src.models.sequential import Sequential
@@ -15,84 +13,7 @@ from keras.src.callbacks.early_stopping import EarlyStopping
 
 tf.config.optimizer.set_jit(True)  # Enable XLA compilation
 mixed_precision.set_global_policy('mixed_float16')  # Use mixed precision
-
-
-# In your data loader:
-def load_and_preprocess(path, data_generator=None):
-    return tf.data.Dataset.from_generator(
-        data_generator,
-        output_signature=(
-            tf.TensorSpec(shape=(60, 8), dtype=tf.float16),
-            tf.TensorSpec(shape=(), dtype=tf.bool)
-        )
-    ).cache().prefetch(tf.data.AUTOTUNE)
-
-
-class ANEOptimizedSpikePredictor(tf.keras.Model):
-    def __init__(self, input_shape):
-        super().__init__()
-        self.input_layer = Input(shape=input_shape, dtype=tf.float16)
-        self.lstm1 = LSTM(96, return_sequences=True,
-                          kernel_regularizer=tf.keras.regularizers.L2(0.001))
-        self.norm1 = LayerNormalization()
-        self.lstm2 = LSTM(64, return_sequences=False,
-                          kernel_regularizer=tf.keras.regularizers.L2(0.001))
-        self.norm2 = LayerNormalization()
-        self.dense = Dense(1, activation='sigmoid',
-                           kernel_regularizer=tf.keras.regularizers.L2(0.001))
-
-    def call(self, inputs):
-        x = self.lstm1(inputs)
-        x = self.norm1(x)
-        x = self.lstm2(x)
-        x = self.norm2(x)
-        return self.dense(x)
-
-    def train_ane_optimized(data_path):
-        # Enable Apple Silicon acceleration
-        tf.keras.mixed_precision.set_global_policy('mixed_float16')
-        physical_devices = tf.config.list_physical_devices('GPU')
-
-        # Configure dataset
-        dataset = load_and_preprocess(data_path)  # Implement your data loader
-        dataset = dataset.batch(4096).prefetch(tf.data.AUTOTUNE)
-
-        # Build model
-        model = ANEOptimizedSpikePredictor(input_shape=(60, 8))
-
-        # ANE-specific compilation
-        model.compile(
-            optimizer=tf.keras.optimizers.AdamW(learning_rate=0.001),
-            loss=tf.keras.losses.BinaryCrossentropy(),
-            metrics=['accuracy',
-                     tf.keras.metrics.Precision(name='precision'),
-                     tf.keras.metrics.Recall(name='recall')]
-        )
-
-        # Training with Metal acceleration
-        history = model.fit(
-            dataset,
-            epochs=100,
-            callbacks=[
-                tf.keras.callbacks.EarlyStopping(patience=5,
-                                                 monitor='val_precision',
-                                                 mode='max'),
-                tf.keras.callbacks.TerminateOnNaN(),
-                tf.keras.callbacks.ModelCheckpoint('best_model.keras',
-                                                   save_best_only=True)
-            ]
-        )
-
-        # Convert to CoreML for ANE deployment
-        import coremltools as ct
-        coreml_model = ct.convert(model,
-                                  inputs=[ct.TensorType(shape=(1, 60, 8))],
-                                  compute_units=ct.ComputeUnit.ALL)
-
-        coreml_model.save('SpikePredictor.mlmodel')
-
-        return model
-
+tf.config.set_visible_devices([], 'GPU')  # Use only GPU
 
 # 1. Feature Engineering (Aligned with your Java indicators)
 def create_features(df, window_size=60):
