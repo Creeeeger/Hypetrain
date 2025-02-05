@@ -7,6 +7,7 @@ import ai.onnxruntime.OrtSession;
 
 import java.util.Collections;
 import java.util.LinkedList;
+import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.crecker.Main_data_handler.INDICATOR_RANGE_MAP;
@@ -28,24 +29,22 @@ public class RallyPredictor implements AutoCloseable {
         this.numFeatures = numFeatures;
     }
 
-    public static void main(String[] args) {
-        double[] features = new double[2];
-        predict(features);
-    }
-
-    public static void predict(double[] features) {
+    public static double predict(double[] features) {
         final int WINDOW_SIZE = frameSize; // Match your frameSize
         final int NUM_FEATURES = INDICATOR_RANGE_MAP.size();
 
         try (RallyPredictor predictor = new RallyPredictor("spike_predictor.onnx", WINDOW_SIZE, NUM_FEATURES)) {
             Double spikeProbability = predictor.updateAndPredict(features);
 
-            if (spikeProbability != null && spikeProbability > 0.005) {
+            if (spikeProbability != null && spikeProbability > 0.005) { // Change value after testing
                 System.out.println("High spike probability: " + spikeProbability);
             }
 
+            return Objects.requireNonNullElse(spikeProbability, 0.0);
+
         } catch (Exception e) {
             e.printStackTrace();
+            return 0.0;
         }
     }
 

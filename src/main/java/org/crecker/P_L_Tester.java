@@ -26,7 +26,14 @@ public class P_L_Tester {
 
     public static void main(String[] args) {
         //updateStocks();
-        PLAnalysis();
+        long startTime = System.nanoTime(); // Record the start time
+
+        PLAnalysis(); // Call the method you want to monitor
+
+        long endTime = System.nanoTime(); // Record the end time
+        long durationInNanoseconds = endTime - startTime;
+
+        System.out.println("Execution time: " + (durationInNanoseconds / 1_000_000) + " milliseconds");
     }
 
     private static void updateStocks() {
