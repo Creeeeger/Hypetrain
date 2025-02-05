@@ -75,6 +75,7 @@ public class Main_data_handler {
             Map.entry("VOLUME_SPIKE", Map.of("min", 0.0, "max", 5.0)),
             Map.entry("ATR", Map.of("min", 0.0, "max", 1.0))
     );
+
     // Trend Following Indicators
     public static final Map<String, Double> TREND_FOLLOWING_WEIGHTS = Map.ofEntries(
             Map.entry("SMA_CROSS", 0.15),
@@ -84,6 +85,7 @@ public class Main_data_handler {
             Map.entry("TRIX", 0.20),
             Map.entry("KAMA", 0.15)
     );
+
     // Momentum Indicators
     public static final Map<String, Double> MOMENTUM_WEIGHTS = Map.ofEntries(
             Map.entry("RSI", 0.25),
@@ -92,6 +94,7 @@ public class Main_data_handler {
             Map.entry("CMO", 0.15),
             Map.entry("ACCELERATION", 0.30)
     );
+
     // Volatility & Breakouts Indicators
     public static final Map<String, Double> VOLATILITY_BREAKOUTS_WEIGHTS = Map.ofEntries(
             Map.entry("BOLLINGER", 0.20),
@@ -100,6 +103,7 @@ public class Main_data_handler {
             Map.entry("VOLATILITY_THRESHOLD", 0.20),
             Map.entry("VOLATILITY_MONITOR", 0.25)
     );
+
     // Patterns Indicators
     public static final Map<String, Double> PATTERNS_WEIGHTS = Map.ofEntries(
             Map.entry("CONSECUTIVE_POSITIVE_CLOSES", 0.25),
@@ -108,12 +112,14 @@ public class Main_data_handler {
             Map.entry("CANDLE_PATTERN", 0.15),
             Map.entry("TRENDLINE", 0.25)
     );
+
     // Statistical Indicators
     public static final Map<String, Double> STATISTICAL_WEIGHTS = Map.ofEntries(
             Map.entry("Z_SCORE", 0.40),
             Map.entry("CUMULATIVE_PERCENTAGE", 0.40),
             Map.entry("CUMULATIVE_THRESHOLD", 0.20)
     );
+
     // Advanced Indicators
     public static final Map<String, Double> ADVANCED_WEIGHTS = Map.ofEntries(
             Map.entry("BREAKOUT_MA", 0.10),
@@ -123,6 +129,7 @@ public class Main_data_handler {
             Map.entry("VOLUME_SPIKE", 0.25),
             Map.entry("ATR", 0.15)
     );
+
     // Aggregated weights map
     public static final Map<String, Map<String, Double>> INDICATOR_RANGE_FULL = Map.of(
             "TrendFollowing", TREND_FOLLOWING_WEIGHTS,
@@ -132,6 +139,7 @@ public class Main_data_handler {
             "Statistical", STATISTICAL_WEIGHTS,
             "Advanced", ADVANCED_WEIGHTS
     );
+
     // Category Level Weights
     public static final Map<String, Double> INDICATOR_WEIGHTS_FULL = Map.of(
             "TrendFollowing", 0.20,
@@ -688,100 +696,46 @@ public class Main_data_handler {
         int featureIndex = 0;
 
         // Trend Following Indicators
-        double smaCrossover = isSMACrossover(stocks, 5, 20);
-        features[featureIndex++] = normalizeScore("SMA_CROSS", normalizeScore("SMA_CROSS", smaCrossover));
-
-        double emaCrossover = isEMACrossover(stocks, 10, 30);
-        features[featureIndex++] = normalizeScore("EMA_CROSS", normalizeScore("EMA_CROSS", emaCrossover));
-
-        double priceAboveSMA = isPriceAboveSMA(stocks, 20);
-        features[featureIndex++] = normalizeScore("PRICE_SMA_DISTANCE", priceAboveSMA);
-
-        double macdHistogram = calculateMACD(stocks).get("histogram");
-        features[featureIndex++] = normalizeScore("MACD", macdHistogram);
-
-        double trix = calculateTRIX(stocks, 10);
-        features[featureIndex++] = normalizeScore("TRIX", trix);
-
-        double kama = calculateKAMA(stocks, 10);
-        features[featureIndex++] = normalizeScore("KAMA", kama);
+        features[featureIndex++] = normalizeScore("SMA_CROSS", normalizeScore("SMA_CROSS", isSMACrossover(stocks, 5, 20)));
+        features[featureIndex++] = normalizeScore("EMA_CROSS", normalizeScore("EMA_CROSS", isEMACrossover(stocks, 10, 30)));
+        features[featureIndex++] = normalizeScore("PRICE_SMA_DISTANCE", isPriceAboveSMA(stocks, 20));
+        features[featureIndex++] = normalizeScore("MACD", calculateMACD(stocks).get("histogram"));
+        features[featureIndex++] = normalizeScore("TRIX", calculateTRIX(stocks, 10));
+        features[featureIndex++] = normalizeScore("KAMA", calculateKAMA(stocks, 10));
 
         // Momentum Indicators
-        double rsi = calculateRSI(stocks, 14);
-        features[featureIndex++] = normalizeScore("RSI", rsi);
-
-        double roc = calculateROC(stocks, 10);
-        features[featureIndex++] = normalizeScore("ROC", roc);
-
-        double momentum = calculateMomentum(stocks, 10);
-        features[featureIndex++] = normalizeScore("MOMENTUM", momentum);
-
-        double cmo = calculateCMO(stocks, 14);
-        features[featureIndex++] = normalizeScore("CMO", cmo);
-
-        double acceleration = calculateAcceleration(stocks, 20);
-        features[featureIndex++] = normalizeScore("ACCELERATION", acceleration);
+        features[featureIndex++] = normalizeScore("RSI", calculateRSI(stocks, 14));
+        features[featureIndex++] = normalizeScore("ROC", calculateROC(stocks, 10));
+        features[featureIndex++] = normalizeScore("MOMENTUM", calculateMomentum(stocks, 10));
+        features[featureIndex++] = normalizeScore("CMO", calculateCMO(stocks, 14));
+        features[featureIndex++] = normalizeScore("ACCELERATION", calculateAcceleration(stocks, 20));
 
         // Volatility & Breakouts Indicators
-        double bollingerBandwidth = calculateBollingerBands(stocks, 10).get("bandwidth");
-        features[featureIndex++] = normalizeScore("BOLLINGER", bollingerBandwidth);
-
-        double breakoutResistance = isBreakout(stocks, 10);
-        features[featureIndex++] = normalizeScore("BREAKOUT_RESISTANCE", breakoutResistance);
-
-        double donchianBreakout = donchianBreakout(stocks, 10, symbol);
-        features[featureIndex++] = normalizeScore("DONCHIAN", donchianBreakout);
-
-        double volatilitySpike = isVolatilitySpike(stocks, 10);
-        features[featureIndex++] = normalizeScore("VOLATILITY_THRESHOLD", volatilitySpike);
-
-        double volatilityMonitor = rollingVolatilityRatio(stocks, 5, 10, symbol);
-        features[featureIndex++] = normalizeScore("VOLATILITY_MONITOR", volatilityMonitor);
+        features[featureIndex++] = normalizeScore("BOLLINGER", calculateBollingerBands(stocks, 10).get("bandwidth"));
+        features[featureIndex++] = normalizeScore("BREAKOUT_RESISTANCE", isBreakout(stocks, 10));
+        features[featureIndex++] = normalizeScore("DONCHIAN", donchianBreakout(stocks, 10, symbol));
+        features[featureIndex++] = normalizeScore("VOLATILITY_THRESHOLD", isVolatilitySpike(stocks, 10));
+        features[featureIndex++] = normalizeScore("VOLATILITY_MONITOR", rollingVolatilityRatio(stocks, 5, 10, symbol));
 
         // Patterns Indicators
-        double consecutivePositiveCloses = consecutivePositiveCloses(stocks, 0.2);
-        features[featureIndex++] = normalizeScore("CONSECUTIVE_POSITIVE_CLOSES", consecutivePositiveCloses);
-
-        double higherHighs = isHigherHighs(stocks, 3);
-        features[featureIndex++] = normalizeScore("HIGHER_HIGHS", higherHighs);
-
-        double fractalBreakout = isFractalBreakout(stocks, 5, 10);
-        features[featureIndex++] = normalizeScore("FRACTAL_BREAKOUT", fractalBreakout);
-
-        double candlePattern = detectCandlePatterns(stocks.get(stocks.size() - 1), stocks.get(stocks.size() - 2));
-        features[featureIndex++] = normalizeScore("CANDLE_PATTERN", candlePattern);
-
-        double trendlineBreakout = isTrendlineBreakout(stocks, 5);
-        features[featureIndex++] = normalizeScore("TRENDLINE", trendlineBreakout);
+        features[featureIndex++] = normalizeScore("CONSECUTIVE_POSITIVE_CLOSES", consecutivePositiveCloses(stocks, 0.2));
+        features[featureIndex++] = normalizeScore("HIGHER_HIGHS", isHigherHighs(stocks, 3));
+        features[featureIndex++] = normalizeScore("FRACTAL_BREAKOUT", isFractalBreakout(stocks, 5, 10));
+        features[featureIndex++] = normalizeScore("CANDLE_PATTERN", detectCandlePatterns(stocks.get(stocks.size() - 1), stocks.get(stocks.size() - 2)));
+        features[featureIndex++] = normalizeScore("TRENDLINE", isTrendlineBreakout(stocks, 5));
 
         // Statistical Indicators
-        double zScoreSpike = isZScoreSpike(stocks, 10, symbol);
-        features[featureIndex++] = normalizeScore("Z_SCORE", zScoreSpike);
-
-        double cumulativePercentage = isCumulativeSpike(stocks, 10, 5);
-        features[featureIndex++] = normalizeScore("CUMULATIVE_PERCENTAGE", cumulativePercentage);
-
-        double cumulativeThreshold = cumulativePercentageChange(stocks, 5);
-        features[featureIndex++] = normalizeScore("CUMULATIVE_THRESHOLD", cumulativeThreshold);
+        features[featureIndex++] = normalizeScore("Z_SCORE", isZScoreSpike(stocks, 10, symbol));
+        features[featureIndex++] = normalizeScore("CUMULATIVE_PERCENTAGE", isCumulativeSpike(stocks, 10, 5));
+        features[featureIndex++] = normalizeScore("CUMULATIVE_THRESHOLD", cumulativePercentageChange(stocks, 5));
 
         // Advanced Indicators
-        double breakoutMA = isBreakoutAboveMA(stocks, 10, true);
-        features[featureIndex++] = normalizeScore("BREAKOUT_MA", breakoutMA);
-
-        double parabolicSARBullish = isParabolicSARBullish(stocks, 10, 0.2);
-        features[featureIndex++] = normalizeScore("PARABOLIC", parabolicSARBullish);
-
-        double keltnerBreakout = isKeltnerBreakout(stocks, 20, 10, 0.3);
-        features[featureIndex++] = normalizeScore("KELTNER", keltnerBreakout);
-
-        double elderRayIndex = elderRayIndex(stocks, 20);
-        features[featureIndex++] = normalizeScore("ELDER_RAY", elderRayIndex);
-
-        double volumeSpike = isVolumeSpike(stocks, 10, 0.03);
-        features[featureIndex++] = normalizeScore("VOLUME_SPIKE", volumeSpike);
-
-        double atr = calculateATR(stocks, 15);
-        features[featureIndex++] = normalizeScore("ATR", atr);
+        features[featureIndex++] = normalizeScore("BREAKOUT_MA", isBreakoutAboveMA(stocks, 10, true));
+        features[featureIndex++] = normalizeScore("PARABOLIC", isParabolicSARBullish(stocks, 10, 0.2));
+        features[featureIndex++] = normalizeScore("KELTNER", isKeltnerBreakout(stocks, 20, 10, 0.3));
+        features[featureIndex++] = normalizeScore("ELDER_RAY", elderRayIndex(stocks, 20));
+        features[featureIndex++] = normalizeScore("VOLUME_SPIKE", isVolumeSpike(stocks, 10, 0.03));
+        features[featureIndex++] = normalizeScore("ATR", calculateATR(stocks, 15));
 
         return features;
     }
@@ -794,26 +748,7 @@ public class Main_data_handler {
      * @return A list of notifications generated from the frame.
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
-        //prevent wrong dip variables
-        int lastChangeLength = 5;
-
-        //minor dip detection variables
-        int consecutiveIncreaseCount = 0;
-        double cumulativeIncrease = 0;
-        double cumulativeDecrease = 0;
-        double minorDipTolerance = 0.65; // in %
-
-        //rapid increase variables
-        double minIncrease = 2; // in %
-        int rapidWindowSize = 1;
-        int minConsecutiveCount = 2;
-
-        //Crash variables
-        double dipDown = -1.5; //in %
-        double dipUp = 0.8; //in %
-
         //algorithm related variables
-        List<Notification> alertsList = new ArrayList<>();
         TimeSeries timeSeries = new TimeSeries(symbol);
 
         // Prevent notifications if time frame spans over the weekend (Friday to Monday)
@@ -832,72 +767,51 @@ public class Main_data_handler {
             });
         });
 
-        // Step 2: Display result weights
-        aggregatedWeights.entrySet().stream()
-                .sorted(Map.Entry.comparingByValue(Comparator.reverseOrder()))
-                .forEach(entry -> System.out.printf("%s: %.4f%n", entry.getKey(), entry.getValue()));
+        // Step 1: Compute weighted feature values
+        double[] features = computeFeatures(stocks, symbol);
 
-        for (int i = 1; i < stocks.size(); i++) {
-            //Changes & percentages calculations
-            double percentageChange = stocks.get(i).getPercentageChange();
-            timeSeries.add(new Minute(stocks.get(i).getDateDate()), stocks.get(i).getClose());
+        double[] weightedFeatures = new double[features.length];
 
-            // Check if the current percentage change is positive or a minor dip (momentum calculation)
-            if (percentageChange > 0) {
-                cumulativeIncrease += percentageChange;
-                consecutiveIncreaseCount++;
-                cumulativeDecrease = 0; // Reset cumulative decrease when there's an increase
-            } else {
-                cumulativeDecrease += Math.abs(percentageChange); // Track cumulative decreases
-                // Check if the cumulative decrease is within tolerance
-                if (cumulativeDecrease <= minorDipTolerance * cumulativeIncrease) {
-                    // Allow minor dip, continue momentum tracking without resetting
-                    consecutiveIncreaseCount++;
-                } else {
-                    // If the dip is too large, reset momentum
-                    consecutiveIncreaseCount = 0;
-                    cumulativeIncrease = 0;
-                    cumulativeDecrease = 0;
-                }
-            }
-
-            //pattern detection & volatility calculation of percentage changes logic
-            if (i == stocks.size() - 1) {
-                double lastChanges = cumulativePercentageChange(stocks, lastChangeLength);
-                boolean volTest = isVolatilitySpike(stocks, 5) == 1;
-
-                if (((stocks.get(i - 1).getPercentageChange() +
-                        stocks.get(i - 2).getPercentageChange() +
-                        stocks.get(i - 3).getPercentageChange()) <= dipDown) &&
-                        (stocks.get(i).getPercentageChange() >= dipUp)) {
-                    try {
-                        createNotification(symbol, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), true);
-                    } catch (Exception ignored) {
-                    }
-                }
-
-                //rapid increase logic
-                rapidIncreaseLogic(stocks, symbol, i, rapidWindowSize,
-                        minIncrease, consecutiveIncreaseCount,
-                        minConsecutiveCount, lastChangeLength, lastChanges,
-                        alertsList, timeSeries, volTest);
-            }
+        // Map indicators to feature index
+        Map<String, Integer> indicatorToIndex = new HashMap<>();
+        int idx = 0;
+        for (String indicator : INDICATOR_RANGE_MAP.keySet()) {
+            indicatorToIndex.put(indicator, idx++);
         }
-        return alertsList;
+
+        // Apply weights
+        aggregatedWeights.forEach((indicator, weight) -> {
+            Integer index = indicatorToIndex.get(indicator);
+            if (index != null && index < features.length) {
+                weightedFeatures[index] = features[index] * weight;
+            }
+        });
+
+        //  double prediction = predict(weightedFeatures);
+        double prediction = 2;
+
+
+        for (StockUnit stockUnit : stocks) {
+            timeSeries.add(new Minute(stockUnit.getDateDate()), stockUnit.getClose());
+        }
+
+        return evaluateResult(timeSeries, weightedFeatures, prediction, aggregatedWeights);
     }
 
-    private static void rapidIncreaseLogic(List<StockUnit> stocks, String stockName, int i,
-                                           int rapidWindowSize,
-                                           double minIncrease, int consecutiveIncreaseCount, int minConsecutiveCount,
-                                           int lastChangeLength, double lastChanges, List<Notification> alertsList,
-                                           TimeSeries timeSeries, boolean volTest) {
-        if (i >= rapidWindowSize) { // Ensure the window is valid
-            if (volTest && (consecutiveIncreaseCount >= minConsecutiveCount) && (i >= (stocks.size() - lastChangeLength)) && (lastChanges > minIncrease)) {
-                createNotification(stockName, lastChanges, alertsList, timeSeries, stocks.get(i).getLocalDateTimeDate(), false);
+    // Method for evaluating results
+    private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction, Map<String, Double> aggregatedWeights) {
+        List<Notification> alertsList = new ArrayList<>();
 
-//                System.out.printf("Name: %s Consecutive %s vs %s, Last Change %.2f vs %.2f Date %s%n", stockName, consecutiveIncreaseCount, minConsecutiveCount, lastChanges, minIncrease, stocks.get(i).getDateDate());
+        int i = 0;
+        for (Map.Entry<String, Double> entry : aggregatedWeights.entrySet()) {
+            if (i < weightedFeatures.length) {
+                System.out.println("Key: " + entry.getKey() + ", Weighted Feature: " + weightedFeatures[i]);
             }
+            i++;
         }
+        System.out.println("predicted value: " + prediction);
+
+        return alertsList;
     }
 
     //Indicators

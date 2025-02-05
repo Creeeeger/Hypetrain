@@ -3,15 +3,11 @@ KEY
 - check if a premium API key works
 
 CODE
-- update main detection algorithm - integrate indicator merges
-- add variable exit value (greater rise > greater drop allowed)
+- add variable exit value (greater rise > greater drop allowed) (test if useful)
 
-1 apply weights of indicators
-2 do manual comparison of return data
-3 finish creating a working interference
-4 integrate and evaluate return from ML interference
-
-- create ML confirmation interference
+1 do manual comparison of return data & final evaluation of result of ML interference in evaluateResult method
+2 finish creating a working interference
+3 optimize weights !important!
 
 TESTING
 - test out new trading simulation parameters
