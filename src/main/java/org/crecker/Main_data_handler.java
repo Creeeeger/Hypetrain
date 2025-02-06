@@ -30,6 +30,7 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.crecker.Main_UI.logTextArea;
+import static org.crecker.RallyPredictor.predict;
 
 public class Main_data_handler {
     public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = Map.ofEntries(
@@ -634,7 +635,6 @@ public class Main_data_handler {
         });
     }
 
-    // Normalize to [0,1] range based on indicator type
     public static double normalizeScore(String indicator, double rawValue) {
         Map<String, Double> range = INDICATOR_RANGE_MAP.get(indicator);
         if (range == null) return rawValue; // No normalization if indicator not found
@@ -748,7 +748,6 @@ public class Main_data_handler {
      * @return A list of notifications generated from the frame.
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
-        //algorithm related variables
         TimeSeries timeSeries = new TimeSeries(symbol);
 
         // Prevent notifications if time frame spans over the weekend (Friday to Monday)
@@ -758,7 +757,6 @@ public class Main_data_handler {
 
         Map<String, Double> aggregatedWeights = new HashMap<>();
 
-        // Step 1: Compute weighted values per category
         INDICATOR_RANGE_FULL.forEach((category, indicators) -> {
             double categoryWeight = INDICATOR_WEIGHTS_FULL.getOrDefault(category, 0.0);
             indicators.forEach((indicator, weight) -> {
@@ -767,9 +765,7 @@ public class Main_data_handler {
             });
         });
 
-        // Step 1: Compute weighted feature values
         double[] features = computeFeatures(stocks, symbol);
-
         double[] weightedFeatures = new double[features.length];
 
         // Map indicators to feature index
@@ -787,9 +783,8 @@ public class Main_data_handler {
             }
         });
 
-        //  double prediction = predict(weightedFeatures);
-        double prediction = 2;
-
+        //feed normalized unweighted features
+        double prediction = predict(features);
 
         for (StockUnit stockUnit : stocks) {
             timeSeries.add(new Minute(stockUnit.getDateDate()), stockUnit.getClose());
@@ -802,14 +797,15 @@ public class Main_data_handler {
     private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction, Map<String, Double> aggregatedWeights) {
         List<Notification> alertsList = new ArrayList<>();
 
-        int i = 0;
-        for (Map.Entry<String, Double> entry : aggregatedWeights.entrySet()) {
-            if (i < weightedFeatures.length) {
-                System.out.println("Key: " + entry.getKey() + ", Weighted Feature: " + weightedFeatures[i]);
+        if (P_L_Tester.debug) {
+            int i = 0;
+            for (Map.Entry<String, Double> entry : aggregatedWeights.entrySet()) {
+                if (i < weightedFeatures.length) {
+                    System.out.println("Key: " + entry.getKey() + ", Weighted Feature: " + weightedFeatures[i]);
+                }
+                i++;
             }
-            i++;
         }
-        System.out.println("predicted value: " + prediction);
 
         return alertsList;
     }
@@ -1121,6 +1117,7 @@ public class Main_data_handler {
         if (maxQueue.size() >= period) {
             maxQueue.pollFirst();
         }
+
         maxQueue.addLast(currentClose);
 
         double currentMax = new ArrayList<>(maxQueue)

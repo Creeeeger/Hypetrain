@@ -11,32 +11,34 @@ import java.util.Objects;
 import java.util.concurrent.locks.ReentrantLock;
 
 import static org.crecker.Main_data_handler.INDICATOR_RANGE_MAP;
-import static org.crecker.Main_data_handler.frameSize;
 
 public class RallyPredictor implements AutoCloseable {
     private final OrtEnvironment env;
     private final OrtSession session;
     private final LinkedList<double[]> buffer;
-    private final int windowSize;
     private final int numFeatures;
     private final ReentrantLock bufferLock = new ReentrantLock();
 
-    public RallyPredictor(String modelPath, int windowSize, int numFeatures) throws OrtException {
+    public RallyPredictor(String modelPath, int numFeatures) throws OrtException {
         this.env = OrtEnvironment.getEnvironment();
-        this.session = env.createSession(modelPath, new OrtSession.SessionOptions());
+        OrtSession.SessionOptions options = new OrtSession.SessionOptions();
+        options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
+        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL);
+        options.addCoreML();
+
+        this.session = env.createSession(modelPath, options);
+
         this.buffer = new LinkedList<>();
-        this.windowSize = windowSize;
         this.numFeatures = numFeatures;
     }
 
     public static double predict(double[] features) {
-        final int WINDOW_SIZE = frameSize; // Match your frameSize
         final int NUM_FEATURES = INDICATOR_RANGE_MAP.size();
 
-        try (RallyPredictor predictor = new RallyPredictor("spike_predictor.onnx", WINDOW_SIZE, NUM_FEATURES)) {
+        String modelPath = "./rallyMLModel/spike_predictor.onnx";
+        try (RallyPredictor predictor = new RallyPredictor(modelPath, NUM_FEATURES)) {
             Double spikeProbability = predictor.updateAndPredict(features);
-
-            if (spikeProbability != null && spikeProbability > 0.005) { // Change value after testing
+            if (spikeProbability != null && spikeProbability > 0.3) { // Change value after testing
                 System.out.println("High spike probability: " + spikeProbability);
             }
 
@@ -54,7 +56,7 @@ public class RallyPredictor implements AutoCloseable {
      * @param features The feature vector for the current time step.
      * @return The spike probability, or null if the buffer is not yet full.
      */
-    public synchronized Double updateAndPredict(double[] features) throws OrtException {
+    public synchronized Double updateAndPredict(double[] features) {
         if (features.length != numFeatures) {
             throw new IllegalArgumentException("Feature vector length must be " + numFeatures);
         }
@@ -62,13 +64,10 @@ public class RallyPredictor implements AutoCloseable {
         bufferLock.lock();
         try {
             buffer.add(features);
-            if (buffer.size() > windowSize) {
-                buffer.removeFirst();
-            }
+            return predictSpike();
 
-            if (buffer.size() == windowSize) {
-                return predictSpike();
-            }
+        } catch (Exception e) {
+            e.printStackTrace();
         } finally {
             bufferLock.unlock();
         }
@@ -82,19 +81,22 @@ public class RallyPredictor implements AutoCloseable {
      * @return The spike probability, or null if the buffer is not yet full.
      */
     private Double predictSpike() throws OrtException {
-        if (buffer.size() < windowSize) {
-            return null;
-        }
 
-        // Create 3D array [1, windowSize, numFeatures]
-        double[][][] inputArray = new double[1][windowSize][numFeatures];
+        int windowSize = 20;  // Sequence length used in model training
+        int numFeatures = 8;  // Number of features per time step
+
+        float[][][] inputArray = new float[1][windowSize][numFeatures];
+
         int i = 0;
         for (double[] features : buffer) {
-            inputArray[0][i++] = features;
+            for (int j = 0; j < features.length && j < numFeatures; j++) {
+                inputArray[0][i][j] = (float) features[j];
+            }
+            i++;
         }
 
         try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
-            try (OrtSession.Result result = session.run(Collections.singletonMap("input", inputTensor))) {
+            try (OrtSession.Result result = session.run(Collections.singletonMap("args_0", inputTensor))) {
                 float[][] output = (float[][]) result.get(0).getValue();
                 return (double) output[0][0];
             }
