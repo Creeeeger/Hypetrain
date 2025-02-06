@@ -13,17 +13,17 @@ import java.util.concurrent.locks.ReentrantLock;
 import static org.crecker.Main_data_handler.INDICATOR_RANGE_MAP;
 
 public class RallyPredictor implements AutoCloseable {
+    private static RallyPredictor instance;
     private final OrtEnvironment env;
     private final OrtSession session;
     private final LinkedList<double[]> buffer;
     private final int numFeatures;
     private final ReentrantLock bufferLock = new ReentrantLock();
 
-    public RallyPredictor(String modelPath, int numFeatures) throws OrtException {
+    // Private constructor to prevent instantiation
+    private RallyPredictor(String modelPath, int numFeatures) throws OrtException {
         this.env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-        options.setOptimizationLevel(OrtSession.SessionOptions.OptLevel.ALL_OPT);
-        options.setExecutionMode(OrtSession.SessionOptions.ExecutionMode.SEQUENTIAL);
         options.addCoreML();
 
         this.session = env.createSession(modelPath, options);
@@ -32,11 +32,20 @@ public class RallyPredictor implements AutoCloseable {
         this.numFeatures = numFeatures;
     }
 
+    // Singleton instance getter
+    public static synchronized RallyPredictor getInstance(String modelPath, int numFeatures) throws OrtException {
+        if (instance == null) {
+            instance = new RallyPredictor(modelPath, numFeatures);
+        }
+        return instance;
+    }
+
     public static double predict(double[] features) {
         final int NUM_FEATURES = INDICATOR_RANGE_MAP.size();
 
         String modelPath = "./rallyMLModel/spike_predictor.onnx";
-        try (RallyPredictor predictor = new RallyPredictor(modelPath, NUM_FEATURES)) {
+        try {
+            RallyPredictor predictor = RallyPredictor.getInstance(modelPath, NUM_FEATURES);
             Double spikeProbability = predictor.updateAndPredict(features);
             if (spikeProbability != null && spikeProbability > 0.3) { // Change value after testing
                 System.out.println("High spike probability: " + spikeProbability);
@@ -81,15 +90,11 @@ public class RallyPredictor implements AutoCloseable {
      * @return The spike probability, or null if the buffer is not yet full.
      */
     private Double predictSpike() throws OrtException {
-
-        int windowSize = 20;  // Sequence length used in model training
-        int numFeatures = 8;  // Number of features per time step
-
-        float[][][] inputArray = new float[1][windowSize][numFeatures];
+        float[][][] inputArray = new float[1][30][30];
 
         int i = 0;
         for (double[] features : buffer) {
-            for (int j = 0; j < features.length && j < numFeatures; j++) {
+            for (int j = 0; j < features.length && j < 30; j++) {
                 inputArray[0][i][j] = (float) features[j];
             }
             i++;
@@ -107,5 +112,6 @@ public class RallyPredictor implements AutoCloseable {
     public void close() throws Exception {
         if (session != null) session.close();
         if (env != null) env.close();
+        instance = null; // Reset the singleton instance when closed
     }
 }
