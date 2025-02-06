@@ -50,3 +50,14 @@ indicator_ranges = {
 
 # Counting the entries in the indicator_ranges dictionary
 print(len(indicator_ranges))
+
+features = [
+    'sma_crossover', 'ema_crossover', 'price_above_sma', 'macd_line', 'trix', 'kama',
+    'rsi', 'roc', 'momentum', 'cmo', 'acceleration',
+    'bollinger_bands', 'breakout', 'donchian_breakout', 'volatility_spike', 'volatility_ratio', 'positive_closes',
+    'higher_highs', 'fractal_breakout', 'candle_patterns', 'trendline_breakout', 'zscore_spike', 'cumulative_spike',
+    'cumulative_change', 'breakout_above_ma', 'parabolic_sar_bullish', 'keltner_breakout', 'elder_ray_index',
+    'volume_spike', 'atr'
+]
+
+print(len(features))
