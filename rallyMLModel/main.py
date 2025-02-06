@@ -1,6 +1,7 @@
 import os
 
 import numpy as np
+import pandas as pd
 import tensorflow as tf
 import tf2onnx
 from keras import Input, Model
@@ -105,7 +106,7 @@ def create_features(df):
 
     df['target'] = (df['close'].shift(-15) / df['close'] - 1 >= 0.03).astype(int)
 
-    df.dropna(axis=0, how='all', inplace=True)
+    df.dropna(inplace=True)
 
     return df
 
@@ -193,9 +194,6 @@ def calculate_acceleration(df, period):
     # Calculate acceleration using the second derivative (central difference)
     acceleration = (momentum.iloc[-1] - 2 * momentum.iloc[-2] + momentum.iloc[-3]) / (period ** 2)
     return acceleration
-
-
-import pandas as pd
 
 
 def calculate_bollinger_bands(df, period):
@@ -546,7 +544,7 @@ def train_spike_predictor(data_path):
     model.fit(
         x_train, y_train,
         epochs=1,
-        batch_size=128,
+        batch_size=1024,
         validation_data=(x_test, y_test),
         callbacks=[early_stop]
     )
