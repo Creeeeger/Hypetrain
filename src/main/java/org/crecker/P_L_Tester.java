@@ -51,7 +51,7 @@ public class P_L_Tester {
         final int stock = 0;
         final double DIP_LEVEL = -0.5;
 
-        prepData(SYMBOLS, 20000);
+        prepData(SYMBOLS, 200);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol ->
@@ -179,7 +179,9 @@ public class P_L_Tester {
 
         System.out.println("Loaded " + fileUnits.size() + " entries for " + symbol);
 
-        exportToCSV(fileUnits);
+        if (debug) {
+            exportToCSV(fileUnits);
+        }
     }
 
     public static void exportToCSV(List<StockUnit> stocks) {

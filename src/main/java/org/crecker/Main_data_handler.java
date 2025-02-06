@@ -690,7 +690,7 @@ public class Main_data_handler {
         }
     }
 
-    private static double[] computeFeatures(List<StockUnit> stocks, String symbol) {
+    private static float[] computeFeatures(List<StockUnit> stocks, String symbol) {
         // Initialize feature array
         double[] features = new double[INDICATOR_RANGE_MAP.size()];
         int featureIndex = 0;
@@ -737,7 +737,13 @@ public class Main_data_handler {
         features[featureIndex++] = normalizeScore("VOLUME_SPIKE", isVolumeSpike(stocks, 10, 0.03));
         features[featureIndex++] = normalizeScore("ATR", calculateATR(stocks, 15));
 
-        return features;
+
+        float[] floatFeatures = new float[features.length];
+        for (int i = 0; i < features.length; i++) {
+            floatFeatures[i] = (float) features[i];
+        }
+
+        return floatFeatures;
     }
 
     /**
@@ -765,7 +771,7 @@ public class Main_data_handler {
             });
         });
 
-        double[] features = computeFeatures(stocks, symbol);
+        float[] features = computeFeatures(stocks, symbol);
         double[] weightedFeatures = new double[features.length];
 
         // Map indicators to feature index
