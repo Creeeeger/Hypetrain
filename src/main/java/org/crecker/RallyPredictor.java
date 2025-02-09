@@ -43,7 +43,7 @@ public class RallyPredictor implements AutoCloseable {
             RallyPredictor predictor = RallyPredictor.getInstance(modelPath);
 
             Float spikeProbability = predictor.updateAndPredict(features);
-            if (spikeProbability != null && spikeProbability > 0) { // Change value after testing
+            if (spikeProbability != null) {
                 System.out.println("High spike probability: " + spikeProbability);
                 return spikeProbability;
             } else {
