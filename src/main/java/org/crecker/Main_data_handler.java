@@ -770,7 +770,7 @@ public class Main_data_handler {
             timeSeries.add(new Minute(stockUnit.getDateDate()), stockUnit.getClose());
         }
 
-        saveFeaturesToCSV(features, INDICATOR_RANGE_MAP);
+        saveFeaturesToCSV(features, INDICATOR_RANGE_MAP, stocks.get(stocks.size() - 1).getDateDate(), prediction);
         return evaluateResult(timeSeries, weightedFeatures, prediction, aggregatedWeights, stocks, symbol);
     }
 
