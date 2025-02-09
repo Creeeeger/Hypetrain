@@ -1,16 +1,8 @@
 import os
 
-import numpy as np
-import pandas as pd
 import tensorflow as tf
-import tf2onnx
 from keras import Input, Model
-from keras import metrics
-from keras.src.callbacks.early_stopping import EarlyStopping
-from keras.src.layers.core.dense import Dense
-from keras.src.layers.rnn.lstm import LSTM
-from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import MinMaxScaler
+from keras.src.regularizers import regularizers
 
 gpus = tf.config.list_physical_devices('GPU')
 if gpus:
@@ -484,9 +476,20 @@ def calculate_ma(df, period, use_ema=False):
     else:
         return df['close'].iloc[-period:].mean()
 
-# 2. Data Preparation
+
+from sklearn.preprocessing import StandardScaler
+from keras.src.layers import LSTM, Dense, Dropout, BatchNormalization, Bidirectional
+from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
+from keras.src.metrics import Precision, Recall, AUC
+import tensorflow as tf
+import tf2onnx
+import numpy as np
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+
 def prepare_sequences(data, features, target, window_size=30):
-    scaler = MinMaxScaler(feature_range=(0, 1))
+    scaler = StandardScaler()
     scaled_data = scaler.fit_transform(data[features])
 
     x, y = [], []
@@ -496,12 +499,18 @@ def prepare_sequences(data, features, target, window_size=30):
 
     return np.array(x), np.array(y), scaler
 
-
-# 3. Model Architecture
 def build_spike_model(input_shape):
+    l2_regularizer = regularizers.L2(0.01)  # Define the L2 regularizer with a lambda value of 0.01
+
     inputs = Input(shape=input_shape)
-    x = LSTM(64, unroll=True)(inputs)
-    x = Dense(32, activation='relu')(x)
+    x = Bidirectional(LSTM(128, return_sequences=True, kernel_regularizer=l2_regularizer))(inputs)
+    x = Dropout(0.3)(x)
+    x = BatchNormalization()(x)
+    x = Bidirectional(LSTM(64, kernel_regularizer=l2_regularizer))(x)
+    x = Dropout(0.3)(x)
+    x = BatchNormalization()(x)
+    x = Dense(64, activation='relu', kernel_regularizer=l2_regularizer)(x)
+    x = Dropout(0.3)(x)
     outputs = Dense(1, activation='sigmoid', dtype='float32')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
@@ -509,18 +518,15 @@ def build_spike_model(input_shape):
     model.compile(optimizer='adam',
                   loss='binary_crossentropy',
                   metrics=['accuracy',
-                           metrics.Precision(name='precision'),
-                           metrics.Recall(name='recall')])
+                           Precision(name='precision'),
+                           Recall(name='recall'),
+                           AUC(name='auc')])
     return model
 
-# 4. Training Pipeline
 def train_spike_predictor(data_path):
-    # Load and preprocess data
     df = pd.read_csv(data_path, on_bad_lines='skip')
-
     df = create_features(df)
 
-    # Feature selection
     features = [
         'sma_crossover', 'ema_crossover', 'price_above_sma', 'macd_line', 'trix', 'kama',
         'rsi', 'roc', 'momentum', 'cmo', 'acceleration',
@@ -532,30 +538,25 @@ def train_spike_predictor(data_path):
 
     target = 'target'
 
-    # Create sequences
     x, y, scaler = prepare_sequences(df, features, target)
     x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
 
-    # Build and train model
     model = build_spike_model((x_train.shape[1], x_train.shape[2]))
 
-    early_stop = EarlyStopping(monitor='val_precision', patience=5, mode='max', restore_best_weights=True)
+    early_stop = EarlyStopping(monitor='val_auc', patience=10, mode='max', restore_best_weights=True)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
 
     model.fit(
         x_train, y_train,
-        epochs=1,
-        batch_size=1024,
+        epochs=50,
+        batch_size=512,
         validation_data=(x_test, y_test),
-        callbacks=[early_stop]
+        callbacks=[early_stop, reduce_lr]
     )
 
-    # Save for production
     model.save('spike_predictor.keras')
 
-    # Ensure the model is built before exporting
     input_signature = [tf.TensorSpec([None, *(x_train.shape[1], x_train.shape[2])], tf.float32)]
-
-    # Convert and save the ONNX model
     model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=input_signature)
     with open("spike_predictor.onnx", "wb") as f:
         f.write(model_proto.SerializeToString())
@@ -563,6 +564,7 @@ def train_spike_predictor(data_path):
     os.remove("spike_predictor.keras")
 
     return model, scaler
+
 
 if __name__ == "__main__":
     model, scaler = train_spike_predictor('high_frequency_stocks.csv')
