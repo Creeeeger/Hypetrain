@@ -1,6 +1,7 @@
 package org.crecker;
 
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -251,8 +252,8 @@ public class Main_UI extends JFrame {
     }
 
     public static void addNotification(String title, String content, TimeSeries timeSeries,
-                                       Color color, LocalDateTime localDateTime, String symbol, double change) {
-        SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, color, localDateTime, symbol, change)));
+                                       LocalDateTime localDateTime, String symbol, double change) {
+        SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, localDateTime, symbol, change)));
     }
 
     private static void addFirstMarker(XYPlot plot, double xPosition) {
@@ -314,6 +315,23 @@ public class Main_UI extends JFrame {
 
         logTextArea.append("Config reloaded\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+    }
+
+    @NotNull
+    private static JButton getJButton(JList<String> stockList) {
+        JButton removeButton = new JButton("-");
+        removeButton.addActionListener(e -> {
+            // Get the selected value
+            String selectedValue = stockList.getSelectedValue();
+            if (selectedValue != null) {
+                // Remove the selected value from the list model
+                stockColors.remove(selectedValue);
+                stockListModel.removeElement(selectedValue);
+
+                sym = create_sym_array(); //Create the symbol array
+            }
+        });
+        return removeButton;
     }
 
     public JPanel create_symbol_panel() {
@@ -430,18 +448,7 @@ public class Main_UI extends JFrame {
         JScrollPane stockScrollPane = new JScrollPane(stockList);
 
         // Create the "-" button for removing selected items
-        JButton removeButton = new JButton("-");
-        removeButton.addActionListener(e -> {
-            // Get the selected value
-            String selectedValue = stockList.getSelectedValue();
-            if (selectedValue != null) {
-                // Remove the selected value from the list model
-                stockColors.remove(selectedValue);
-                stockListModel.removeElement(selectedValue);
-
-                sym = create_sym_array(); //Create the symbol array
-            }
-        });
+        JButton removeButton = getJButton(stockList);
 
         // Create a sub-panel for the button at the bottom
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
@@ -608,24 +615,7 @@ public class Main_UI extends JFrame {
         // Right side of the first row - Company News
         // Initialize the News list model
         NewsListModel = new DefaultListModel<>();
-        JList<News> NewsList = new JList<>(NewsListModel);
-        NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
-
-        // Add mouse listener to handle clicks
-        NewsList.addMouseListener(new MouseAdapter() {
-            @Override
-            public void mouseClicked(MouseEvent e) {
-                if (e.getClickCount() == 2) { // Open on double click
-                    int index = NewsList.locationToIndex(e.getPoint());
-                    if (index != -1) {
-                        News clickedNews = NewsListModel.getElementAt(index);
-                        openNews(clickedNews);
-                    }
-                }
-            }
-        });
-
-        JScrollPane newsScrollPane = new JScrollPane(NewsList);
+        JScrollPane newsScrollPane = getNewsScrollPane();
         newsScrollPane.setPreferredSize(new Dimension(200, 400));
 
         // Add a titled border to the news section
@@ -681,6 +671,28 @@ public class Main_UI extends JFrame {
         mainPanel.add(secondRowPanel, BorderLayout.SOUTH);
 
         return mainPanel;
+    }
+
+    @NotNull
+    private JScrollPane getNewsScrollPane() {
+        JList<News> NewsList = new JList<>(NewsListModel);
+        NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Add mouse listener to handle clicks
+        NewsList.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                if (e.getClickCount() == 2) { // Open on double click
+                    int index = NewsList.locationToIndex(e.getPoint());
+                    if (index != -1) {
+                        News clickedNews = NewsListModel.getElementAt(index);
+                        openNews(clickedNews);
+                    }
+                }
+            }
+        });
+
+        return new JScrollPane(NewsList);
     }
 
     public void refreshChartData(int choice) {
@@ -854,7 +866,7 @@ public class Main_UI extends JFrame {
 
             // Set the notification color as background
             label.setOpaque(true);
-            label.setBackground(value.getColor());
+            label.setBackground(new Color(33, 255, 13));
 
             // Set border and text color based on selection
             label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2, true));

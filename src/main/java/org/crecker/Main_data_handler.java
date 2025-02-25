@@ -16,149 +16,28 @@ import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 
-import java.awt.*;
 import java.io.*;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
-import java.util.List;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
-import java.util.stream.IntStream;
 
 import static org.crecker.Main_UI.logTextArea;
 import static org.crecker.RallyPredictor.predict;
 import static org.crecker.csvDataGen.saveFeaturesToCSV;
+import static org.crecker.data_tester.plotData;
+import static org.crecker.weightRangeMap.*;
 
 public class Main_data_handler {
-
-    public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
-        // Trend Following Indicators
-        put("SMA_CROSS", Map.of("min", 0.0, "max", 1.0));
-        put("EMA_CROSS", Map.of("min", 0.0, "max", 1.0));
-        put("PRICE_SMA_DISTANCE", Map.of("min", 0.0, "max", 1.0));
-        put("MACD", Map.of("min", -5.0, "max", 5.0));
-        put("TRIX", Map.of("min", -20.0, "max", 20.0));
-        put("KAMA", Map.of("min", 0.0, "max", 100.0));
-
-        // Momentum Indicators
-        put("RSI", Map.of("min", 0.0, "max", 100.0));
-        put("ROC", Map.of("min", -30.0, "max", 30.0));
-        put("MOMENTUM", Map.of("min", -10.0, "max", 10.0));
-        put("CMO", Map.of("min", -100.0, "max", 100.0));
-        put("ACCELERATION", Map.of("min", -1.0, "max", 1.0));
-
-        // Volatility & Breakouts Indicators
-        put("BOLLINGER", Map.of("min", 0.0, "max", 1.0));
-        put("BREAKOUT_RESISTANCE", Map.of("min", 0.0, "max", 1.0));
-        put("DONCHIAN", Map.of("min", 0.0, "max", 1.0));
-        put("VOLATILITY_THRESHOLD", Map.of("min", 0.0, "max", 1.0));
-        put("VOLATILITY_MONITOR", Map.of("min", 0.0, "max", 20.0));
-
-        // Patterns Indicators
-        put("CONSECUTIVE_POSITIVE_CLOSES", Map.of("min", 0.0, "max", 50.0));
-        put("HIGHER_HIGHS", Map.of("min", 0.0, "max", 1.0));
-        put("FRACTAL_BREAKOUT", Map.of("min", 0.0, "max", 1.0));
-        put("CANDLE_PATTERN", Map.of("min", 0.0, "max", 5.0));
-        put("TRENDLINE", Map.of("min", 0.0, "max", 1.0));
-
-        // Statistical Indicators
-        put("Z_SCORE", Map.of("min", 0.0, "max", 1.0));
-        put("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0));
-        put("CUMULATIVE_THRESHOLD", Map.of("min", -20.0, "max", 20.0));
-
-        // Advanced Indicators
-        put("BREAKOUT_MA", Map.of("min", 0.0, "max", 1.0));
-        put("PARABOLIC", Map.of("min", 0.0, "max", 1.0));
-        put("KELTNER", Map.of("min", 0.0, "max", 1.0));
-        put("ELDER_RAY", Map.of("min", -10.0, "max", 10.0));
-        put("VOLUME_SPIKE", Map.of("min", 0.0, "max", 1.0));
-        put("ATR", Map.of("min", 0.0, "max", 5.0));
-    }};
-
-    // Trend Following Indicators
-    public static final Map<String, Double> TREND_FOLLOWING_WEIGHTS = Map.ofEntries(
-            Map.entry("SMA_CROSS", 0.15),
-            Map.entry("EMA_CROSS", 0.15),
-            Map.entry("PRICE_SMA_DISTANCE", 0.20),
-            Map.entry("MACD", 0.15),
-            Map.entry("TRIX", 0.20),
-            Map.entry("KAMA", 0.15)
-    );
-
-    // Momentum Indicators
-    public static final Map<String, Double> MOMENTUM_WEIGHTS = Map.ofEntries(
-            Map.entry("RSI", 0.25),
-            Map.entry("ROC", 0.15),
-            Map.entry("MOMENTUM", 0.15),
-            Map.entry("CMO", 0.15),
-            Map.entry("ACCELERATION", 0.30)
-    );
-
-    // Volatility & Breakouts Indicators
-    public static final Map<String, Double> VOLATILITY_BREAKOUTS_WEIGHTS = Map.ofEntries(
-            Map.entry("BOLLINGER", 0.20),
-            Map.entry("BREAKOUT_RESISTANCE", 0.15),
-            Map.entry("DONCHIAN", 0.20),
-            Map.entry("VOLATILITY_THRESHOLD", 0.20),
-            Map.entry("VOLATILITY_MONITOR", 0.25)
-    );
-
-    // Patterns Indicators
-    public static final Map<String, Double> PATTERNS_WEIGHTS = Map.ofEntries(
-            Map.entry("CONSECUTIVE_POSITIVE_CLOSES", 0.25),
-            Map.entry("HIGHER_HIGHS", 0.15),
-            Map.entry("FRACTAL_BREAKOUT", 0.20),
-            Map.entry("CANDLE_PATTERN", 0.15),
-            Map.entry("TRENDLINE", 0.25)
-    );
-
-    // Statistical Indicators
-    public static final Map<String, Double> STATISTICAL_WEIGHTS = Map.ofEntries(
-            Map.entry("Z_SCORE", 0.40),
-            Map.entry("CUMULATIVE_PERCENTAGE", 0.40),
-            Map.entry("CUMULATIVE_THRESHOLD", 0.20)
-    );
-
-    // Advanced Indicators
-    public static final Map<String, Double> ADVANCED_WEIGHTS = Map.ofEntries(
-            Map.entry("BREAKOUT_MA", 0.10),
-            Map.entry("PARABOLIC", 0.10),
-            Map.entry("KELTNER", 0.20),
-            Map.entry("ELDER_RAY", 0.20),
-            Map.entry("VOLUME_SPIKE", 0.25),
-            Map.entry("ATR", 0.15)
-    );
-
-    // Aggregated weights map
-    public static final Map<String, Map<String, Double>> INDICATOR_RANGE_FULL = Map.of(
-            "TrendFollowing", TREND_FOLLOWING_WEIGHTS,
-            "Momentum", MOMENTUM_WEIGHTS,
-            "VolatilityBreakouts", VOLATILITY_BREAKOUTS_WEIGHTS,
-            "Patterns", PATTERNS_WEIGHTS,
-            "Statistical", STATISTICAL_WEIGHTS,
-            "Advanced", ADVANCED_WEIGHTS
-    );
-
-    // Category Level Weights
-    public static final Map<String, Double> INDICATOR_WEIGHTS_FULL = Map.of(
-            "TrendFollowing", 0.20,
-            "Momentum", 0.15,
-            "VolatilityBreakouts", 0.25,
-            "Patterns", 0.15,
-            "Statistical", 0.10,
-            "Advanced", 0.15
-    );
-
-    private static final Map<String, DoubleArrayWindow> volatilityWindows = new ConcurrentHashMap<>();
-    private static final Map<String, DoubleArrayWindow> returnsWindows = new ConcurrentHashMap<>();
-    public static Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
-    public static int frameSize = 30; // Frame size for analysis
-    public static List<Notification> notificationsForPLAnalysis = new ArrayList<>();
-    public static boolean test = true; //if True use demo url for real Time Updates
+    static final Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
+    static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
+    static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
+    public static boolean test = true; // If True use demo url for real Time Updates
+    static int feature = 0;
+    static int frameSize = 30; // Frame size for analysis
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -547,6 +426,7 @@ public class Main_data_handler {
                     }
                 });
 
+        plotData(indicatorTimeSeries, " Indicator", "Time", "Value");
         sortNotifications(notificationsForPLAnalysis);
     }
 
@@ -638,86 +518,74 @@ public class Main_data_handler {
 
     public static double normalizeScore(String indicator, double rawValue) {
         Map<String, Double> range = INDICATOR_RANGE_MAP.get(indicator);
-        if (range == null) return rawValue; // No normalization if indicator not found
+        if (range == null) return rawValue;
 
         double min = range.get("min");
         double max = range.get("max");
 
-        // Avoid division by zero in case of incorrect ranges
-        if (max == min) return 0.0;
+        if (max == min) return 0.0; // Prevent division by zero
 
         return switch (indicator) {
-            // Binary indicators: 0 if rawValue < 0.5, otherwise 1
-            case "SMA_CROSS", "EMA_CROSS", "PRICE_SMA_DISTANCE", "BREAKOUT_RESISTANCE", "DONCHIAN",
-                 "VOLATILITY_THRESHOLD", "HIGHER_HIGHS", "FRACTAL_BREAKOUT", "TRENDLINE", "Z_SCORE",
-                 "CUMULATIVE_PERCENTAGE", "BREAKOUT_MA", "PARABOLIC", "KELTNER", "VOLUME_SPIKE" ->
-                    rawValue >= 0.5 ? 1.0 : 0.0;
+            // Binary decision indicators (threshold at 0.5)
+            case "SMA_CROSS", "HIGHER_HIGHS", "TRENDLINE", "PARABOLIC", "KELTNER" -> rawValue >= 0.5 ? 1.0 : 0.0;
 
-            // Continuous indicators with linear normalization to [0, 1]
-            case "MACD", "TRIX", "KAMA", "RSI", "ROC", "MOMENTUM", "CMO", "ACCELERATION", "BOLLINGER",
-                 "VOLATILITY_MONITOR", "CONSECUTIVE_POSITIVE_CLOSES", "CANDLE_PATTERN", "CUMULATIVE_THRESHOLD",
-                 "ELDER_RAY", "ATR" -> {
-                double shiftedValue = (rawValue - min) / (max - min);
-                yield Math.max(0.0, Math.min(1.0, shiftedValue));
+            // Continuous percentage indicators (already in 0-1 range)
+            case "PRICE_SMA_DISTANCE", "CUMULATIVE_PERCENTAGE" -> Math.max(0.0, Math.min(1.0, rawValue));
+
+            // Standard continuous indicators with linear normalization
+            case "MACD", "TRIX", "RSI", "ROC", "MOMENTUM", "CMO",
+                 "BOLLINGER", "CONSECUTIVE_POSITIVE_CLOSES", "ELDER_RAY", "ATR", "CUMULATIVE_THRESHOLD" -> {
+                double normalized = (rawValue - min) / (max - min);
+                yield Math.max(0.0, Math.min(1.0, normalized));
             }
-            default -> Math.max(0.0, Math.min(1.0, (rawValue - min) / (max - min)));
+            default -> throw new IllegalStateException("Unexpected value: " + indicator);
         };
     }
 
-    private static float[] computeFeatures(List<StockUnit> stocks, String symbol) {
-        // Initialize feature array
+    private static double[] computeFeatures(List<StockUnit> stocks) {
         double[] features = new double[INDICATOR_RANGE_MAP.size()];
         int featureIndex = 0;
 
         // Trend Following Indicators
-        features[featureIndex++] = normalizeScore("SMA_CROSS", normalizeScore("SMA_CROSS", isSMACrossover(stocks, 5, 20)));
-        features[featureIndex++] = normalizeScore("EMA_CROSS", normalizeScore("EMA_CROSS", isEMACrossover(stocks, 10, 30)));
-        features[featureIndex++] = normalizeScore("PRICE_SMA_DISTANCE", isPriceAboveSMA(stocks, 20));
-        features[featureIndex++] = normalizeScore("MACD", calculateMACD(stocks).get("histogram"));
-        features[featureIndex++] = normalizeScore("TRIX", calculateTRIX(stocks, 10));
-        features[featureIndex++] = normalizeScore("KAMA", calculateKAMA(stocks, 10));
+        features[featureIndex++] = isSMACrossover(stocks, 9, 21); // 1
+        features[featureIndex++] = isPriceAboveSMA(stocks, 20); // 2
+        features[featureIndex++] = calculateMACD(stocks, 6, 13, 5); // 3
+        features[featureIndex++] = calculateTRIX(stocks, 5); // 4
 
         // Momentum Indicators
-        features[featureIndex++] = normalizeScore("RSI", calculateRSI(stocks, 14));
-        features[featureIndex++] = normalizeScore("ROC", calculateROC(stocks, 10));
-        features[featureIndex++] = normalizeScore("MOMENTUM", calculateMomentum(stocks, 10));
-        features[featureIndex++] = normalizeScore("CMO", calculateCMO(stocks, 14));
-        features[featureIndex++] = normalizeScore("ACCELERATION", calculateAcceleration(stocks, 8));
+        features[featureIndex++] = calculateRSI(stocks, 15); // 5
+        features[featureIndex++] = calculateROC(stocks, 20); // 6
+        features[featureIndex++] = calculateMomentum(stocks, 10); // 7
+        features[featureIndex++] = calculateCMO(stocks, 20); // 8
 
         // Volatility & Breakouts Indicators
-        features[featureIndex++] = normalizeScore("BOLLINGER", calculateBollingerBands(stocks, 10).get("bandwidth"));
-        features[featureIndex++] = normalizeScore("BREAKOUT_RESISTANCE", isBreakout(stocks, 10));
-        features[featureIndex++] = normalizeScore("DONCHIAN", donchianBreakout(stocks, 5));
-        features[featureIndex++] = normalizeScore("VOLATILITY_THRESHOLD", isVolatilitySpike(stocks, 10));
-        features[featureIndex++] = normalizeScore("VOLATILITY_MONITOR", rollingVolatilityRatio(stocks, 5, 10, symbol));
+        features[featureIndex++] = calculateBollingerBands(stocks, 20); // 9
 
         // Patterns Indicators
-        features[featureIndex++] = normalizeScore("CONSECUTIVE_POSITIVE_CLOSES", consecutivePositiveCloses(stocks, 0.2));
-        features[featureIndex++] = normalizeScore("HIGHER_HIGHS", isHigherHighs(stocks, 3));
-        features[featureIndex++] = normalizeScore("FRACTAL_BREAKOUT", isFractalBreakout(stocks, 5, 10));
-        features[featureIndex++] = normalizeScore("CANDLE_PATTERN", detectCandlePatterns(stocks.get(stocks.size() - 1), stocks.get(stocks.size() - 2)));
-        features[featureIndex++] = normalizeScore("TRENDLINE", isTrendlineBreakout(stocks, 18));
+        features[featureIndex++] = consecutivePositiveCloses(stocks, 0.2); // 10
+        features[featureIndex++] = isHigherHighs(stocks, 3); // 11
+        features[featureIndex++] = isTrendLineBreakout(stocks, 20); // 12
 
         // Statistical Indicators
-        features[featureIndex++] = normalizeScore("Z_SCORE", isZScoreSpike(stocks, 10, symbol));
-        features[featureIndex++] = normalizeScore("CUMULATIVE_PERCENTAGE", isCumulativeSpike(stocks, 10, 5));
-        features[featureIndex++] = normalizeScore("CUMULATIVE_THRESHOLD", cumulativePercentageChange(stocks, 5));
+        features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.55); // 13
+        features[featureIndex++] = cumulativePercentageChange(stocks); // 14
 
         // Advanced Indicators
-        features[featureIndex++] = normalizeScore("BREAKOUT_MA", isBreakoutAboveMA(stocks, 10, true));
-        features[featureIndex++] = normalizeScore("PARABOLIC", isParabolicSARBullish(stocks, 10, 0.2));
-        features[featureIndex++] = normalizeScore("KELTNER", isKeltnerBreakout(stocks, 20, 10, 0.3));
-        features[featureIndex++] = normalizeScore("ELDER_RAY", elderRayIndex(stocks, 20));
-        features[featureIndex++] = normalizeScore("VOLUME_SPIKE", isVolumeSpike(stocks, 10, 0.03));
-        features[featureIndex++] = normalizeScore("ATR", calculateATR(stocks, 15));
+        features[featureIndex++] = isParabolicSARBullish(stocks, 20, 0.01); // 15
+        features[featureIndex++] = isKeltnerBreakout(stocks, 20, 20, 0.2); // 16
+        features[featureIndex++] = elderRayIndex(stocks, 12); // 17
+        features[featureIndex++] = calculateATR(stocks, 20); // 18
 
+        return features;
+    }
 
-        float[] floatFeatures = new float[features.length];
-        for (int i = 0; i < features.length; i++) {
-            floatFeatures[i] = (float) features[i];
+    private static float[] normalizeFeatures(double[] rawFeatures) {
+        float[] normalizedFeatures = new float[rawFeatures.length];
+        List<String> indicatorKeys = new ArrayList<>(INDICATOR_RANGE_MAP.keySet());
+        for (int i = 0; i < rawFeatures.length; i++) {
+            normalizedFeatures[i] = (float) normalizeScore(indicatorKeys.get(i), rawFeatures[i]);
         }
-
-        return floatFeatures;
+        return normalizedFeatures;
     }
 
     /**
@@ -745,8 +613,14 @@ public class Main_data_handler {
             });
         });
 
-        float[] features = computeFeatures(stocks, symbol);
-        double[] weightedFeatures = new double[features.length];
+        //raw features
+        double[] features = computeFeatures(stocks);
+
+        //normalized features
+        float[] normalized = normalizeFeatures(features);
+
+        //weighted list
+        double[] weightedFeatures = new double[normalized.length];
 
         // Map indicators to feature index
         Map<String, Integer> indicatorToIndex = new HashMap<>();
@@ -758,32 +632,43 @@ public class Main_data_handler {
         // Apply weights
         aggregatedWeights.forEach((indicator, weight) -> {
             Integer index = indicatorToIndex.get(indicator);
-            if (index != null && index < features.length) {
-                weightedFeatures[index] = features[index] * weight;
+            if (index != null && index < normalized.length) {
+                weightedFeatures[index] = normalized[index] * weight;
             }
         });
 
         //feed normalized unweighted features
-        double prediction = predict(features);
+        double prediction = predict(normalized);
+
+        synchronized (indicatorTimeSeries) {
+            indicatorTimeSeries.addOrUpdate(
+                    new Minute(stocks.get(stocks.size() - 1).getDateDate()),
+                    features[feature]
+            );
+        }
 
         for (StockUnit stockUnit : stocks) {
             timeSeries.add(new Minute(stockUnit.getDateDate()), stockUnit.getClose());
         }
 
-        saveFeaturesToCSV(features, INDICATOR_RANGE_MAP, stocks.get(stocks.size() - 1).getDateDate(), prediction);
-        return evaluateResult(timeSeries, weightedFeatures, prediction, aggregatedWeights, stocks, symbol);
+        if (pLTester.debug) {
+            saveFeaturesToCSV(normalized, INDICATOR_RANGE_MAP, stocks.get(stocks.size() - 1).getDateDate(), prediction);
+        }
+
+        return evaluateResult(timeSeries, weightedFeatures, prediction, aggregatedWeights, stocks, symbol, features);
     }
 
     // Method for evaluating results
-    private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction, Map<String, Double> aggregatedWeights, List<StockUnit> stocks, String symbol) {
+    private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction, Map<String, Double> aggregatedWeights, List<StockUnit> stocks, String symbol, double[] features) {
         List<Notification> alertsList = new ArrayList<>();
 
-        if (P_L_Tester.debug) {
+        if (pLTester.debug) {
             int i = 0;
             for (Map.Entry<String, Double> entry : aggregatedWeights.entrySet()) {
                 if (i < weightedFeatures.length) {
-                    System.out.println("Key: " + entry.getKey() + ", Weighted Feature: " + weightedFeatures[i]);
+                    System.out.println("Key: " + entry.getKey() + ", Weighted Feature: " + weightedFeatures[i] + " " + features[i]);
                 }
+
                 i++;
             }
         }
@@ -791,210 +676,244 @@ public class Main_data_handler {
         createNotification(symbol, stocks.stream()
                 .skip(stocks.size() - 4)
                 .mapToDouble(StockUnit::getPercentageChange)
-                .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), false, prediction);
+                .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
 
         return alertsList;
     }
 
     //Indicators
-    // 1. Simple Moving Average (SMA) Crossovers
+    // 1. Simple Moving Average (SMA)
     public static int isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
-        if (window.size() < longPeriod) return 0;
-
-        double shortSMA = window.stream()
-                .skip(window.size() - shortPeriod)
-                .mapToDouble(StockUnit::getClose)
-                .average()
-                .orElse(0);
-
-        double longSMA = window.stream()
-                .skip(window.size() - longPeriod)
-                .mapToDouble(StockUnit::getClose)
-                .average()
-                .orElse(0);
-
-        // Get previous values for crossover detection
-        double prevShort = window.get(window.size() - shortPeriod - 1).getClose();
-        double prevLong = window.get(window.size() - longPeriod - 1).getClose();
-
-        // Return 1 if true, 0 if false
-        return (shortSMA > longSMA && prevShort <= prevLong) ? 1 : 0;
-    }
-
-    // 2. EMA Crossover with Fast Calculation
-    public static int isEMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
-        if (window.size() < longPeriod) return 0;
-
-        double shortEMA = calculateEMA(window, shortPeriod);
-        double longEMA = calculateEMA(window, longPeriod);
-
-        // Previous EMA values
-        List<StockUnit> prevWindow = window.subList(0, window.size() - 1);
-        double prevShort = calculateEMA(prevWindow, shortPeriod);
-        double prevLong = calculateEMA(prevWindow, longPeriod);
-
-        // Return 1 if true, 0 if false
-        return (shortEMA > longEMA && prevShort <= prevLong) ? 1 : 0;
-    }
-
-    // 3. Price Crossing Key Moving Average
-    public static int isPriceAboveSMA(List<StockUnit> window, int period) {
-        if (window.size() < period) return 0;
-
-        double sma = window.stream()
-                .skip(window.size() - period)
-                .mapToDouble(StockUnit::getClose)
-                .average()
-                .orElse(0);
-
-        double currentPrice = window.get(window.size() - 1).getClose();
-        double previousPrice = window.get(window.size() - 2).getClose();
-
-        // Return 1 if true, 0 if false
-        return (currentPrice > sma && previousPrice <= sma) ? 1 : 0;
-    }
-
-    // 4. MACD with Histogram
-    public static Map<String, Double> calculateMACD(List<StockUnit> window) {
-        final int SHORT_EMA = 12;
-        final int LONG_EMA = 26;
-        final int SIGNAL_EMA = 9;
-
-        double macdLine = calculateEMA(window, SHORT_EMA) - calculateEMA(window, LONG_EMA);
-
-        // Calculate Signal Line (EMA of MACD)
-        List<Double> macdValues = window.stream()
-                .map(su -> calculateEMA(Collections.singletonList(su), SHORT_EMA) - calculateEMA(Collections.singletonList(su), LONG_EMA))
-                .collect(Collectors.toList());
-
-        double signalLine = calculateEMAForValues(macdValues, SIGNAL_EMA);
-
-        return Map.of(
-                "macd", macdLine,
-                "signal", signalLine,
-                "histogram", macdLine - signalLine
-        );
-    }
-
-    private static double calculateEMAForValues(List<Double> values, int period) {
-        double smoothing = 2.0 / (period + 1);
-
-        // Initial EMA is the first value in the list
-        double ema = values.get(0);
-
-        // Loop over the rest of the values and apply the EMA formula incrementally
-        for (int i = 1; i < values.size(); i++) {
-            ema = values.get(i) * smoothing + ema * (1 - smoothing);
+        // Validate inputs
+        if (window == null || window.size() < longPeriod + 1 || shortPeriod >= longPeriod) {
+            return 0;
         }
 
-        return ema;
+        // Extract closing prices once
+        double[] closes = window.stream()
+                .mapToDouble(StockUnit::getClose)
+                .toArray();
+
+        // Calculate current SMAs
+        double shortSMA = calculateSMA(closes, closes.length - shortPeriod, shortPeriod);
+        double longSMA = calculateSMA(closes, closes.length - longPeriod, longPeriod);
+
+        // Calculate previous SMAs (one period back)
+        double prevShortSMA = calculateSMA(closes, closes.length - shortPeriod - 1, shortPeriod);
+        double prevLongSMA = calculateSMA(closes, closes.length - longPeriod - 1, longPeriod);
+
+        // Detect crossover with direction check
+        return (prevShortSMA <= prevLongSMA && shortSMA > longSMA) ? 1 : 0;
     }
 
-    private static double calculateEMA(List<StockUnit> window, int period) {
-        double smoothing = 2.0 / (period + 1);
-        double ema = window.get(0).getClose();
+    private static double calculateSMA(double[] closes, int startIndex, int period) {
+        if (startIndex < 0 || startIndex + period > closes.length) return 0;
 
-        for (int i = 1; i < window.size(); i++) {
-            ema = window.get(i).getClose() * smoothing + ema * (1 - smoothing);
-        }
-        return ema;
-    }
-
-    private static double calculateSMA(List<StockUnit> window, int period) {
-        int start = Math.max(0, window.size() - period);
         double sum = 0;
+        for (int i = startIndex; i < startIndex + period; i++) {
+            sum += closes[i];
+        }
+        return sum / period;
+    }
 
-        // Manual loop for better performance on small periods
-        for (int i = start; i < window.size(); i++) {
+    // 2. Price Crossing Key Moving Average
+    public static int isPriceAboveSMA(List<StockUnit> window, int period) {
+        // Validate inputs
+        if (window == null || period <= 0 || window.size() < period + 1) {
+            return 0;
+        }
+
+        // Calculate SMA of previous 'period' closes (excluding current price)
+        double sum = 0.0;
+        int startIdx = window.size() - period - 1;
+        int endIdx = window.size() - 2; // Exclude last element
+
+        for (int i = startIdx; i <= endIdx; i++) {
             sum += window.get(i).getClose();
         }
-        return sum / (window.size() - start);
+        double sma = sum / period;
+
+        // Get current and previous prices
+        double currentClose = window.get(window.size() - 1).getClose();
+
+        // Detect valid crossover (strict boundary checks)
+        return (currentClose > sma) ? 1 : 0;
     }
 
-    // 5. TRIX Indicator
-    public static double calculateTRIX(List<StockUnit> window, int period) {
-        // Triple smoothing with EMAs
-        List<Double> singleEMA = window.stream()
-                .map(su -> calculateEMA(Collections.singletonList(su), period))
-                .toList();
+    // 3. MACD with Histogram
+    public static double calculateMACD(List<StockUnit> window, int SHORT_EMA, int LONG_EMA, int SIGNAL_EMA) {
+        // Validate inputs
+        if (window == null || window.size() < LONG_EMA + SIGNAL_EMA) {
+            return 0.0;
+        }
 
-        List<Double> doubleEMA = singleEMA.stream()
-                .map(val -> calculateEMAForValues(Collections.singletonList(val), period))
-                .toList();
+        // Extract closing prices once
+        List<Double> closes = window.stream()
+                .map(StockUnit::getClose)
+                .collect(Collectors.toList());
 
-        List<Double> tripleEMA = doubleEMA.stream()
-                .map(val -> calculateEMAForValues(Collections.singletonList(val), period))
-                .toList();
+        // 1. Calculate EMA series
+        List<Double> shortEMAs = computeEMASeries(closes, SHORT_EMA);
+        List<Double> longEMAs = computeEMASeries(closes, LONG_EMA);
 
-        // Rate of Change
+        // 2. Calculate MACD line (ensure aligned lengths)
+        int minLength = Math.min(shortEMAs.size(), longEMAs.size());
+        List<Double> macdLine = new ArrayList<>(minLength);
+        for (int i = 0; i < minLength; i++) {
+            macdLine.add(shortEMAs.get(i) - longEMAs.get(i));
+        }
+
+        // 3. Calculate Signal line (EMA of MACD line)
+        List<Double> signalLine = computeEMASeries(macdLine, SIGNAL_EMA);
+
+        // 4. Get latest values with boundary checks
+        double currentMACD = macdLine.isEmpty() ? 0 : macdLine.get(macdLine.size() - 1);
+        double currentSignal = signalLine.isEmpty() ? 0 : signalLine.get(signalLine.size() - 1);
+
+        return currentMACD - currentSignal;
+    }
+
+    private static List<Double> computeEMASeries(List<Double> data, int period) {
+        if (data.size() < period || period <= 0) return new ArrayList<>();
+
+        List<Double> emaSeries = new ArrayList<>();
+        double smoothing = 2.0 / (period + 1);
+
+        // Initial SMA calculation
+        double sma = data.subList(0, period)
+                .stream()
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0);
+        emaSeries.add(sma);
+
+        // Wilder's EMA calculation
+        for (int i = period; i < data.size(); i++) {
+            double prevEMA = emaSeries.get(emaSeries.size() - 1);
+            double newEMA = (data.get(i) - prevEMA) * smoothing + prevEMA;
+            emaSeries.add(newEMA);
+        }
+
+        return emaSeries;
+    }
+
+    private static double calculateEMA(List<StockUnit> prices, int period) {
+        if (prices.size() < period || period <= 0) {
+            return 0; // Handle invalid input
+        }
+
+        // 1. Calculate SMA for first period values
+        double sma = prices.stream()
+                .limit(period)
+                .mapToDouble(StockUnit::getClose)
+                .average()
+                .orElse(0);
+
+        // 2. Calculate smoothing factor
+        final double smoothing = 2.0 / (period + 1);
+        double ema = sma;
+
+        // 3. Apply EMA formula to subsequent values
+        for (int i = period; i < prices.size(); i++) {
+            double currentPrice = prices.get(i).getClose();
+            ema = (currentPrice - ema) * smoothing + ema;
+        }
+
+        return ema;
+    }
+
+    // 4. TRIX Indicator
+    public static double calculateTRIX(List<StockUnit> prices, int period) {
+        final int minDataPoints = 3 * period + 1;
+        if (prices.size() < minDataPoints || period < 2) {
+            return 0; // Not enough data for valid calculation
+        }
+
+        // 1. Extract closing prices in chronological order (oldest first)
+        List<Double> closes = prices.stream()
+                .map(StockUnit::getClose)
+                .collect(Collectors.toList());
+
+        // 2. Calculate triple-smoothed EMA
+        List<Double> singleEMA = calculateEMASeries(closes, period);
+        List<Double> doubleEMA = calculateEMASeries(singleEMA, period);
+        List<Double> tripleEMA = calculateEMASeries(doubleEMA, period);
+
+        // 3. Calculate rate of change for TRIX
+        if (tripleEMA.size() < 2) return 0;
+
         double current = tripleEMA.get(tripleEMA.size() - 1);
         double previous = tripleEMA.get(tripleEMA.size() - 2);
 
         return ((current - previous) / previous) * 100;
     }
 
-    // 6. Kaufman's Adaptive MA (KAMA)
-    public static double calculateKAMA(List<StockUnit> window, int period) {
-        List<Double> closes = window.parallelStream()
-                .map(StockUnit::getClose)
-                .collect(Collectors.toList());
+    private static List<Double> calculateEMASeries(List<Double> data, int period) {
+        if (data.size() < period) return Collections.emptyList();
 
-        double efficiencyRatio = calculateEfficiencyRatio(closes, period);
-        double fastSC = 2.0 / (2 + 1);
-        double slowSC = 2.0 / (30 + 1);
-        double smoothSC = efficiencyRatio * (fastSC - slowSC) + slowSC;
+        List<Double> emaSeries = new ArrayList<>();
+        double smoothing = 2.0 / (period + 1);
 
-        double kama = closes.subList(0, period).stream()
+        // Initial SMA calculation
+        double sma = data.subList(0, period)
+                .stream()
                 .mapToDouble(Double::doubleValue)
                 .average()
                 .orElse(0);
+        emaSeries.add(sma);
 
-        for (int i = period; i < closes.size(); i++) {
-            kama = kama + smoothSC * (closes.get(i) - kama);
+        // Subsequent EMA calculations
+        for (int i = period; i < data.size(); i++) {
+            double currentValue = data.get(i);
+            double prevEMA = emaSeries.get(emaSeries.size() - 1);
+            double newEMA = (currentValue - prevEMA) * smoothing + prevEMA;
+            emaSeries.add(newEMA);
         }
 
-        return kama;
+        return emaSeries;
     }
 
-    private static double calculateEfficiencyRatio(List<Double> prices, int period) {
-        double direction = Math.abs(prices.get(prices.size() - 1) - prices.get(prices.size() - period));
-        double volatility = IntStream.range(0, period)
-                .mapToDouble(i -> Math.abs(prices.get(prices.size() - i - 1) - prices.get(prices.size() - i - 2)))
-                .sum();
+    // 5. Relative Strength Index (RSI)
+    public static double calculateRSI(List<StockUnit> prices, int period) {
+        if (prices.size() < period + 1) {
+            return 0;
+        }
 
-        return direction / volatility;
-    }
+        // Calculate initial average gain and loss for the first 'period' days
+        double avgGain = 0;
+        double avgLoss = 0;
 
-    // 7. Relative Strength Index (RSI)
-    public static double calculateRSI(List<StockUnit> window, int period) {
-        if (window.size() < period + 1) return 0;
-
-        List<Double> gains = new ArrayList<>();
-        List<Double> losses = new ArrayList<>();
-
-        // Parallel processing for price changes
-        IntStream.range(1, period + 1).parallel().forEach(i -> {
-            double change = window.get(i).getClose() - window.get(i - 1).getClose();
+        for (int i = 1; i <= period; i++) {
+            double change = prices.get(i).getClose() - prices.get(i - 1).getClose();
             if (change > 0) {
-                synchronized (gains) {
-                    gains.add(change);
-                }
+                avgGain += change;
             } else {
-                synchronized (losses) {
-                    losses.add(Math.abs(change));
-                }
+                avgLoss += Math.abs(change);
             }
-        });
+        }
 
-        double avgGain = gains.parallelStream().mapToDouble(Double::doubleValue).average().orElse(0);
-        double avgLoss = losses.parallelStream().mapToDouble(Double::doubleValue).average().orElse(0);
+        avgGain /= period;
+        avgLoss /= period;
 
-        if (avgLoss == 0) return 100;
+        // Calculate subsequent averages using Wilder's smoothing method
+        for (int i = period + 1; i < prices.size(); i++) {
+            double change = prices.get(i).getClose() - prices.get(i - 1).getClose();
+            double gain = (change > 0) ? change : 0;
+            double loss = (change < 0) ? Math.abs(change) : 0;
+
+            avgGain = (avgGain * (period - 1) + gain) / period;
+            avgLoss = (avgLoss * (period - 1) + loss) / period;
+        }
+
+        if (avgLoss == 0) {
+            return 100;
+        }
+
         double rs = avgGain / avgLoss;
         return 100 - (100 / (1 + rs));
     }
 
-    // 8. Rate of Change (ROC) with SIMD optimization
+    // 6. Rate of Change (ROC) with SIMD optimization
     public static double calculateROC(List<StockUnit> window, int periods) {
         if (window.size() < periods + 1) return 0;
 
@@ -1009,7 +928,7 @@ public class Main_data_handler {
         return ((current - past) / past) * 100;
     }
 
-    // 9. Momentum Oscillator with look back optimization
+    // 7. Momentum Oscillator with look back optimization
     public static double calculateMomentum(List<StockUnit> window, int periods) {
         if (window.size() < periods + 1) return 0;
 
@@ -1018,7 +937,7 @@ public class Main_data_handler {
         return currentClose - pastClose;
     }
 
-    // 10. Chande Momentum Oscillator (CMO) with branch less programming
+    // 8. Chande Momentum Oscillator (CMO)
     public static double calculateCMO(List<StockUnit> window, int period) {
         if (window.size() < period + 1) return 0;
 
@@ -1033,26 +952,9 @@ public class Main_data_handler {
         return 100 * ((sumUp - sumDown) / (sumUp + sumDown));
     }
 
-    // 11. Momentum Acceleration (2nd Derivative) with finite difference
-    public static double calculateAcceleration(List<StockUnit> window, int period) {
-        if (window.size() < 2 * period + 1) return 0;
-
-        // Calculate momentum values over a sliding window
-        double[] momentum = IntStream.range(0, window.size() - period)
-                .mapToDouble(i -> calculateMomentum(window.subList(i, i + period + 1), period))
-                .toArray();
-
-        // Ensure sufficient data points for central difference
-        int len = momentum.length;
-        if (len < 3) return 0;
-
-        // Compute second derivative using central difference
-        return (momentum[len - 1] - 2 * momentum[len - 2] + momentum[len - 3]) / Math.pow(period, 2);
-    }
-
-    // 12. Bollinger Bands with Bandwidth Expansion
-    public static Map<String, Double> calculateBollingerBands(List<StockUnit> window, int period) {
-        if (window.size() < period) return Collections.emptyMap();
+    // 9. Bollinger Bands with Bandwidth Expansion
+    public static Double calculateBollingerBands(List<StockUnit> window, int period) {
+        if (window.size() < period) return 0.0;
 
         DoubleSummaryStatistics stats = window.stream()
                 .skip(window.size() - period)
@@ -1065,92 +967,10 @@ public class Main_data_handler {
                 .mapToDouble(su -> Math.pow(su.getClose() - sma, 2))
                 .sum() / period);
 
-        double upper = sma + 2 * stdDev;
-        double lower = sma - 2 * stdDev;
-        double bandwidth = (upper - lower) / sma;
-
-        return Map.of(
-                "upper", upper,
-                "lower", lower,
-                "bandwidth", bandwidth,
-                "prev_bandwidth", getPreviousBandwidth(window, period) // Memoized
-        );
+        return ((sma + 2 * stdDev) - (sma - 2 * stdDev)) / sma;
     }
 
-    private static double getPreviousBandwidth(List<StockUnit> window, int period) {
-        if (window.size() < period + 1) return 0;
-        return calculateBollingerBands(window.subList(0, window.size() - 1), period).get("bandwidth");
-    }
-
-    // 13. Breakout Above Resistance (Optimized with Sliding Window)
-    public static int isBreakout(List<StockUnit> window, int resistancePeriod) {
-        if (window.size() < resistancePeriod + 1) return 0;
-
-        double currentClose = window.get(window.size() - 1).getClose();
-        double resistance = window.stream()
-                .skip(window.size() - resistancePeriod - 1)
-                .limit(resistancePeriod)
-                .mapToDouble(StockUnit::getClose)
-                .max()
-                .orElse(Double.MIN_VALUE);
-
-        // Return 1 if true, 0 if false
-        return (currentClose > resistance && window.get(window.size() - 2).getClose() <= resistance) ? 1 : 0;
-    }
-
-    // 14. Donchian Channel Breakout (Efficient Rolling Max)
-    public static int donchianBreakout(List<StockUnit> window, int period) {
-        if (window.size() < period + 1) return 0;
-
-        double currentClose = window.get(window.size() - 1).getClose();
-
-        // Find the maximum close in the last `period` bars
-        double currentMax = window.subList(window.size() - period - 1, window.size() - 1).stream()
-                .mapToDouble(StockUnit::getClose)
-                .max()
-                .orElse(Double.NEGATIVE_INFINITY);
-
-        // Return 1 if breakout, 0 otherwise
-        return (currentClose > currentMax && window.get(window.size() - 2).getClose() <= currentMax) ? 1 : 0;
-    }
-
-    // 15. Statistical Volatility Threshold (Reuse Bollinger stdDev)
-    public static int isVolatilitySpike(List<StockUnit> window, int period) {
-        if (window.size() < period) return 0;
-
-        double currentChange = window.get(window.size() - 1).getPercentageChange();
-        double mean = window.stream()
-                .skip(window.size() - period)
-                .mapToDouble(StockUnit::getPercentageChange)
-                .average()
-                .orElse(0);
-
-        double stdDev = Math.sqrt(window.stream()
-                .skip(window.size() - period)
-                .mapToDouble(su -> Math.pow(su.getPercentageChange() - mean, 2))
-                .average()
-                .orElse(0));
-
-        // Return 1 if true, 0 if false
-        return Math.abs(currentChange) > 2 * stdDev ? 1 : 0;
-    }
-
-    // 16. Rolling Volatility Monitor (Incremental Calculation)
-    public static double rollingVolatilityRatio(List<StockUnit> window, int shortPeriod, int longPeriod, String symbol) {
-        DoubleArrayWindow vWindow = volatilityWindows.computeIfAbsent(symbol,
-                k -> new DoubleArrayWindow(Math.max(shortPeriod, longPeriod) * 2));
-
-        // Update with latest volatility (reuse Bollinger stdDev)
-        double currentVolatility = calculateBollingerBands(window, 20).get("bandwidth");
-        vWindow.add(currentVolatility);
-
-        double shortTerm = vWindow.recentAverage(shortPeriod);
-        double longTerm = vWindow.historicalAverage(longPeriod);
-
-        return longTerm > 0 ? shortTerm / longTerm : 0;
-    }
-
-    // 17. Consecutive Positive Closes with Momentum Tolerance
+    // 10. Consecutive Positive Closes with Momentum Tolerance
     public static int consecutivePositiveCloses(List<StockUnit> window, double dipTolerance) {
         int count = 0;
         double prevClose = window.get(0).getClose();
@@ -1169,7 +989,7 @@ public class Main_data_handler {
         return count;
     }
 
-    // 18. Higher Highs Pattern with Adaptive Window
+    // 11. Higher Highs Pattern with Adaptive Window
     public static int isHigherHighs(List<StockUnit> window, int minConsecutive) {
         if (window.size() < minConsecutive) return 0;
 
@@ -1181,58 +1001,8 @@ public class Main_data_handler {
         return 1;
     }
 
-    // 19. Fractal Breakout Detection with Consolidation Phase
-    public static int isFractalBreakout(List<StockUnit> window, int consolidationPeriod, double volatilityThreshold) {
-        if (window.size() < consolidationPeriod + 2) return 0;
-
-        // Calculate consolidation range
-        double consolidationHigh = window.stream()
-                .skip(window.size() - consolidationPeriod - 1)
-                .limit(consolidationPeriod)
-                .mapToDouble(StockUnit::getHigh)
-                .max().orElse(0);
-
-        double consolidationLow = window.stream()
-                .skip(window.size() - consolidationPeriod - 1)
-                .limit(consolidationPeriod)
-                .mapToDouble(StockUnit::getLow)
-                .min().orElse(0);
-
-        double currentClose = window.get(window.size() - 1).getClose();
-        double rangeSize = consolidationHigh - consolidationLow;
-
-        // Return 1 if true, 0 if false
-        return (currentClose > consolidationHigh && rangeSize / consolidationLow < volatilityThreshold) ? 1 : 0;
-    }
-
-    // 20. Candle Pattern Recognition (Optimized Bitmask Approach)
-    public static int detectCandlePatterns(StockUnit current, StockUnit previous) {
-        int patternMask = 0;
-
-        // Hammer detection
-        boolean isHammer = (current.getHigh() - current.getLow()) > 3 * (current.getClose() - current.getOpen()) &&
-                (current.getClose() > current.getOpen()) &&
-                (current.getClose() - current.getLow()) > 0.7 * (current.getHigh() - current.getLow());
-
-        // Bullish Engulfing
-        boolean isEngulfing = previous.getClose() < previous.getOpen() &&
-                current.getClose() > previous.getOpen() &&
-                current.getOpen() < previous.getClose();
-
-        // Morning Star (simplified)
-        boolean isMorningStar = previous.getClose() < previous.getOpen() &&
-                current.getOpen() > previous.getClose() &&
-                current.getClose() > previous.getOpen();
-
-        if (isHammer) patternMask |= 0b1;
-        if (isEngulfing) patternMask |= 0b10;
-        if (isMorningStar) patternMask |= 0b100;
-
-        return patternMask;
-    }
-
-    // 21. Automated Trend-line Analysis
-    public static int isTrendlineBreakout(List<StockUnit> window, int lookBack) {
+    // 12. Automated Trend-line Analysis
+    public static int isTrendLineBreakout(List<StockUnit> window, int lookBack) {
         if (window.size() < lookBack + 2) return 0;
 
         // Find pivot highs for the trend line
@@ -1275,35 +1045,7 @@ public class Main_data_handler {
         return slope * (n + 1) + intercept;
     }
 
-    // 22. Z-Score of Returns using incremental calculation
-    public static int isZScoreSpike(List<StockUnit> window, int period, String symbol) {
-        DoubleArrayWindow returnsWindow = returnsWindows.computeIfAbsent(symbol, k -> new DoubleArrayWindow(period * 2));
-
-        // Update window with latest return
-        double currentReturn = window.get(window.size() - 1).getPercentageChange();
-        returnsWindow.add(currentReturn);
-
-        // Get historical stats
-        double mean = returnsWindow.historicalAverage(period);
-        double stdDev = calculateStdDev(returnsWindow, period);
-
-        // Return 1 if true, 0 if false
-        return (stdDev != 0 && (currentReturn - mean) / stdDev >= 2.0) ? 1 : 0;
-    }
-
-    private static double calculateStdDev(DoubleArrayWindow window, int period) {
-        double mean = window.historicalAverage(period);
-        double sumSq = 0;
-        int count = Math.min(period, window.filled ? window.values.length : window.index);
-
-        for (int i = 0; i < count; i++) {
-            int pos = (window.index - count + i) % window.values.length;
-            sumSq += Math.pow(window.values[pos] - mean, 2);
-        }
-        return Math.sqrt(sumSq / count);
-    }
-
-    // 23. Cumulative Percentage Change with threshold check
+    // 13. Cumulative Percentage Change with threshold check
     public static int isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
         if (window.size() < period) return 0;
 
@@ -1316,47 +1058,23 @@ public class Main_data_handler {
         return sum >= threshold ? 1 : 0;
     }
 
-    // 24. Cumulative Percentage Change
-    private static double cumulativePercentageChange(List<StockUnit> stocks, int lastChangeLength) {
+    // 14. Cumulative Percentage Change
+    private static double cumulativePercentageChange(List<StockUnit> stocks) {
         int startIndex = 0;
         try {
-            startIndex = stocks.size() - lastChangeLength;
+            startIndex = stocks.size() - 5;
         } catch (Exception e) {
             e.printStackTrace();
         }
 
         // Using parallelStream to process the list in parallel
         return stocks.subList(startIndex, stocks.size())
-                .stream()   // Parallel processing
+                .stream()
                 .mapToDouble(StockUnit::getPercentageChange)  // Convert to double
                 .sum();  // Sum all the results
     }
 
-    // 25. Breakout Above Moving Average
-    public static int isBreakoutAboveMA(List<StockUnit> window, int period, boolean useEMA) {
-        // Validation
-        if (window == null || window.size() < period || period <= 0) {
-            return 0;  // Return 0 if invalid
-        }
-
-        // Get current and previous prices
-        double currentClose = window.get(window.size() - 1).getClose();
-        double previousClose = window.size() >= 2 ?
-                window.get(window.size() - 2).getClose() : currentClose;
-
-        // Calculate MAs with caching
-        double currentMA = calculateMA(window, period, useEMA);
-        double previousMA = calculateMA(window.subList(0, window.size() - 1), period, useEMA);
-
-        // Return 1 if true, 0 if false
-        return (currentClose > currentMA && previousClose <= previousMA) ? 1 : 0;
-    }
-
-    private static double calculateMA(List<StockUnit> window, int period, boolean useEMA) {
-        return useEMA ? calculateEMA(window, period) : calculateSMA(window, period);
-    }
-
-    // 26. Parabolic SAR Approximation using Close Prices
+    // 15. Parabolic SAR Approximation using Close Prices
     public static int isParabolicSARBullish(List<StockUnit> window, int period, double acceleration) {
         if (window.size() < period + 2) return 0;
 
@@ -1395,7 +1113,7 @@ public class Main_data_handler {
         return (current.getClose() > sarValues[sarValues.length - 1]) ? 1 : 0;
     }
 
-    // 27. Keltner Channels Breakout
+    // 16. Keltner Channels Breakout
     public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier) {
         double ema = calculateEMA(window, emaPeriod);
         double atr = calculateATR(window, atrPeriod);
@@ -1405,35 +1123,13 @@ public class Main_data_handler {
         return (window.get(window.size() - 1).getClose() > upperBand) ? 1 : 0;
     }
 
-    // 28. Elder-Ray Index Approximation
+    // 17. Elder-Ray Index Approximation
     public static double elderRayIndex(List<StockUnit> window, int emaPeriod) {
         double ema = calculateEMA(window, emaPeriod);
         return window.get(window.size() - 1).getClose() - ema;
     }
 
-    // 29. Volume Spike Detection with Adaptive Threshold
-    public static int isVolumeSpike(List<StockUnit> window, int period, double thresholdFactor) {
-        if (window.size() < period) return 0;
-
-        // Calculate average volume
-        double avgVolume = calculateAverageVolume(window, period);
-
-        // Get the current volume (last element in the window)
-        double currentVolume = window.get(window.size() - 1).getVolume();
-
-        // Return 1 if true, 0 if false
-        return currentVolume > (avgVolume * thresholdFactor) ? 1 : 0;
-    }
-
-    private static double calculateAverageVolume(List<StockUnit> window, int period) {
-        return window.stream()
-                .skip(window.size() - period)
-                .mapToDouble(StockUnit::getVolume)
-                .average()
-                .orElse(0);
-    }
-
-    // 30. ATR Calculator using Close Prices (adjusted from traditional)
+    // 18. ATR Calculator using Close Prices (adjusted from traditional)
     private static double calculateATR(List<StockUnit> window, int period) {
         double atrSum = 0;
         for (int i = 1; i < window.size(); i++) {
@@ -1476,14 +1172,9 @@ public class Main_data_handler {
      * @param alertsList  The list to store the notification.
      * @param timeSeries  The time series for graphical representation.
      * @param date        The date of the event.
-     * @param dip         True if the event is a dip; false if it's an increase.
      */
-    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, boolean dip, double prediction) {
-        if ((totalChange > 0) && !dip) {
-            alertsList.add(new Notification(String.format("%.3f%% %s ↑ %s", totalChange, symbol, prediction), String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))), timeSeries, new Color(50, 205, 50), date, symbol, totalChange));
-        } else if (dip) {
-            alertsList.add(new Notification(String.format("%.3f%% %s ↓ %s", totalChange, symbol, prediction), String.format("dipped by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))), timeSeries, new Color(255, 217, 0), date, symbol, totalChange));
-        }
+    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction) {
+        alertsList.add(new Notification(String.format("%.3f%% %s ↑ %s", totalChange, symbol, prediction), String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))), timeSeries, date, symbol, totalChange));
     }
 
     public static List<StockUnit> getSymbolTimeline(String symbol) {
@@ -1517,32 +1208,5 @@ public class Main_data_handler {
 
     public interface RealTimeCallback {
         void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
-    }
-
-    // Helper class for efficient rolling statistics
-    private static class DoubleArrayWindow {
-        private final double[] values;
-        private int index = 0;
-        private boolean filled = false;
-
-        public DoubleArrayWindow(int size) {
-            this.values = new double[size];
-        }
-
-        public void add(double value) {
-            values[index++ % values.length] = value;
-            if (index >= values.length) filled = true;
-        }
-
-        public double recentAverage(int period) {
-            int count = Math.min(period, filled ? values.length : index);
-            return Arrays.stream(values, 0, count).parallel().average().orElse(0);
-        }
-
-        public double historicalAverage(int period) {
-            int start = Math.max(0, (filled ? values.length : index) - period);
-            int count = Math.min(period, filled ? values.length : index - start);
-            return Arrays.stream(values, start, start + count).parallel().average().orElse(0);
-        }
     }
 }

@@ -5,8 +5,7 @@ KEY
 CODE
 - add variable exit value (greater rise > greater drop allowed) (test if useful)
 
-1 change frameSizes
-2 fix some indicators (correct and check them)
+2 add sma rememberer to keep state
 3 do manual comparison of return data
 4 finish creating a working interference
 5 optimize weights

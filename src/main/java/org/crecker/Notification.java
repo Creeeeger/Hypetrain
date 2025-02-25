@@ -14,17 +14,15 @@ public class Notification {
     private final String title;
     private final String content;
     private final TimeSeries timeSeries;
-    private final Color color;
     private final LocalDateTime localDateTime;
     private final String symbol;
     private final double change;
     private JFrame notificationFrame; // Frame for the notification
 
-    public Notification(String title, String content, TimeSeries timeSeries, Color color, LocalDateTime localDateTime, String symbol, double change) {
+    public Notification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change) {
         this.title = title;
         this.content = content;
         this.timeSeries = timeSeries;
-        this.color = color;
         this.localDateTime = localDateTime;
         this.symbol = symbol;
         this.change = change;
@@ -54,10 +52,6 @@ public class Notification {
         return timeSeries;
     }
 
-    public Color getColor() {
-        return color;
-    }
-
     public void showNotification() {
         // Create the notification window
         notificationFrame = new JFrame(title);
@@ -65,7 +59,7 @@ public class Notification {
         notificationFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         notificationFrame.setLocationRelativeTo(null);
         notificationFrame.setAlwaysOnTop(true);
-        notificationFrame.getContentPane().setBackground(color);
+        notificationFrame.getContentPane().setBackground(new Color(33, 215, 13));
 
         // Create the text area with content, enable line wrapping
         JTextArea textArea = new JTextArea(content);

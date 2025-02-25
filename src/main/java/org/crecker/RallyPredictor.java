@@ -14,8 +14,8 @@ public class RallyPredictor implements AutoCloseable {
     private final OrtEnvironment env;
     private final OrtSession session;
     private final LinkedList<float[]> buffer;
-    private final int numFeatures;
     private final ReentrantLock bufferLock = new ReentrantLock();
+    private final int length = weightRangeMap.INDICATOR_RANGE_MAP.size();
 
     // Private constructor to prevent instantiation
     private RallyPredictor(String modelPath) throws OrtException {
@@ -26,7 +26,6 @@ public class RallyPredictor implements AutoCloseable {
         this.session = env.createSession(modelPath, options);
 
         this.buffer = new LinkedList<>();
-        this.numFeatures = 30;
     }
 
     // Singleton instance getter
@@ -44,7 +43,9 @@ public class RallyPredictor implements AutoCloseable {
 
             Float spikeProbability = predictor.updateAndPredict(features);
             if (spikeProbability != null) {
-                System.out.println("High spike probability: " + spikeProbability);
+                if (pLTester.debug) {
+                    System.out.println("High spike probability: " + spikeProbability);
+                }
                 return spikeProbability;
             } else {
                 return 0;
@@ -63,10 +64,6 @@ public class RallyPredictor implements AutoCloseable {
      * @return The spike probability, or null if the buffer is not yet full.
      */
     public synchronized Float updateAndPredict(float[] features) {
-        if (features.length != numFeatures) {
-            throw new IllegalArgumentException("Feature vector length must be " + numFeatures);
-        }
-
         bufferLock.lock();
         try {
             buffer.clear();
@@ -88,11 +85,11 @@ public class RallyPredictor implements AutoCloseable {
      * @return The spike probability, or null if the buffer is not yet full.
      */
     private Float predictSpike() throws OrtException {
-        float[][][] inputArray = new float[1][30][30];
+        float[][][] inputArray = new float[1][length][length];
 
-        for (int i = 0; i < Math.min(buffer.size(), 30); i++) {
+        for (int i = 0; i < Math.min(buffer.size(), length); i++) {
             float[] features = buffer.get(i);
-            System.arraycopy(features, 0, inputArray[0][i], 0, Math.min(features.length, 30));
+            System.arraycopy(features, 0, inputArray[0][i], 0, Math.min(features.length, length));
         }
 
         try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
