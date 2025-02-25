@@ -19,7 +19,7 @@ import static org.crecker.Main_UI.gui;
 import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.*;
 
-public class P_L_Tester {
+public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
     public static boolean debug = false; // Flag for printing PL
@@ -51,12 +51,11 @@ public class P_L_Tester {
         final int stock = 0;
         final double DIP_LEVEL = -0.5;
 
-        prepData(SYMBOLS, 200);
+        prepData(SYMBOLS, 800);
 
         // Preprocess indices during data loading
-        Arrays.stream(SYMBOLS).forEach(symbol ->
-                buildTimeIndex(symbol.replace(".txt", ""), getSymbolTimeline(symbol.replace(".txt", "")))
-        );
+        Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(symbol.replace(".txt", ""),
+                getSymbolTimeline(symbol.replace(".txt", ""))));
 
         double capital = INITIAL_CAPITAL;
         int successfulCalls = 0;
@@ -93,6 +92,7 @@ public class P_L_Tester {
                 }
             }
         }
+        createTimeline(SYMBOLS[stock]);
         if (debug) {
             createTimeline(SYMBOLS[stock]);
             logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
@@ -134,7 +134,12 @@ public class P_L_Tester {
             currentIndex++;
         }
 
-        return new TradeResult(currentCapital, timeline.get(currentIndex).getLocalDateTimeDate());
+        // catch errors in case not enough data points are available
+        try {
+            return new TradeResult(currentCapital, timeline.get(currentIndex).getLocalDateTimeDate());
+        } catch (Exception e) {
+            return new TradeResult(currentCapital, timeline.get(currentIndex - 1).getLocalDateTimeDate());
+        }
     }
 
     private static void logTradeResult(String symbol, TradeResult result) {
@@ -272,9 +277,8 @@ public class P_L_Tester {
     private static void createNotification(Notification currentEvent) {
         try {
             addNotification(currentEvent.getTitle(), currentEvent.getContent(),
-                    currentEvent.getTimeSeries(), currentEvent.getColor(),
-                    currentEvent.getLocalDateTime(), currentEvent.getSymbol(),
-                    currentEvent.getChange());
+                    currentEvent.getTimeSeries(), currentEvent.getLocalDateTime(),
+                    currentEvent.getSymbol(), currentEvent.getChange());
         } catch (Exception e) {
             e.printStackTrace();
         }

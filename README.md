@@ -22,64 +22,137 @@
 
 ## Indicators in use
 
-### Trend-Following Indicators
-
 1. Simple Moving Average (SMA) Crossovers
-2. Exponential Moving Average (EMA) Crossovers
-3. Price Crossing Key Moving Averages
-4. MACD (Moving Average Convergence Divergence)
-5. TRIX Indicator
-6. Kaufman’s Adaptive Moving Average (KAMA)
-
-### Momentum Oscillators
-
-7. Relative Strength Index (RSI)
-8. Rate of Change (ROC)
-9. Momentum Oscillator
-10. Chande Momentum Oscillator (CMO)
-11. Momentum Acceleration (2nd Derivative)
-
-### Volatility & Breakout Strategies
-
-12. Bollinger Bands
-13. Breakout Above Resistance Levels
-14. Donchian Channel Breakout
-15. Statistical Volatility Threshold
-16. Rolling Standard Deviation / Volatility Monitoring
-
-### Pattern Recognition
-
-17. Consecutive Positive Closes
-18. Higher Highs Pattern
-19. Fractal Breakout
-20. Candle Patterns
-21. Trendline Analysis
-
-### Statistical & Quantitative Models
-
-22. Z-Score of Returns
-23. Cumulative Percentage Change
-
-### Threshold-Based Rules
-
-24. Percentage Change Threshold
-25. Breakout Above Moving Average
-
-### Miscellaneous Indicators
-
-26. Parabolic SAR Approximation
-27. Keltner Channels
-28. Elder-Ray Index Approximation
-29. Volume Spike
-30. ATR Calculator using Close Prices
-
+2. Price Crossing Key Moving Averages
+3. MACD (Moving Average Convergence Divergence)
+4. TRIX Indicator
+5. Relative Strength Index (RSI)
+6. Rate of Change (ROC)
+7. Momentum Oscillator
+8. Chande Momentum Oscillator (CMO)
+9. Bollinger Bands
+10. Consecutive Positive Closes
+11. Higher Highs Pattern
+12. Trend-line Analysis
+13. Cumulative Percentage Change
+14. Percentage Change Threshold
+15. Parabolic SAR Approximation
+16. Keltner Channels
+17. Elder-Ray Index Approximation
+18. ATR Calculator using Close Prices
 
 ## Python env. instructions
+
 - Open it in pycharm
 - Install dependencies which throw errors
 - run main.py
 
 ---
+
+# Indicator Weight Optimization
+
+This document outlines the optimized weights assigned to different technical indicators based on their predictive power
+in price movement analysis.
+
+## 📌 **Category-Level Weights**
+
+The weight distribution among major categories has been adjusted to enhance accuracy in trend detection, momentum
+strength, volatility breakouts, and statistical significance.
+
+| **Category**             | **Weight (%)** |
+|--------------------------|----------------|
+| **Trend Following**      | 25%            |
+| **Momentum**             | 25%            |
+| **Volatility Breakouts** | 15%            |
+| **Advanced Indicators**  | 15%            |
+| **Patterns**             | 10%            |
+| **Statistical**          | 10%            |
+
+---
+
+## 🔹 **Trend Following Indicators (25%)**
+
+Focused on key trend confirmation tools.
+
+| **Indicator**          | **Weight (%)** |
+|------------------------|----------------|
+| **MACD**               | 30%            |
+| **Price-SMA Distance** | 30%            |
+| **TRIX**               | 20%            |
+| **SMA Cross**          | 20%            |
+
+---
+
+## 🔹 **Momentum Indicators (25%)**
+
+Enhancing detection of overbought/oversold conditions and price velocity.
+
+| **Indicator** | **Weight (%)** |
+|---------------|----------------|
+| **RSI**       | 30%            |
+| **CMO**       | 30%            |
+| **Momentum**  | 25%            |
+| **ROC**       | 15%            |
+
+---
+
+## 🔹 **Volatility Breakouts (15%)**
+
+Volatility-based trading signals remain a strong factor.
+
+| **Indicator**       | **Weight (%)** |
+|---------------------|----------------|
+| **Bollinger Bands** | 100%           |
+
+---
+
+## 🔹 **Advanced Indicators (15%)**
+
+Better volatility-adjusted signals for dynamic market conditions.
+
+| **Indicator**        | **Weight (%)** |
+|----------------------|----------------|
+| **Keltner Channels** | 35%            |
+| **ATR**              | 30%            |
+| **Parabolic SAR**    | 20%            |
+| **Elder Ray**        | 15%            |
+
+---
+
+## 🔹 **Patterns Indicators (10%)**
+
+Clearer pattern-based technical analysis.
+
+| **Indicator**                   | **Weight (%)** |
+|---------------------------------|----------------|
+| **Trendline**                   | 45%            |
+| **Higher Highs**                | 35%            |
+| **Consecutive Positive Closes** | 20%            |
+
+---
+
+## 🔹 **Statistical Indicators (10%)**
+
+Maintaining balance in cumulative price movement analysis.
+
+| **Indicator**             | **Weight (%)** |
+|---------------------------|----------------|
+| **Cumulative Percentage** | 50%            |
+| **Cumulative Threshold**  | 50%            |
+
+---
+
+### 📌 **Summary**
+
+This weight optimization provides a **balanced** and **data-driven** approach to technical analysis, focusing on trend
+reliability, momentum validation, volatility breakouts, and pattern recognition.
+
+🔹 **Key Changes:**
+
+- Increased weight for **MACD (30%)** and **Price-SMA Distance (30%)** for trend strength.
+- Boosted **RSI (30%)** and **CMO (30%)** for stronger momentum insights.
+- Strengthened **Keltner Channels (35%)** and **ATR (30%)** for better volatility measures.
+- Emphasized **Trendline (45%)** for clearer pattern confirmation.
 
 # Disclaimer
 
