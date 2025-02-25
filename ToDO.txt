@@ -5,10 +5,9 @@ KEY
 CODE
 - add variable exit value (greater rise > greater drop allowed) (test if useful)
 
-2 add sma rememberer to keep state
-3 do manual comparison of return data
-4 finish creating a working interference
-5 optimize weights
+1 do manual comparison of return data
+2 finish creating a working interference
+3 optimize weights
 
 TESTING
 - test out new trading simulation parameters

@@ -21,6 +21,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
@@ -35,6 +36,7 @@ public class Main_data_handler {
     static final Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
+    private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
     public static boolean test = true; // If True use demo url for real Time Updates
     static int feature = 0;
     static int frameSize = 30; // Frame size for analysis
@@ -452,22 +454,21 @@ public class Main_data_handler {
             }
         } else {
             // Original notification-based processing
-            timeline.parallelStream()
-                    .forEach(stockUnit -> {
-                        LocalDateTime startTime = stockUnit.getLocalDateTimeDate();
-                        LocalDateTime endTime = startTime.plusMinutes(minutes);
+            timeline.forEach(stockUnit -> { //parallel stream is better, but we can't use it since we need to keep the entires in order
+                LocalDateTime startTime = stockUnit.getLocalDateTimeDate();
+                LocalDateTime endTime = startTime.plusMinutes(minutes);
 
-                        List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
+                List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
 
-                        if (timeWindow.size() >= frameSize) {
-                            try {
-                                List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
-                                stockNotifications.addAll(notifications);
-                            } catch (Exception e) {
-                                e.printStackTrace();
-                            }
-                        }
-                    });
+                if (timeWindow.size() >= frameSize) {
+                    try {
+                        List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
+                        stockNotifications.addAll(notifications);
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                    }
+                }
+            });
         }
 
         synchronized (notificationsForPLAnalysis) {
@@ -542,12 +543,12 @@ public class Main_data_handler {
         };
     }
 
-    private static double[] computeFeatures(List<StockUnit> stocks) {
+    private static double[] computeFeatures(List<StockUnit> stocks, String symbol) {
         double[] features = new double[INDICATOR_RANGE_MAP.size()];
         int featureIndex = 0;
 
         // Trend Following Indicators
-        features[featureIndex++] = isSMACrossover(stocks, 9, 21); // 1
+        features[featureIndex++] = isSMACrossover(stocks, 9, 21, symbol); // 1
         features[featureIndex++] = isPriceAboveSMA(stocks, 20); // 2
         features[featureIndex++] = calculateMACD(stocks, 6, 13, 5); // 3
         features[featureIndex++] = calculateTRIX(stocks, 5); // 4
@@ -614,7 +615,7 @@ public class Main_data_handler {
         });
 
         //raw features
-        double[] features = computeFeatures(stocks);
+        double[] features = computeFeatures(stocks, symbol);
 
         //normalized features
         float[] normalized = normalizeFeatures(features);
@@ -683,10 +684,9 @@ public class Main_data_handler {
 
     //Indicators
     // 1. Simple Moving Average (SMA)
-    public static int isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod) {
-        // Validate inputs
+    public static int isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod, String symbol) {
         if (window == null || window.size() < longPeriod + 1 || shortPeriod >= longPeriod) {
-            return 0;
+            return smaStateMap.getOrDefault(symbol, 0); // Return current state if invalid
         }
 
         // Extract closing prices once
@@ -702,8 +702,20 @@ public class Main_data_handler {
         double prevShortSMA = calculateSMA(closes, closes.length - shortPeriod - 1, shortPeriod);
         double prevLongSMA = calculateSMA(closes, closes.length - longPeriod - 1, longPeriod);
 
-        // Detect crossover with direction check
-        return (prevShortSMA <= prevLongSMA && shortSMA > longSMA) ? 1 : 0;
+        boolean bullishCrossover = (prevShortSMA <= prevLongSMA) && (shortSMA > longSMA);
+        boolean bearishCrossover = (prevShortSMA >= prevLongSMA) && (shortSMA < longSMA);
+
+        int currentState = smaStateMap.getOrDefault(symbol, 0);
+
+        if (bullishCrossover) {
+            smaStateMap.put(symbol, 1);
+            currentState = 1;
+        } else if (bearishCrossover) {
+            smaStateMap.put(symbol, -1);
+            currentState = -1;
+        }
+
+        return currentState;
     }
 
     private static double calculateSMA(double[] closes, int startIndex, int period) {
