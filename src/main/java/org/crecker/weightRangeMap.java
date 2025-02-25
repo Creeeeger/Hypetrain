@@ -68,7 +68,7 @@ public class weightRangeMap {
 
     public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
         // Trend Following Indicators
-        put("SMA_CROSS", Map.of("min", 0.0, "max", 1.0));
+        put("SMA_CROSS", Map.of("min", -1.0, "max", 1.0));
         put("PRICE_SMA_DISTANCE", Map.of("min", 0.0, "max", 1.0));
         put("MACD", Map.of("min", -1.0, "max", 1.0));
         put("TRIX", Map.of("min", -1.0, "max", 1.0));
