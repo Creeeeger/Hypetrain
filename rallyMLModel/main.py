@@ -24,66 +24,73 @@ if gpus:
 # tf.debugging.set_log_device_placement(True)
 
 # 1. Feature Engineering
-def create_features(df):
-    df = df.copy()
+def create_features(data_of_csv):
+    data_of_csv = data_of_csv.copy()
 
-    df['returns'] = df['close'].pct_change()
+    data_of_csv['returns'] = data_of_csv['close'].pct_change()
 
-    df['short_sma'] = calculate_sma(df['close'], 9)
-    df['long_sma'] = calculate_sma(df['close'], 21)
-    df['sma_crossover'] = (
-            (df['short_sma'] > df['long_sma']) &
-            (df['short_sma'].shift(1) <= df['long_sma'].shift(1))
+    data_of_csv['short_sma'] = calculate_sma(data_of_csv['close'], 9)
+    data_of_csv['long_sma'] = calculate_sma(data_of_csv['close'], 21)
+    data_of_csv['sma_crossover'] = (
+            (data_of_csv['short_sma'] > data_of_csv['long_sma']) &
+            (data_of_csv['short_sma'].shift(1) <= data_of_csv['long_sma'].shift(1))
     ).astype(int)
 
-    df['sma'] = calculate_sma(df['close'], 20)
-    df['price_above_sma'] = (
-            (df['close'] > df['sma']) &
-            (df['close'].shift(1) <= df['sma'].shift(1))
+    data_of_csv['sma'] = calculate_sma(data_of_csv['close'], 20)
+    data_of_csv['price_above_sma'] = (
+            (data_of_csv['close'] > data_of_csv['sma']) &
+            (data_of_csv['close'].shift(1) <= data_of_csv['sma'].shift(1))
     ).astype(int)
 
-    df['macd_line'] = calculate_ema(df['close'], 6) - calculate_ema(df['close'], 13)
-    df['signal_line'] = calculate_ema(df['macd_line'], 5)
-    df['macd_histogram'] = df['macd_line'] - df['signal_line']
+    data_of_csv['macd_line'] = calculate_ema(data_of_csv['close'], 6) - calculate_ema(data_of_csv['close'], 13)
+    data_of_csv['signal_line'] = calculate_ema(data_of_csv['macd_line'], 5)
+    data_of_csv['macd_histogram'] = data_of_csv['macd_line'] - data_of_csv['signal_line']
 
-    df['trix'] = calculate_trix(df, period=5)
+    data_of_csv['trix'] = calculate_trix(data_of_csv, period=5)
 
-    df['rsi'] = calculate_rsi(df, period=15)
+    data_of_csv['rsi'] = calculate_rsi(data_of_csv, period=15)
 
-    df['roc'] = calculate_roc(df, period=20)
+    data_of_csv['roc'] = calculate_roc(data_of_csv, period=20)
 
-    df['momentum'] = calculate_momentum(df, period=10)
+    data_of_csv['momentum'] = calculate_momentum(data_of_csv, period=10)
 
-    df['cmo'] = calculate_cmo(df, period=20)
+    data_of_csv['cmo'] = calculate_cmo(data_of_csv, period=20)
 
-    df['bollinger_bands'] = calculate_bollinger_bands(df, period=20)
+    data_of_csv['bollinger_bands'] = calculate_bollinger_bands(data_of_csv, period=20)
 
-    df['positive_closes'] = df.apply(lambda row: consecutive_positive_closes(row, df, dip_tolerance=0.2), axis=1)
+    data_of_csv['positive_closes'] = data_of_csv.apply(
+        lambda row: consecutive_positive_closes(row, data_of_csv, dip_tolerance=0.2), axis=1)
 
-    df['higher_highs'] = df.apply(lambda row: is_higher_highs(df[:row.name + 1], min_consecutive=3), axis=1)
+    data_of_csv['higher_highs'] = data_of_csv.apply(
+        lambda row: is_higher_highs(data_of_csv[:row.name + 1], min_consecutive=3), axis=1)
 
-    df['trendline_breakout'] = df.apply(lambda row: is_trendline_breakout(row, df, lookback=20), axis=1)
+    data_of_csv['trendline_breakout'] = data_of_csv.apply(
+        lambda row: is_trendline_breakout(row, data_of_csv, lookback=20), axis=1)
 
-    df['cumulative_spike'] = df.apply(lambda row: is_cumulative_spike(row, df, period=10, threshold=0.55), axis=1)
+    data_of_csv['cumulative_spike'] = data_of_csv.apply(
+        lambda row: is_cumulative_spike(row, data_of_csv, period=10, threshold=0.55), axis=1)
 
-    df['cumulative_change'] = df.apply(lambda row: cumulative_percentage_change(row, df, last_change_length=5), axis=1)
+    data_of_csv['cumulative_change'] = data_of_csv.apply(
+        lambda row: cumulative_percentage_change(row, data_of_csv, last_change_length=5), axis=1)
 
-    df['parabolic_sar_bullish'] = df.apply(lambda row: is_parabolic_sar_bullish(row, df, period=20, acceleration=0.01),
-                                           axis=1)
+    data_of_csv['parabolic_sar_bullish'] = data_of_csv.apply(
+        lambda row: is_parabolic_sar_bullish(row, data_of_csv, period=20, acceleration=0.01),
+        axis=1)
 
-    df['keltner_breakout'] = df.apply(
-        lambda row: is_keltner_breakout(row, df, ema_period=20, atr_period=20, multiplier=0.2), axis=1)
+    data_of_csv['keltner_breakout'] = data_of_csv.apply(
+        lambda row: is_keltner_breakout(row, data_of_csv, ema_period=20, atr_period=20, multiplier=0.2), axis=1)
 
-    df['elder_ray_index'] = df.apply(lambda row: elder_ray_index(row, df, ema_period=12), axis=1)
+    data_of_csv['elder_ray_index'] = data_of_csv.apply(lambda row: elder_ray_index(row, data_of_csv, ema_period=12),
+                                                       axis=1)
 
-    df['atr'] = calculate_atr(df, period=20)
+    data_of_csv['atr'] = calculate_atr(data_of_csv, period=20)
 
     # label rows which are spikes (0.8% spike)
-    df['target'] = (df['close'].shift(-10) / df['close'] - 1 >= 0.008).astype(int)
+    data_of_csv['target'] = (data_of_csv['close'].shift(-10) / data_of_csv['close'] - 1 >= 0.008).astype(int)
 
-    df.dropna(inplace=True)
+    data_of_csv.dropna(inplace=True)
 
-    return df
+    return data_of_csv
 
 
 def calculate_sma(series, period):
@@ -94,25 +101,25 @@ def calculate_ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
 
-def calculate_cmo(df, period):
-    delta = df['close'].diff()
+def calculate_cmo(data_of_csv, period):
+    delta = data_of_csv['close'].diff()
     gain = delta.where(delta > 0, 0).rolling(window=period).sum()
     loss = -delta.where(delta < 0, 0).rolling(window=period).sum()
     cmo = (gain - loss) / (gain + loss) * 100
     return cmo
 
 
-def calculate_momentum(df, period):
-    momentum = df['close'].diff(period)
+def calculate_momentum(data_of_csv, period):
+    momentum = data_of_csv['close'].diff(period)
     return momentum
 
 
-def calculate_roc(df, period):
-    return df['close'].pct_change(periods=period) * 100
+def calculate_roc(data_of_csv, period):
+    return data_of_csv['close'].pct_change(periods=period) * 100
 
 
-def calculate_rsi(df, period):
-    delta = df['close'].diff()
+def calculate_rsi(data_of_csv, period):
+    delta = data_of_csv['close'].diff()
     gain = (delta.where(delta > 0, 0)).ewm(alpha=1 / period, adjust=False).mean()
     loss = (-delta.where(delta < 0, 0)).ewm(alpha=1 / period, adjust=False).mean()
     rs = gain / loss
@@ -120,9 +127,9 @@ def calculate_rsi(df, period):
     return rsi
 
 
-def calculate_trix(df, period):
+def calculate_trix(data_of_csv, period):
     # Calculate Triple EMA
-    ema1 = calculate_ema(df['close'], period)
+    ema1 = calculate_ema(data_of_csv['close'], period)
     ema2 = calculate_ema(ema1, period)
     ema3 = calculate_ema(ema2, period)
 
@@ -131,12 +138,12 @@ def calculate_trix(df, period):
     return trix
 
 
-def calculate_bollinger_bands(df, period):
-    if len(df) < period:
-        return np.full((len(df), 4), np.nan)
+def calculate_bollinger_bands(data_of_csv, period):
+    if len(data_of_csv) < period:
+        return np.full((len(data_of_csv), 4), np.nan)
 
     # Precompute rolling metrics in one pass
-    close = df['close'].values
+    close = data_of_csv['close'].values
     rolling_mean = np.empty(len(close))
     rolling_std = np.empty(len(close))
 
@@ -153,7 +160,7 @@ def calculate_bollinger_bands(df, period):
     return bandwidth
 
 
-def consecutive_positive_closes(row, df, dip_tolerance):
+def consecutive_positive_closes(row, data_of_csv, dip_tolerance):
     idx = row.name  # Get current row index
 
     if idx == 0:
@@ -161,26 +168,26 @@ def consecutive_positive_closes(row, df, dip_tolerance):
 
     count = 0
     for i in range(idx, -1, -1):  # Iterate backward from current row
-        if df['returns'].iloc[i] * 100 > 0:
+        if data_of_csv['returns'].iloc[i] * 100 > 0:
             count += 1  # Increase count for consecutive positive close
-        elif df['returns'].iloc[i] * 100 < -dip_tolerance:
+        elif data_of_csv['returns'].iloc[i] * 100 < -dip_tolerance:
             break  # Reset if there's a dip beyond tolerance
 
     return count
 
 
-def is_higher_highs(df, min_consecutive):
-    if len(df) < min_consecutive:
+def is_higher_highs(data_of_csv, min_consecutive):
+    if len(data_of_csv) < min_consecutive:
         return 0  # Not enough data to evaluate
 
-    for i in range(len(df) - min_consecutive, len(df) - 1):
-        if df['close'].iloc[i + 1] <= df['close'].iloc[i]:
+    for i in range(len(data_of_csv) - min_consecutive, len(data_of_csv) - 1):
+        if data_of_csv['close'].iloc[i + 1] <= data_of_csv['close'].iloc[i]:
             return 0
 
     return 1
 
 
-def is_trendline_breakout(row, df, lookback):
+def is_trendline_breakout(row, data_of_csv, lookback):
     # Get the index of the current row
     idx = row.name
 
@@ -191,9 +198,9 @@ def is_trendline_breakout(row, df, lookback):
     # Find pivot highs for the trend line
     pivot_highs = []
     for i in range(lookback):
-        if idx - i - 1 >= 0 and idx - i + 1 < len(df):  # Ensure indices are within bounds
-            p = df.iloc[idx - i]
-            if p['high'] > df.iloc[idx - i - 1]['high'] and p['high'] > df.iloc[idx - i + 1]['high']:
+        if idx - i - 1 >= 0 and idx - i + 1 < len(data_of_csv):  # Ensure indices are within bounds
+            p = data_of_csv.iloc[idx - i]
+            if p['high'] > data_of_csv.iloc[idx - i - 1]['high'] and p['high'] > data_of_csv.iloc[idx - i + 1]['high']:
                 pivot_highs.append(p['high'])
 
     if len(pivot_highs) < 2:
@@ -204,7 +211,7 @@ def is_trendline_breakout(row, df, lookback):
     current_close = row['close']
 
     # Return 1 if breakout condition is met
-    return 1 if current_close > expected_high and current_close > df['close'].iloc[idx - 1] else 0
+    return 1 if current_close > expected_high and current_close > data_of_csv['close'].iloc[idx - 1] else 0
 
 
 def get_expected_high(pivot_highs):
@@ -222,7 +229,7 @@ def get_expected_high(pivot_highs):
     return slope * n + intercept
 
 
-def is_cumulative_spike(row, df, period, threshold):
+def is_cumulative_spike(row, data_of_csv, period, threshold):
     # Get the index of the current row
     idx = row.name
 
@@ -231,13 +238,13 @@ def is_cumulative_spike(row, df, period, threshold):
         return 0  # Not enough data
 
     # Compute cumulative return using compounding formula
-    cumulative_return = ((df['returns'].iloc[idx - period:idx] + 1).prod() - 1) * 100
+    cumulative_return = ((data_of_csv['returns'].iloc[idx - period:idx] + 1).prod() - 1) * 100
 
     # Return 1 if it meets the threshold, otherwise 0
     return 1 if cumulative_return >= threshold else 0
 
 
-def cumulative_percentage_change(row, df, last_change_length):
+def cumulative_percentage_change(row, data_of_csv, last_change_length):
     # Get the index of the current row
     idx = row.name
 
@@ -246,10 +253,10 @@ def cumulative_percentage_change(row, df, last_change_length):
         return 0  # Not enough data
 
     # Compute cumulative percentage change using compounding formula
-    return ((df['returns'].iloc[idx - last_change_length:idx] + 1).prod() - 1) * 100
+    return ((data_of_csv['returns'].iloc[idx - last_change_length:idx] + 1).prod() - 1) * 100
 
 
-def is_parabolic_sar_bullish(row, df, period, acceleration):
+def is_parabolic_sar_bullish(row, data_of_csv, period, acceleration):
     idx = row.name  # Get the index of the current row
 
     # Ensure we have enough data for the period
@@ -257,7 +264,7 @@ def is_parabolic_sar_bullish(row, df, period, acceleration):
         return 0  # Not enough data to compute SAR
 
     # Use the last 'period' number of data points (rows) up to the current row
-    df_period = df.iloc[idx - period:idx]
+    df_period = data_of_csv.iloc[idx - period:idx]
 
     # Initial values
     prev_sar = df_period.iloc[0]['close']  # First SAR value from the period
@@ -293,9 +300,9 @@ def is_parabolic_sar_bullish(row, df, period, acceleration):
     return 1 if row['close'] > prev_sar else 0
 
 
-def is_keltner_breakout(row, df, ema_period, atr_period, multiplier):
-    ema = df['close'].ewm(span=ema_period, adjust=False).mean()
-    atr = calculate_atr(df, atr_period)
+def is_keltner_breakout(row, data_of_csv, ema_period, atr_period, multiplier):
+    ema = data_of_csv['close'].ewm(span=ema_period, adjust=False).mean()
+    atr = calculate_atr(data_of_csv, atr_period)
 
     # Compute upper band
     upper_band = ema + (multiplier * atr)
@@ -304,15 +311,15 @@ def is_keltner_breakout(row, df, ema_period, atr_period, multiplier):
     return 1 if row['close'] > upper_band.loc[row.name] else 0
 
 
-def elder_ray_index(row, df, ema_period):
-    ema = df['close'].ewm(span=ema_period, adjust=False).mean()
+def elder_ray_index(row, data_of_csv, ema_period):
+    ema = data_of_csv['close'].ewm(span=ema_period, adjust=False).mean()
     return row['close'] - ema.loc[row.name]
 
 
-def calculate_atr(df, period):
-    high_low = df['high'] - df['low']
-    high_close = np.abs(df['high'] - df['close'].shift())
-    low_close = np.abs(df['low'] - df['close'].shift())
+def calculate_atr(data_of_csv, period):
+    high_low = data_of_csv['high'] - data_of_csv['low']
+    high_close = np.abs(data_of_csv['high'] - data_of_csv['close'].shift())
+    low_close = np.abs(data_of_csv['low'] - data_of_csv['close'].shift())
 
     true_range = np.maximum(high_low, high_close, low_close)
     atr = true_range.rolling(window=period).mean()
@@ -337,13 +344,12 @@ def prepare_sequences(data, features, window_size):
     # Apply the preprocessor to the data
     scaled_data = preprocessor.fit_transform(data[features])
 
-    # Sequence creation for X and y
-    x, y = [], []
+    feature, label = [], []
     for i in range(window_size, len(data)):
-        x.append(scaled_data[i - window_size:i])
-        y.append(data['target'].iloc[i])
+        feature.append(scaled_data[i - window_size:i])
+        label.append(data['target'].iloc[i])
 
-    return np.array(x), np.array(y), preprocessor
+    return np.array(feature), np.array(label), preprocessor
 
 
 def build_spike_model(input_shape):
@@ -378,7 +384,7 @@ def train_spike_predictor(data_path):
     data_of_csv = create_features(data_of_csv)
 
     # feature categories from Java feature creator
-    features = [
+    features_list = [
         'sma_crossover', 'price_above_sma', 'macd_line', 'trix',
         'rsi', 'roc', 'momentum', 'cmo',
         'bollinger_bands',
@@ -387,25 +393,29 @@ def train_spike_predictor(data_path):
         'parabolic_sar_bullish', 'keltner_breakout', 'elder_ray_index', 'atr'
     ]
 
-    x, y, scaler = prepare_sequences(data_of_csv, features, len(features))
-    x_train, x_test, y_train, y_test = train_test_split(x, y, test_size=0.2)
+    # Scale the data to values between 0 and 1
+    features, labels, scaler = prepare_sequences(data_of_csv, features_list, len(features_list))
 
-    model = build_spike_model((x_train.shape[1], x_train.shape[2]))
+    # Split the data to test_size X for testing and 1-X for training
+    features_train, features_test, labels_train, labels_test = train_test_split(features, labels, test_size=0.25)
+
+    model = build_spike_model((features_train.shape[1], features_train.shape[2]))
 
     early_stop = EarlyStopping(monitor='val_auc', patience=10, mode='max', restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
 
     with tf.device('/CPU:0'):
         model.fit(
-            x_train, y_train,
+            features_train, labels_train,
             epochs=1,
             batch_size=64,
-            validation_data=(x_test, y_test),
+            validation_data=(features_test, labels_test),
             callbacks=[early_stop, reduce_lr]
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
-    model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=[tf.TensorSpec([None, *x_train.shape[1:]], tf.float32)])
+    model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=[
+        tf.TensorSpec([None, *features_train.shape[1:]], tf.float32)])
     with open("spike_predictor.onnx", "wb") as f:
         f.write(model_proto.SerializeToString())
 
