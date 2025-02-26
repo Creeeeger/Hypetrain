@@ -191,7 +191,7 @@ public class pLTester {
 
     public static void exportToCSV(List<StockUnit> stocks) {
         try {
-            FileWriter csvWriter = new FileWriter(System.getProperty("user.dir") + "/rallyMLModel/high_frequency_stocks.csv");
+            FileWriter csvWriter = new FileWriter(System.getProperty("user.dir") + "/rallyMLModel/highFrequencyStocks.csv");
             csvWriter.append("timestamp,open,high,low,close,volume\n"); // Write the header line to the CSV file
 
             for (StockUnit stock : stocks) {
