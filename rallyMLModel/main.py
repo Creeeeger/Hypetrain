@@ -59,15 +59,15 @@ def create_features(df):
 
     df['positive_closes'] = df.apply(lambda row: consecutive_positive_closes(row, df, dip_tolerance=0.2), axis=1)
 
-    df['higher_highs'] = df.apply(lambda row: is_higher_highs(df, min_consecutive=3), axis=1)
+    df['higher_highs'] = df.apply(lambda row: is_higher_highs(df[:row.name + 1], min_consecutive=3), axis=1)
 
-    df['trendline_breakout'] = df.apply(lambda row: is_trendline_breakout(df, lookback=20), axis=1)
+    df['trendline_breakout'] = df.apply(lambda row: is_trendline_breakout(row, df, lookback=20), axis=1)
 
     df['cumulative_spike'] = df.apply(lambda row: is_cumulative_spike(row, df, period=10, threshold=0.55), axis=1)
 
     df['cumulative_change'] = df.apply(lambda row: cumulative_percentage_change(row, df, last_change_length=5), axis=1)
 
-    df['parabolic_sar_bullish'] = df.apply(lambda row: is_parabolic_sar_bullish(df, period=20, acceleration=0.01),
+    df['parabolic_sar_bullish'] = df.apply(lambda row: is_parabolic_sar_bullish(row, df, period=20, acceleration=0.01),
                                            axis=1)
 
     df['keltner_breakout'] = df.apply(
@@ -160,10 +160,9 @@ def consecutive_positive_closes(row, df, dip_tolerance):
 
     count = 0
     for i in range(idx, -1, -1):  # Iterate backward from current row
-        if df['returns'].iloc[i]*100 > 0:
+        if df['returns'].iloc[i] * 100 > 0:
             count += 1  # Increase count for consecutive positive close
-        elif df['returns'].iloc[i] *100< -dip_tolerance:
-            print("below")
+        elif df['returns'].iloc[i] * 100 < -dip_tolerance:
             break  # Reset if there's a dip beyond tolerance
 
     return count
@@ -171,7 +170,7 @@ def consecutive_positive_closes(row, df, dip_tolerance):
 
 def is_higher_highs(df, min_consecutive):
     if len(df) < min_consecutive:
-        return 0
+        return 0  # Not enough data to evaluate
 
     for i in range(len(df) - min_consecutive, len(df) - 1):
         if df['close'].iloc[i + 1] <= df['close'].iloc[i]:
@@ -180,23 +179,31 @@ def is_higher_highs(df, min_consecutive):
     return 1
 
 
-def is_trendline_breakout(df, lookback):
-    # Find pivot highs for trend line
+def is_trendline_breakout(row, df, lookback):
+    # Get the index of the current row
+    idx = row.name
+
+    # Ensure we have enough data for the lookback period
+    if idx < lookback:
+        return 0
+
+    # Find pivot highs for the trend line
     pivot_highs = []
-    for i in range(3, lookback):
-        p = df.iloc[-i]
-        if p['high'] > df.iloc[-i - 1]['high'] and p['high'] > df.iloc[-i + 1]['high']:
-            pivot_highs.append(p['high'])
+    for i in range(lookback):
+        if idx - i - 1 >= 0 and idx - i + 1 < len(df):  # Ensure indices are within bounds
+            p = df.iloc[idx - i]
+            if p['high'] > df.iloc[idx - i - 1]['high'] and p['high'] > df.iloc[idx - i + 1]['high']:
+                pivot_highs.append(p['high'])
 
     if len(pivot_highs) < 2:
         return 0
 
-    # Linear regression of pivot highs
+    # Calculate the expected high using linear regression
     expected_high = get_expected_high(pivot_highs)
-    current_close = df['close'].iloc[-1]
+    current_close = row['close']
 
     # Return 1 if breakout condition is met
-    return 1 if current_close > expected_high and current_close > df['close'].iloc[-2] else 0
+    return 1 if current_close > expected_high and current_close > df['close'].iloc[idx - 1] else 0
 
 
 def get_expected_high(pivot_highs):
@@ -210,8 +217,8 @@ def get_expected_high(pivot_highs):
     slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x)
     intercept = (sum_y - slope * sum_x) / n
 
-    # Project the expected high
-    return slope * (n + 1) + intercept
+    # Project the expected high for the next period (n+1)
+    return slope * n + intercept
 
 
 def is_cumulative_spike(row, df, period, threshold):
@@ -241,9 +248,15 @@ def cumulative_percentage_change(row, df, last_change_length):
     return ((df['returns'].iloc[idx - last_change_length:idx] + 1).prod() - 1) * 100
 
 
-def is_parabolic_sar_bullish(df, period, acceleration):
-    # Use the last 'period' number of data points
-    df_period = df.iloc[-period:]
+def is_parabolic_sar_bullish(row, df, period, acceleration):
+    idx = row.name  # Get the index of the current row
+
+    # Ensure we have enough data for the period
+    if idx < period:
+        return 0  # Not enough data to compute SAR
+
+    # Use the last 'period' number of data points (rows) up to the current row
+    df_period = df.iloc[idx - period:idx]
 
     # Initial values
     prev_sar = df_period.iloc[0]['close']  # First SAR value from the period
@@ -276,7 +289,7 @@ def is_parabolic_sar_bullish(df, period, acceleration):
                 extreme_point = min(extreme_point, current_close)
 
     # Compare the last closing price with the final SAR value
-    return 1 if df.iloc[-1]['close'] > prev_sar else 0
+    return 1 if row['close'] > prev_sar else 0
 
 
 def is_keltner_breakout(row, df, ema_period, atr_period, multiplier):
@@ -333,8 +346,7 @@ def prepare_sequences(data, features, window_size):
     scaled_data = preprocessor.fit_transform(data[features])
 
     # Convert scaled data into DataFrame
-    scaled_df = pd.DataFrame(scaled_data,
-                             columns=low_range_features + other_features)
+    scaled_df = pd.DataFrame(scaled_data, columns=low_range_features + other_features)
 
     # print(scaled_df.head(200).to_string())
 
@@ -426,11 +438,8 @@ if __name__ == "__main__":
     model, scaler = train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
     print("Training done!")
 
-    # 1. fix feature calculation
+    # 1. add sma remember
     # 2. fix scaler
-    # 3. number the features
-    # 4. improve training speed
-    # 5. rework network architecture
-    # 6. rework training process
-    # 7. add sma remember
-    # 8. higher_highs  trendline_breakout parabolic_sar_bullish fix them
+    # 3. rework network architecture
+    # 4. rework training process
+    # 5. improve training speed
