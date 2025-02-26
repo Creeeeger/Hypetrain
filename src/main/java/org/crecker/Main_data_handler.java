@@ -640,6 +640,7 @@ public class Main_data_handler {
 
         //feed normalized unweighted features
         double prediction = predict(normalized);
+        System.out.println(prediction);
 
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(

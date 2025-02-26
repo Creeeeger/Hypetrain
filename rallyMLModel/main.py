@@ -4,24 +4,13 @@ import tensorflow as tf
 import tf2onnx
 from keras import Input, Model
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
-from keras.src.layers import LSTM, Dense, Dropout, BatchNormalization
+from keras.src.layers import LSTM, Dense, Dropout, BatchNormalization, MaxPooling1D, Conv1D
 from keras.src.metrics import Precision, Recall, AUC
 from keras.src.regularizers import regularizers
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-
-gpus = tf.config.list_physical_devices('GPU')  # Get GPU list
-if gpus:
-    try:
-        for gpu in gpus:
-            # Enable memory growth to ensure enough memory is available
-            tf.config.experimental.set_memory_growth(gpu, True)
-    except RuntimeError as e:
-        print(e)
-
-# Enable logging of device placement
-# tf.debugging.set_log_device_placement(True)
+from sklearn.utils import compute_class_weight
 
 # 1. Feature Engineering
 def create_features(data_of_csv):
@@ -352,17 +341,51 @@ def prepare_sequences(data, features, window_size):
     return np.array(feature), np.array(label), preprocessor
 
 
-def build_spike_model(input_shape):
-    l2_regularizer = regularizers.L2(0.01)
-
+def build_model1(input_shape):
     inputs = Input(shape=input_shape)
-    x = LSTM(64, return_sequences=False, kernel_regularizer=l2_regularizer, recurrent_activation="tanh")(inputs)
+    x = Conv1D(64, kernel_size=3, activation="relu", padding="same")(inputs)
+    x = MaxPooling1D(2)(x)
+    x = LSTM(64, return_sequences=False, recurrent_activation="tanh")(x)
     x = Dropout(0.3)(x)
+    x = Dense(64, activation="relu")(x)
+    outputs = Dense(1, activation="sigmoid")(x)
+    model = Model(inputs=inputs, outputs=outputs)
+    model.compile(optimizer='adam',
+                  loss='binary_crossentropy',
+                  metrics=['accuracy',
+                           Precision(name='precision'),
+                           Recall(name='recall'),
+                           AUC(name='auc')])
+    return model
+
+
+def build_model2(input_shape):
+    l2_regularizer = regularizers.L2(0.01)
+    inputs = Input(shape=input_shape)
+
+    # Convolutional block: extract local features from the sequence
+    x = Conv1D(filters=64, kernel_size=3, activation='relu', padding='same',
+               kernel_regularizer=l2_regularizer)(inputs)
+    x = BatchNormalization()(x)
+    x = MaxPooling1D(pool_size=2)(x)
+    x = Dropout(0.3)(x)
+
+    # Optional second convolutional block for deeper feature extraction
+    x = Conv1D(filters=128, kernel_size=3, activation='relu', padding='same',
+               kernel_regularizer=l2_regularizer)(x)
+    x = BatchNormalization()(x)
+    x = MaxPooling1D(pool_size=2)(x)
+    x = Dropout(0.3)(x)
+
+    # LSTM layer to capture the sequential dependencies after CNN processing
+    x = LSTM(64, return_sequences=False, kernel_regularizer=l2_regularizer, recurrent_activation="tanh")(x)
     x = BatchNormalization()(x)
     x = Dropout(0.3)(x)
-    x = BatchNormalization()(x)
+
+    # Dense layers for further processing before final output
     x = Dense(64, activation='relu', kernel_regularizer=l2_regularizer)(x)
     x = Dropout(0.3)(x)
+
     outputs = Dense(1, activation='sigmoid', dtype='float32')(x)
 
     model = Model(inputs=inputs, outputs=outputs)
@@ -397,20 +420,32 @@ def train_spike_predictor(data_path):
     features, labels, scaler = prepare_sequences(data_of_csv, features_list, len(features_list))
 
     # Split the data to test_size X for testing and 1-X for training
-    features_train, features_test, labels_train, labels_test = train_test_split(features, labels, test_size=0.25)
+    features_train, features_test, labels_train, labels_test = train_test_split(features, labels, test_size=0.20)
 
-    model = build_spike_model((features_train.shape[1], features_train.shape[2]))
+    # Build and define the architecture of the Network for training
+    model = build_model1((features_train.shape[1], features_train.shape[2]))
 
-    early_stop = EarlyStopping(monitor='val_auc', patience=10, mode='max', restore_best_weights=True)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
+    # Define callbacks
+    early_stop = EarlyStopping(monitor='val_auc', patience=15, mode='max', restore_best_weights=True, min_delta=0.005)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=0.00001)
 
+    # Define class weights
+    class_weights = compute_class_weight('balanced', classes=np.unique(labels_train), y=labels_train)
+    class_weights_dict = {0: class_weights[0], 1: class_weights[1]}
+
+    # print distribution
+    print("Class distribution:", np.bincount(labels_train.flatten()))
+    print("Unique label values:", np.unique(labels_train))
+
+    # training process of the model CPU has in my case better performance than GPU
     with tf.device('/CPU:0'):
         model.fit(
             features_train, labels_train,
-            epochs=1,
-            batch_size=64,
+            epochs=256,
+            batch_size=128,
             validation_data=(features_test, labels_test),
-            callbacks=[early_stop, reduce_lr]
+            callbacks=[early_stop, reduce_lr],
+            class_weight=class_weights_dict
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
@@ -419,15 +454,12 @@ def train_spike_predictor(data_path):
     with open("spike_predictor.onnx", "wb") as f:
         f.write(model_proto.SerializeToString())
 
-    return model, scaler
-
 
 if __name__ == "__main__":
-    model, scaler = train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
+    train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
     print("Training done!")
 
     #TODO
     # 1. add sma remember
-    # 3. rework network architecture
-    # 4. rework training process
-    # 5. improve training speed
+    # 2. rework network architecture
+    # 3. rework training process
