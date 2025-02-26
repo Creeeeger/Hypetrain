@@ -154,6 +154,16 @@ reliability, momentum validation, volatility breakouts, and pattern recognition.
 - Strengthened **Keltner Channels (35%)** and **ATR (30%)** for better volatility measures.
 - Emphasized **Trendline (45%)** for clearer pattern confirmation.
 
+### Target calculation for ML Model
+
+target = (close(t+15) - close(t)) >= 0.03
+
+Where:
+
+- `close(t)` is the closing price at time `t`,
+- `close(t+15)` is the closing price 15 time units after `t`.
+- The condition checks if the difference between these closing prices is greater than or equal to 0.03.
+
 # Disclaimer
 
 The information provided by this program is intended solely for educational and informational purposes. By utilizing
