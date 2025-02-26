@@ -7,7 +7,9 @@ from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
 from keras.src.layers import LSTM, Dense, Dropout, BatchNormalization
 from keras.src.metrics import Precision, Recall, AUC
 from keras.src.regularizers import regularizers
+from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import MinMaxScaler
 
 gpus = tf.config.list_physical_devices('GPU')  # Get GPU list
 if gpus:
@@ -17,7 +19,6 @@ if gpus:
             tf.config.experimental.set_memory_growth(gpu, True)
     except RuntimeError as e:
         print(e)
-
 
 # Enable logging of device placement
 # tf.debugging.set_log_device_placement(True)
@@ -318,45 +319,32 @@ def calculate_atr(df, period):
     return atr
 
 
-from sklearn.preprocessing import MinMaxScaler, StandardScaler
-from sklearn.compose import ColumnTransformer
-
-
 def prepare_sequences(data, features, window_size):
-    # Identify features that need special handling
+    # Identify numeric features
     numeric_features = data[features].select_dtypes(include=['float64', 'int64']).columns
-    low_range_features = []
-    other_features = []
 
-    # Detect features with small value ranges (adjust threshold as needed)
-    for feature in numeric_features:
-        value_range = data[feature].max() - data[feature].min()
-        if value_range < 1:  # Adjust this threshold based on your data
-            low_range_features.append(feature)
-        else:
-            other_features.append(feature)
+    # Check for NaN values and drop rows with missing values
+    if data[numeric_features].isna().any().any():
+        data = data.dropna(subset=numeric_features)
 
-    # Create different scaling pipelines for different feature types
+    # Scale all numeric features using MinMaxScaler for consistency (instead of low-range/high-range distinction)
     preprocessor = ColumnTransformer(
         transformers=[
-            ('low_range', StandardScaler(), low_range_features),
-            ('default', MinMaxScaler(), other_features)
-        ])
+            ('scaler', MinMaxScaler(), numeric_features)
+        ]
+    )
 
+    # Apply the preprocessor to the data
     scaled_data = preprocessor.fit_transform(data[features])
 
-    # Convert scaled data into DataFrame
-    scaled_df = pd.DataFrame(scaled_data, columns=low_range_features + other_features)
-
-    # print(scaled_df.head(200).to_string())
-
-    # Sequence creation remains the same
+    # Sequence creation for X and y
     x, y = [], []
     for i in range(window_size, len(data)):
         x.append(scaled_data[i - window_size:i])
         y.append(data['target'].iloc[i])
 
     return np.array(x), np.array(y), preprocessor
+
 
 def build_spike_model(input_shape):
     l2_regularizer = regularizers.L2(0.01)
@@ -381,20 +369,13 @@ def build_spike_model(input_shape):
                            AUC(name='auc')])
     return model
 
+
 def train_spike_predictor(data_path):
     # read the data of the CSV file and skip bad lines to prevent errors
     data_of_csv = pd.read_csv(data_path, on_bad_lines='skip')
 
     # Engineer the features
     data_of_csv = create_features(data_of_csv)
-
-    # set options so that the whole table can be printed out
-    pd.set_option('display.max_columns', None)
-    pd.set_option('display.expand_frame_repr', False)
-    pd.set_option('display.max_rows', None)
-
-    # debug print engineered features
-    print(data_of_csv)
 
     # feature categories from Java feature creator
     features = [
@@ -423,11 +404,8 @@ def train_spike_predictor(data_path):
             callbacks=[early_stop, reduce_lr]
         )
 
-    # Define the input signature dynamically based on training data shape
-    input_signature = [tf.TensorSpec([None, *x_train.shape[1:]], tf.float32)]
-
-    # Convert and save the ONNX model directly
-    model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=input_signature)
+    # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
+    model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=[tf.TensorSpec([None, *x_train.shape[1:]], tf.float32)])
     with open("spike_predictor.onnx", "wb") as f:
         f.write(model_proto.SerializeToString())
 
@@ -438,8 +416,8 @@ if __name__ == "__main__":
     model, scaler = train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
     print("Training done!")
 
+    #TODO
     # 1. add sma remember
-    # 2. fix scaler
     # 3. rework network architecture
     # 4. rework training process
     # 5. improve training speed
