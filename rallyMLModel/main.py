@@ -57,24 +57,25 @@ def create_features(df):
 
     df['bollinger_bands'] = calculate_bollinger_bands(df, period=20)
 
-    df['positive_closes'] = df.apply(lambda row: consecutive_positive_closes(df, dip_tolerance=0.2), axis=1)
+    df['positive_closes'] = df.apply(lambda row: consecutive_positive_closes(row, df, dip_tolerance=0.2), axis=1)
 
     df['higher_highs'] = df.apply(lambda row: is_higher_highs(df, min_consecutive=3), axis=1)
 
     df['trendline_breakout'] = df.apply(lambda row: is_trendline_breakout(df, lookback=20), axis=1)
 
-    df['cumulative_spike'] = df.apply(lambda row: is_cumulative_spike(df, period=10, threshold=0.55), axis=1)
+    df['cumulative_spike'] = df.apply(lambda row: is_cumulative_spike(row, df, period=10, threshold=0.55), axis=1)
 
-    df['cumulative_change'] = df.apply(lambda row: cumulative_percentage_change(df, last_change_length=5), axis=1)
+    df['cumulative_change'] = df.apply(lambda row: cumulative_percentage_change(row, df, last_change_length=5), axis=1)
 
     df['parabolic_sar_bullish'] = df.apply(lambda row: is_parabolic_sar_bullish(df, period=20, acceleration=0.01),
                                            axis=1)
 
-    df['keltner_breakout'] = df.apply(lambda row: is_keltner_breakout(df, ema_period=20, atr_period=20), axis=1)
+    df['keltner_breakout'] = df.apply(
+        lambda row: is_keltner_breakout(row, df, ema_period=20, atr_period=20, multiplier=0.2), axis=1)
 
-    df['elder_ray_index'] = df.apply(lambda row: elder_ray_index(df, ema_period=12), axis=1)
+    df['elder_ray_index'] = df.apply(lambda row: elder_ray_index(row, df, ema_period=12), axis=1)
 
-    df['atr'] = df.apply(lambda row: calculate_atr(df, period=20), axis=1)
+    df['atr'] = calculate_atr(df, period=20)
 
     # label rows which are spikes (0.8% spike)
     df['target'] = (df['close'].shift(-10) / df['close'] - 1 >= 0.008).astype(int)
@@ -106,23 +107,16 @@ def calculate_momentum(df, period):
 
 
 def calculate_roc(df, period):
-    roc = ((df['close'] - df['close'].shift(period)) / df['close'].shift(period)) * 100
-    return roc
+    return df['close'].pct_change(periods=period) * 100
 
 
 def calculate_rsi(df, period):
     delta = df['close'].diff()
-    gain = (delta.where(delta > 0, 0)).rolling(window=period).mean()
-    loss = (-delta.where(delta < 0, 0)).rolling(window=period).mean()
+    gain = (delta.where(delta > 0, 0)).ewm(alpha=1 / period, adjust=False).mean()
+    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1 / period, adjust=False).mean()
     rs = gain / loss
     rsi = 100 - (100 / (1 + rs))
     return rsi
-
-
-def calculate_efficiency_ratio(prices, period):
-    direction = abs(prices[-1] - prices[-period])
-    volatility = sum(abs(prices[i] - prices[i - 1]) for i in range(1, period))
-    return direction / volatility if volatility != 0 else 0
 
 
 def calculate_trix(df, period):
@@ -158,21 +152,21 @@ def calculate_bollinger_bands(df, period):
     return bandwidth
 
 
-def consecutive_positive_closes(df, dip_tolerance):
-    # Calculate percentage changes between consecutive closes
-    changes = (df['close'].pct_change() * 100)
+def consecutive_positive_closes(row, df, dip_tolerance):
+    idx = row.name  # Get current row index
 
-    # Use a boolean mask to identify positive changes
-    positive_changes = changes > 0
+    if idx == 0:
+        return 0  # First row cannot have previous consecutive closes
 
-    # Use the cumulative sum to find consecutive positive changes
-    consecutive_count = positive_changes.cumsum()
+    count = 0
+    for i in range(idx, -1, -1):  # Iterate backward from current row
+        if df['returns'].iloc[i]*100 > 0:
+            count += 1  # Increase count for consecutive positive close
+        elif df['returns'].iloc[i] *100< -dip_tolerance:
+            print("below")
+            break  # Reset if there's a dip beyond tolerance
 
-    # Reset count to 0 when the change is less than the dip tolerance
-    consecutive_count[changes < -dip_tolerance] = 0
-
-    # Return the maximum consecutive count
-    return consecutive_count.max()
+    return count
 
 
 def is_higher_highs(df, min_consecutive):
@@ -187,9 +181,6 @@ def is_higher_highs(df, min_consecutive):
 
 
 def is_trendline_breakout(df, lookback):
-    if len(df) < lookback + 2:
-        return 0
-
     # Find pivot highs for trend line
     pivot_highs = []
     for i in range(3, lookback):
@@ -223,26 +214,34 @@ def get_expected_high(pivot_highs):
     return slope * (n + 1) + intercept
 
 
-def is_cumulative_spike(df, period, threshold):
-    if len(df) < period:
-        return 0
+def is_cumulative_spike(row, df, period, threshold):
+    # Get the index of the current row
+    idx = row.name
 
-    # Sum the percentage changes over the period
-    cumulative_change = df['returns'].iloc[-period:].sum()
+    # Ensure we have enough data for the lookback period
+    if idx < period:
+        return 0  # Not enough data
 
-    # Return 1 if true, 0 if false
-    return 1 if cumulative_change >= threshold else 0
+    # Compute cumulative return using compounding formula
+    cumulative_return = ((df['returns'].iloc[idx - period:idx] + 1).prod() - 1) * 100
+
+    # Return 1 if it meets the threshold, otherwise 0
+    return 1 if cumulative_return >= threshold else 0
 
 
-def cumulative_percentage_change(df, last_change_length):
-    start_index = len(df) - last_change_length
-    return df['returns'].iloc[start_index:].sum()
+def cumulative_percentage_change(row, df, last_change_length):
+    # Get the index of the current row
+    idx = row.name
+
+    # Ensure there are enough previous rows to compute change
+    if idx < last_change_length:
+        return 0  # Not enough data
+
+    # Compute cumulative percentage change using compounding formula
+    return ((df['returns'].iloc[idx - last_change_length:idx] + 1).prod() - 1) * 100
 
 
 def is_parabolic_sar_bullish(df, period, acceleration):
-    if len(df) < period + 2:
-        return 0
-
     # Use the last 'period' number of data points
     df_period = df.iloc[-period:]
 
@@ -280,41 +279,30 @@ def is_parabolic_sar_bullish(df, period, acceleration):
     return 1 if df.iloc[-1]['close'] > prev_sar else 0
 
 
-
-def is_keltner_breakout(df, ema_period, atr_period, multiplier=1.5):
-    ema = df['close'].ewm(span=ema_period, adjust=False).mean().iloc[-1]
+def is_keltner_breakout(row, df, ema_period, atr_period, multiplier):
+    ema = df['close'].ewm(span=ema_period, adjust=False).mean()
     atr = calculate_atr(df, atr_period)
+
+    # Compute upper band
     upper_band = ema + (multiplier * atr)
 
-    return 1 if df['close'].iloc[-1] > upper_band else 0
+    # Check if the close price of the given row is greater than the upper band
+    return 1 if row['close'] > upper_band.loc[row.name] else 0
 
 
-def elder_ray_index(df, ema_period):
-    ema = df['close'].ewm(span=ema_period, adjust=False).mean().iloc[-1]
-    return df['close'].iloc[-1] - ema
+def elder_ray_index(row, df, ema_period):
+    ema = df['close'].ewm(span=ema_period, adjust=False).mean()
+    return row['close'] - ema.loc[row.name]
 
 
 def calculate_atr(df, period):
-    # Calculate the True Range using vectorized operations
-    high = df['high']
-    low = df['low']
-    prev_close = df['close'].shift(1)
+    high_low = df['high'] - df['low']
+    high_close = np.abs(df['high'] - df['close'].shift())
+    low_close = np.abs(df['low'] - df['close'].shift())
 
-    true_range = np.maximum(high - low,
-                            np.abs(high - prev_close),
-                            np.abs(low - prev_close))
-
-    # Calculate the ATR using a rolling window
+    true_range = np.maximum(high_low, high_close, low_close)
     atr = true_range.rolling(window=period).mean()
-
-    return atr.iloc[-1]  # Return the latest ATR value
-
-
-def calculate_ma(df, period, use_ema=False):
-    if use_ema:
-        return df['close'].ewm(span=period, adjust=False).mean().iloc[-1]
-    else:
-        return df['close'].iloc[-period:].mean()
+    return atr
 
 
 from sklearn.preprocessing import MinMaxScaler, StandardScaler
@@ -348,7 +336,7 @@ def prepare_sequences(data, features, window_size):
     scaled_df = pd.DataFrame(scaled_data,
                              columns=low_range_features + other_features)
 
-    print(scaled_df.head(600).to_string())
+    # print(scaled_df.head(200).to_string())
 
     # Sequence creation remains the same
     x, y = [], []
@@ -414,7 +402,7 @@ def train_spike_predictor(data_path):
     early_stop = EarlyStopping(monitor='val_auc', patience=10, mode='max', restore_best_weights=True)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.2, patience=3, min_lr=0.0001)
 
-    with tf.device('/GPU:0'):
+    with tf.device('/CPU:0'):
         model.fit(
             x_train, y_train,
             epochs=1,
@@ -444,3 +432,5 @@ if __name__ == "__main__":
     # 4. improve training speed
     # 5. rework network architecture
     # 6. rework training process
+    # 7. add sma remember
+    # 8. higher_highs  trendline_breakout parabolic_sar_bullish fix them
