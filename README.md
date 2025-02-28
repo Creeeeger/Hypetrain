@@ -23,23 +23,22 @@
 ## Indicators in use
 
 1. Simple Moving Average (SMA) Crossovers
-2. Price Crossing Key Moving Averages
-3. MACD (Moving Average Convergence Divergence)
-4. TRIX Indicator
-5. Relative Strength Index (RSI)
-6. Rate of Change (ROC)
-7. Momentum Oscillator
-8. Chande Momentum Oscillator (CMO)
-9. Bollinger Bands
-10. Consecutive Positive Closes
-11. Higher Highs Pattern
-12. Trend-line Analysis
-13. Cumulative Percentage Change
-14. Percentage Change Threshold
-15. Parabolic SAR Approximation
-16. Keltner Channels
-17. Elder-Ray Index Approximation
-18. ATR Calculator using Close Prices
+2. MACD (Moving Average Convergence Divergence)
+3. TRIX Indicator
+4. Relative Strength Index (RSI)
+5. Rate of Change (ROC)
+6. Momentum Oscillator
+7. Chande Momentum Oscillator (CMO)
+8. Bollinger Bands
+9. Consecutive Positive Closes
+10. Higher Highs Pattern
+11. Trend-line Analysis
+12. Cumulative Percentage Change
+13. Percentage Change Threshold
+14. Parabolic SAR Approximation
+15. Keltner Channels
+16. Elder-Ray Index Approximation
+17. ATR Calculator using Close Prices
 
 ## Python env. instructions
 
@@ -74,12 +73,11 @@ strength, volatility breakouts, and statistical significance.
 
 Focused on key trend confirmation tools.
 
-| **Indicator**          | **Weight (%)** |
-|------------------------|----------------|
-| **MACD**               | 30%            |
-| **Price-SMA Distance** | 30%            |
-| **TRIX**               | 20%            |
-| **SMA Cross**          | 20%            |
+| **Indicator** | **Weight (%)** |
+|---------------|----------------|
+| **MACD**      | 30%            |
+| **TRIX**      | 20%            |
+| **SMA Cross** | 50%            |
 
 ---
 
@@ -149,7 +147,7 @@ reliability, momentum validation, volatility breakouts, and pattern recognition.
 
 🔹 **Key Changes:**
 
-- Increased weight for **MACD (30%)** and **Price-SMA Distance (30%)** for trend strength.
+- Increased weight for **MACD (30%)** for trend strength.
 - Boosted **RSI (30%)** and **CMO (30%)** for stronger momentum insights.
 - Strengthened **Keltner Channels (35%)** and **ATR (30%)** for better volatility measures.
 - Emphasized **Trendline (45%)** for clearer pattern confirmation.

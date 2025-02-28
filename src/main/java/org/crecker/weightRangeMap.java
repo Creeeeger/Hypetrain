@@ -6,8 +6,7 @@ import java.util.Map;
 public class weightRangeMap {
     // Trend Following Indicators (Primary predictors)
     public static final Map<String, Double> TREND_FOLLOWING_WEIGHTS = Map.ofEntries(
-            Map.entry("SMA_CROSS", 0.20),
-            Map.entry("PRICE_SMA_DISTANCE", 0.30),
+            Map.entry("SMA_CROSS", 0.50),
             Map.entry("MACD", 0.30),
             Map.entry("TRIX", 0.20)
     );
@@ -69,7 +68,6 @@ public class weightRangeMap {
     public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
         // Trend Following Indicators
         put("SMA_CROSS", Map.of("min", -1.0, "max", 1.0));
-        put("PRICE_SMA_DISTANCE", Map.of("min", 0.0, "max", 1.0));
         put("MACD", Map.of("min", -1.0, "max", 1.0));
         put("TRIX", Map.of("min", -1.0, "max", 1.0));
 
