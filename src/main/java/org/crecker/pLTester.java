@@ -8,6 +8,7 @@ import java.io.BufferedReader;
 import java.io.FileReader;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
@@ -18,6 +19,7 @@ import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.gui;
 import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.*;
+import static org.crecker.data_tester.getData;
 
 public class pLTester {
     // Index map for quick timestamp lookups
@@ -191,20 +193,43 @@ public class pLTester {
 
     public static void exportToCSV(List<StockUnit> stocks) {
         try {
+            // Create a new FileWriter, overwriting the existing file
             FileWriter csvWriter = new FileWriter(System.getProperty("user.dir") + "/rallyMLModel/highFrequencyStocks.csv");
-            csvWriter.append("timestamp,open,high,low,close,volume\n"); // Write the header line to the CSV file
+            // Write the CSV header
+            csvWriter.append("timestamp,open,high,low,close,volume\n");
 
+            // Define the date format for timestamps
+            SimpleDateFormat dateFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
+            // Regex pattern to validate the timestamp format (e.g., "Fri Jan 03 14:30:00 GMT 2025")
+            String timestampPattern = "[A-Za-z]{3} [A-Za-z]{3} \\d{2} \\d{2}:\\d{2}:\\d{2} [A-Za-z]{3} \\d{4}";
+
+            // Iterate over each StockUnit
             for (StockUnit stock : stocks) {
-                // Escape the data for CSV formatting
-                csvWriter.append(escapeCSV(String.valueOf(stock.getDateDate()))).append(",")
-                        .append(escapeCSV(String.valueOf(stock.getOpen()))).append(",")
-                        .append(escapeCSV(String.valueOf(stock.getHigh()))).append(",")
-                        .append(escapeCSV(String.valueOf(stock.getLow()))).append(",")
-                        .append(escapeCSV(String.valueOf(stock.getClose()))).append(",")
-                        .append(escapeCSV(String.valueOf(stock.getVolume()))).append("\n");
+
+                // Step 2: Format and validate the timestamp
+                try {
+                    String timestamp = dateFormat.format(stock.getDateDate());
+                    // Step 3: Check if the timestamp matches the expected format
+                    if (!timestamp.matches(timestampPattern)) {
+                        System.err.println("Warning: Invalid timestamp format: " + timestamp);
+                        continue; // Skip this line
+                    }
+
+                    // If all checks pass, write the line to the CSV
+                    csvWriter.append(escapeCSV(timestamp)).append(",")
+                            .append(escapeCSV(String.valueOf(stock.getOpen()))).append(",")
+                            .append(escapeCSV(String.valueOf(stock.getHigh()))).append(",")
+                            .append(escapeCSV(String.valueOf(stock.getLow()))).append(",")
+                            .append(escapeCSV(String.valueOf(stock.getClose()))).append(",")
+                            .append(escapeCSV(String.valueOf(stock.getVolume()))).append("\n");
+                } catch (Exception e) {
+                    // Catch any formatting errors (e.g., if getDateDate() returns an invalid type)
+                    System.err.println("Warning: Failed to format timestamp for stock unit");
+                    continue; // Skip this line
+                }
             }
 
-            // Close resources
+            // Flush and close the writer
             csvWriter.flush();
             csvWriter.close();
 

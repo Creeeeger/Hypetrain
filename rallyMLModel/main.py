@@ -2,6 +2,7 @@ import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tf2onnx
+from imblearn.over_sampling import SMOTE
 from keras import Input, Model
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
 from keras.src.layers import LSTM, Dense, Dropout, BatchNormalization, MaxPooling1D, Conv1D
@@ -12,24 +13,40 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.utils import compute_class_weight
 
+
 # 1. Feature Engineering
 def create_features(data_of_csv):
     data_of_csv = data_of_csv.copy()
-
-    data_of_csv['returns'] = data_of_csv['close'].pct_change()
+    data_of_csv['returns'] = data_of_csv['close'].pct_change(fill_method=None)
 
     data_of_csv['short_sma'] = calculate_sma(data_of_csv['close'], 9)
     data_of_csv['long_sma'] = calculate_sma(data_of_csv['close'], 21)
-    data_of_csv['sma_crossover'] = (
+
+    bullish_crossover = (
             (data_of_csv['short_sma'] > data_of_csv['long_sma']) &
             (data_of_csv['short_sma'].shift(1) <= data_of_csv['long_sma'].shift(1))
-    ).astype(int)
+    )
 
-    data_of_csv['sma'] = calculate_sma(data_of_csv['close'], 20)
-    data_of_csv['price_above_sma'] = (
-            (data_of_csv['close'] > data_of_csv['sma']) &
-            (data_of_csv['close'].shift(1) <= data_of_csv['sma'].shift(1))
-    ).astype(int)
+    bearish_crossover = (
+            (data_of_csv['short_sma'] < data_of_csv['long_sma']) &
+            (data_of_csv['short_sma'].shift(1) >= data_of_csv['long_sma'].shift(1))
+    )
+
+    # Initialize crossover column with 0
+    data_of_csv['sma_crossover'] = 0
+
+    # Mark crossover events
+    data_of_csv.loc[bullish_crossover, 'sma_crossover'] = 1
+    data_of_csv.loc[bearish_crossover, 'sma_crossover'] = -1
+
+    # Forward fill to maintain state between crossovers
+    data_of_csv['sma_crossover'] = (
+        data_of_csv['sma_crossover']
+        .replace(0, np.nan)  # Replace 0s with NaN for forward filling
+        .ffill()  # Propagate last known state forward
+        .fillna(0)  # Fill initial NaNs (pre-first crossover) with 0
+        .astype(int)
+    )
 
     data_of_csv['macd_line'] = calculate_ema(data_of_csv['close'], 6) - calculate_ema(data_of_csv['close'], 13)
     data_of_csv['signal_line'] = calculate_ema(data_of_csv['macd_line'], 5)
@@ -104,7 +121,7 @@ def calculate_momentum(data_of_csv, period):
 
 
 def calculate_roc(data_of_csv, period):
-    return data_of_csv['close'].pct_change(periods=period) * 100
+    return data_of_csv['close'].pct_change(periods=period, fill_method=None) * 100
 
 
 def calculate_rsi(data_of_csv, period):
@@ -315,6 +332,7 @@ def calculate_atr(data_of_csv, period):
     return atr
 
 
+# 2. Dataset preparation
 def prepare_sequences(data, features, window_size):
     # Identify numeric features
     numeric_features = data[features].select_dtypes(include=['float64', 'int64']).columns
@@ -341,40 +359,23 @@ def prepare_sequences(data, features, window_size):
     return np.array(feature), np.array(label), preprocessor
 
 
-def build_model1(input_shape):
-    inputs = Input(shape=input_shape)
-    x = Conv1D(64, kernel_size=3, activation="relu", padding="same")(inputs)
-    x = MaxPooling1D(2)(x)
-    x = LSTM(64, return_sequences=False, recurrent_activation="tanh")(x)
-    x = Dropout(0.3)(x)
-    x = Dense(64, activation="relu")(x)
-    outputs = Dense(1, activation="sigmoid")(x)
-    model = Model(inputs=inputs, outputs=outputs)
-    model.compile(optimizer='adam',
-                  loss='binary_crossentropy',
-                  metrics=['accuracy',
-                           Precision(name='precision'),
-                           Recall(name='recall'),
-                           AUC(name='auc')])
-    return model
-
-
-def build_model2(input_shape):
-    l2_regularizer = regularizers.L2(0.01)
+# 3. Model architecture construction
+def build_model(input_shape):
+    l2_regularizer = regularizers.L2(0.001)
     inputs = Input(shape=input_shape)
 
     # Convolutional block: extract local features from the sequence
     x = Conv1D(filters=64, kernel_size=3, activation='relu', padding='same',
                kernel_regularizer=l2_regularizer)(inputs)
     x = BatchNormalization()(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    x = MaxPooling1D(pool_size=2, strides=2, padding='same')(x)
     x = Dropout(0.3)(x)
 
     # Optional second convolutional block for deeper feature extraction
     x = Conv1D(filters=128, kernel_size=3, activation='relu', padding='same',
                kernel_regularizer=l2_regularizer)(x)
     x = BatchNormalization()(x)
-    x = MaxPooling1D(pool_size=2)(x)
+    x = MaxPooling1D(pool_size=2, strides=2, padding='same')(x)
     x = Dropout(0.3)(x)
 
     # LSTM layer to capture the sequential dependencies after CNN processing
@@ -399,6 +400,7 @@ def build_model2(input_shape):
     return model
 
 
+# 4. Trainings loop
 def train_spike_predictor(data_path):
     # read the data of the CSV file and skip bad lines to prevent errors
     data_of_csv = pd.read_csv(data_path, on_bad_lines='skip')
@@ -408,7 +410,7 @@ def train_spike_predictor(data_path):
 
     # feature categories from Java feature creator
     features_list = [
-        'sma_crossover', 'price_above_sma', 'macd_line', 'trix',
+        'sma_crossover', 'macd_line', 'trix',
         'rsi', 'roc', 'momentum', 'cmo',
         'bollinger_bands',
         'positive_closes', 'higher_highs', 'trendline_breakout',
@@ -423,29 +425,41 @@ def train_spike_predictor(data_path):
     features_train, features_test, labels_train, labels_test = train_test_split(features, labels, test_size=0.20)
 
     # Build and define the architecture of the Network for training
-    model = build_model1((features_train.shape[1], features_train.shape[2]))
+    model = build_model((features_train.shape[1], features_train.shape[2]))
 
     # Define callbacks
     early_stop = EarlyStopping(monitor='val_auc', patience=15, mode='max', restore_best_weights=True, min_delta=0.005)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=0.00001)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.0001)
 
-    # Define class weights
-    class_weights = compute_class_weight('balanced', classes=np.unique(labels_train), y=labels_train)
+    # Reshape data for SMOTE
+    nsamples, window_size, n_features = features_train.shape
+    features_train_2d = features_train.reshape(nsamples, window_size * n_features)
+
+    # Apply SMOTE to balance classes
+    smote = SMOTE(random_state=42)
+    features_train_res_2d, labels_train_res = smote.fit_resample(features_train_2d, labels_train)
+
+    # Reshape back to 3D for model input
+    features_train_res = features_train_res_2d.reshape(-1, window_size, n_features)
+
+    # Update class weight calculation using resampled data
+    print("Resampled class distribution:", np.bincount(labels_train_res.flatten()))
+    class_weights = compute_class_weight('balanced', classes=np.unique(labels_train_res), y=labels_train_res)
     class_weights_dict = {0: class_weights[0], 1: class_weights[1]}
 
-    # print distribution
     print("Class distribution:", np.bincount(labels_train.flatten()))
     print("Unique label values:", np.unique(labels_train))
 
     # training process of the model CPU has in my case better performance than GPU
+    # Train with resampled data
     with tf.device('/CPU:0'):
         model.fit(
-            features_train, labels_train,
+            features_train_res, labels_train_res,  # Use resampled data
             epochs=256,
             batch_size=128,
             validation_data=(features_test, labels_test),
             callbacks=[early_stop, reduce_lr],
-            class_weight=class_weights_dict
+            class_weight=class_weights_dict  # Optional as classes are balanced
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
@@ -458,8 +472,3 @@ def train_spike_predictor(data_path):
 if __name__ == "__main__":
     train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
     print("Training done!")
-
-    #TODO
-    # 1. add sma remember
-    # 2. rework network architecture
-    # 3. rework training process

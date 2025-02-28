@@ -21,8 +21,6 @@ public class RallyPredictor implements AutoCloseable {
     private RallyPredictor(String modelPath) throws OrtException {
         this.env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
-        options.addCoreML();
-
         this.session = env.createSession(modelPath, options);
 
         this.buffer = new LinkedList<>();
