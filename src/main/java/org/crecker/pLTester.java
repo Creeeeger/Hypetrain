@@ -4,10 +4,7 @@ import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 
-import java.io.BufferedReader;
-import java.io.FileReader;
-import java.io.FileWriter;
-import java.io.IOException;
+import java.io.*;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -19,12 +16,14 @@ import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.gui;
 import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.*;
-import static org.crecker.data_tester.getData;
 
 public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
-    public static boolean debug = false; // Flag for printing PL
+    public static boolean debug = true; // Flag for printing PL
+    static boolean saveData = false;
+    static double spikeThreshold = 0.8;
+    static int lookBackWindow = 5;
 
     public static void main(String[] args) {
         //updateStocks();
@@ -46,14 +45,14 @@ public class pLTester {
 
     public static void PLAnalysis() {
         //   final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
-        final String[] SYMBOLS = {"SMCI.txt"};
+        final String[] SYMBOLS = {"MARA.txt"};
 
         final double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
         final double DIP_LEVEL = -0.5;
 
-        prepData(SYMBOLS, 800);
+        prepData(SYMBOLS, 2000);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(symbol.replace(".txt", ""),
@@ -94,7 +93,7 @@ public class pLTester {
                 }
             }
         }
-        createTimeline(SYMBOLS[stock]);
+        //createTimeline(SYMBOLS[stock]);
         if (debug) {
             createTimeline(SYMBOLS[stock]);
             logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
@@ -164,7 +163,7 @@ public class pLTester {
 
     private static void prepData(String[] fileNames, int cut) {
         // Calculation of rallies, Process data for each file
-        Arrays.stream(fileNames).parallel().forEach(fileName -> {
+        Arrays.stream(fileNames).forEach(fileName -> {
             try {
                 processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), cut);
             } catch (IOException e) {
@@ -180,23 +179,52 @@ public class pLTester {
         List<StockUnit> fileUnits = readStockUnitsFromFile(filePath, retainLast);
         symbol = symbol.toUpperCase();
 
+        // Engineer the target feature for the Data export for training
+        fileUnits.forEach(unit -> unit.setTarget(0));
+
+        // Iterate through all units to find spikes
+        for (int i = 0; i < fileUnits.size() - lookBackWindow; i++) {
+            int windowEnd = i + lookBackWindow - 1;
+            StockUnit start = fileUnits.get(i);
+            StockUnit end = fileUnits.get(windowEnd);
+
+            // Calculate cumulative change for the window
+            double cumulativeChange = ((end.getClose() / start.getClose()) - 1) * 100;
+
+            // Check if current row is a spike
+            if (cumulativeChange >= spikeThreshold) {
+                for (int j = i; j <= windowEnd; j++) {
+                    fileUnits.get(j).setTarget(1);
+                }
+            }
+        }
+
         List<StockUnit> existing = symbolTimelines.getOrDefault(symbol, new ArrayList<>());
         existing.addAll(fileUnits);
         symbolTimelines.put(symbol, existing);
 
         System.out.println("Loaded " + fileUnits.size() + " entries for " + symbol);
 
-        if (debug) {
+        if (saveData) {
             exportToCSV(fileUnits);
         }
     }
 
     public static void exportToCSV(List<StockUnit> stocks) {
         try {
-            // Create a new FileWriter, overwriting the existing file
-            FileWriter csvWriter = new FileWriter(System.getProperty("user.dir") + "/rallyMLModel/highFrequencyStocks.csv");
-            // Write the CSV header
-            csvWriter.append("timestamp,open,high,low,close,volume\n");
+            String filePath = System.getProperty("user.dir") + "/rallyMLModel/highFrequencyStocks.csv";
+            File file = new File(filePath);
+
+            // Check if file exists to determine if we need headers
+            boolean fileExists = file.exists();
+
+            // Append mode: true = add to existing file, false = overwrite
+            FileWriter csvWriter = new FileWriter(file, true);
+
+            // Write headers only if file is new
+            if (!fileExists) {
+                csvWriter.append("timestamp,open,high,low,close,volume,target\n");
+            }
 
             // Define the date format for timestamps
             SimpleDateFormat dateFormat = new SimpleDateFormat("EEE MMM dd HH:mm:ss zzz yyyy");
@@ -221,11 +249,10 @@ public class pLTester {
                             .append(escapeCSV(String.valueOf(stock.getHigh()))).append(",")
                             .append(escapeCSV(String.valueOf(stock.getLow()))).append(",")
                             .append(escapeCSV(String.valueOf(stock.getClose()))).append(",")
-                            .append(escapeCSV(String.valueOf(stock.getVolume()))).append("\n");
+                            .append(escapeCSV(String.valueOf(stock.getVolume()))).append(",")
+                            .append(escapeCSV(String.valueOf(stock.getTarget()))).append("\n");
                 } catch (Exception e) {
-                    // Catch any formatting errors (e.g., if getDateDate() returns an invalid type)
-                    System.err.println("Warning: Failed to format timestamp for stock unit");
-                    continue; // Skip this line
+                    System.out.println("Error formatting stock unit: " + e.getMessage());
                 }
             }
 

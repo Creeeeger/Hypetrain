@@ -5,7 +5,7 @@
 - Get notified when the next hype comes in
 - Hop onto the hype Train
 - damn boy make that cash
-- Donate 1% of your earnings to me if you are not gay
+- Donate 1% of your earnings to me
 - Now new without OOP models but hashmaps for insane performance
 
 
@@ -19,6 +19,7 @@
 - get notified when the hype comes in
 - set in settings your volume to only check for stocks where you can buy full volume to make maximum profit
 - pre-defined set of stocks for volumes of 200-300k €
+- Use of custom Trained AI for additional support for prediction
 
 ## Indicators in use
 
@@ -151,16 +152,6 @@ reliability, momentum validation, volatility breakouts, and pattern recognition.
 - Boosted **RSI (30%)** and **CMO (30%)** for stronger momentum insights.
 - Strengthened **Keltner Channels (35%)** and **ATR (30%)** for better volatility measures.
 - Emphasized **Trendline (45%)** for clearer pattern confirmation.
-
-### Target calculation for ML Model
-
-target = (close(t+15) - close(t)) >= 0.03
-
-Where:
-
-- `close(t)` is the closing price at time `t`,
-- `close(t+15)` is the closing price 15 time units after `t`.
-- The condition checks if the difference between these closing prices is greater than or equal to 0.03.
 
 # Disclaimer
 

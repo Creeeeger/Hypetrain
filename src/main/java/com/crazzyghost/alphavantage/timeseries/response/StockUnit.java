@@ -21,7 +21,7 @@ public class StockUnit {
     private String symbol;
     private double percentageChange;
     private double close;
-
+    private int target;
 
     private StockUnit(Builder builder) {
         this.open = builder.open;
@@ -35,6 +35,7 @@ public class StockUnit {
         this.dateTime = builder.dateTime;
         this.symbol = builder.symbol;
         this.percentageChange = builder.percentageChange;
+        this.target = builder.target;
     }
 
     public double getOpen() {
@@ -63,6 +64,14 @@ public class StockUnit {
 
     public double getVolume() {
         return volume;
+    }
+
+    public int getTarget() {
+        return target;
+    }
+
+    public void setTarget(int target) {
+        this.target = target;
     }
 
     public double getDividendAmount() {
@@ -122,6 +131,7 @@ public class StockUnit {
                 ", date=" + dateTime +
                 ", symbol=" + symbol +
                 ", percentageChange=" + percentageChange +
+                ", target=" + target +
                 '}';
     }
 
@@ -138,6 +148,7 @@ public class StockUnit {
         String dateTime;
         String symbol;
         double percentageChange;
+        int target;
 
         public Builder open(double open) {
             this.open = open;
@@ -191,6 +202,11 @@ public class StockUnit {
 
         public Builder percentageChange(double percentageChange) {
             this.percentageChange = percentageChange;
+            return this;
+        }
+
+        public Builder target(int target) {
+            this.target = target;
             return this;
         }
 
