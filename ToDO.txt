@@ -7,7 +7,6 @@ CODE
 
 1 do manual comparison of return data
 2 optimize weights and interference
-3 remove debug code
 
 TESTING
 - test out new trading simulation parameters

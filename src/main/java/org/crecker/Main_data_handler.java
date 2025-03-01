@@ -28,7 +28,6 @@ import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.logTextArea;
 import static org.crecker.RallyPredictor.predict;
-import static org.crecker.data_tester.plotData;
 import static org.crecker.weightRangeMap.*;
 
 public class Main_data_handler {
@@ -426,7 +425,6 @@ public class Main_data_handler {
                     }
                 });
 
-        plotData(indicatorTimeSeries, " Indicator", "Time", "Value");
         sortNotifications(notificationsForPLAnalysis);
     }
 
@@ -452,7 +450,7 @@ public class Main_data_handler {
             }
         } else {
             // Original notification-based processing
-            timeline.forEach(stockUnit -> { //parallel stream is better, but we can't use it since we need to keep the entires in order
+            timeline.forEach(stockUnit -> { //parallel stream is better, but we can't use it since we need to keep the entries in order
                 LocalDateTime startTime = stockUnit.getLocalDateTimeDate();
                 LocalDateTime endTime = startTime.plusMinutes(minutes);
 
@@ -638,7 +636,7 @@ public class Main_data_handler {
         //feed normalized unweighted features
         double prediction = predict(normalized);
         System.out.printf("Date: %s, Prob: %.4f%n", stocks.get(stocks.size() - 1).getDateDate(), prediction);
-        int feature = 4;
+        int feature = 0;
 
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(
@@ -685,7 +683,7 @@ public class Main_data_handler {
                     .mapToDouble(StockUnit::getPercentageChange)
                     .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
         }
-        
+
         return alertsList;
     }
 
