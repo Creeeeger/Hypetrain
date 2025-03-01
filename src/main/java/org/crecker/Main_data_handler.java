@@ -37,7 +37,6 @@ public class Main_data_handler {
     static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
     public static boolean test = true; // If True use demo url for real Time Updates
-    static int feature = 0;
     static int frameSize = 30; // Frame size for analysis
 
     public static void InitAPi(String token) {
@@ -639,6 +638,7 @@ public class Main_data_handler {
         //feed normalized unweighted features
         double prediction = predict(normalized);
         System.out.printf("Date: %s, Prob: %.4f%n", stocks.get(stocks.size() - 1).getDateDate(), prediction);
+        int feature = 4;
 
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(
@@ -655,25 +655,37 @@ public class Main_data_handler {
     }
 
     // Method for evaluating results
-    private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction, Map<String, Double> aggregatedWeights, List<StockUnit> stocks, String symbol, double[] features) {
+    private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction,
+                                                     Map<String, Double> aggregatedWeights, List<StockUnit> stocks, String symbol,
+                                                     double[] features) {
         List<Notification> alertsList = new ArrayList<>();
 
-        if (pLTester.debug) {
-            int i = 0;
-            for (Map.Entry<String, Double> entry : aggregatedWeights.entrySet()) {
-                if (i < weightedFeatures.length) {
-                    System.out.println("Key: " + entry.getKey() + ", Weighted Feature: " + weightedFeatures[i] + " " + features[i]);
-                }
+        //0 - SMA Crossover
+        //1 - MACD (6,13,5) XX
+        //2 - TRIX
+        //3 - RSI (15)
+        //4 - ROC (20)
+        //5 - Momentum (10)
+        //6 - CMO (20)
+        //7 - Bollinger Bands (20)
+        //8 - Consecutive Positive Closes (0.2 threshold)
+        //9 - Higher Highs (3)
+        //10 - Trend Line Breakout (20)
+        //11 - Cumulative Spike (10, 0.55 threshold)
+        //12 - Cumulative Percentage Change
+        //13 - Parabolic SAR Bullish (20, 0.01 step)
+        //14 - Keltner Breakout (20 EMA, 20 ATR, 0.2 multiplier)
+        //15 - Elder Ray Index (12)
+        //16 - ATR (20)
 
-                i++;
-            }
+
+        if (features[0] == 1 && features[2] > 0.12) {
+            createNotification(symbol, stocks.stream()
+                    .skip(stocks.size() - 4)
+                    .mapToDouble(StockUnit::getPercentageChange)
+                    .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
         }
-
-        createNotification(symbol, stocks.stream()
-                .skip(stocks.size() - 4)
-                .mapToDouble(StockUnit::getPercentageChange)
-                .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
-
+        
         return alertsList;
     }
 
@@ -1157,7 +1169,9 @@ public class Main_data_handler {
      * @param date        The date of the event.
      */
     private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction) {
-        alertsList.add(new Notification(String.format("%.3f%% %s ↑ %s", totalChange, symbol, prediction), String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))), timeSeries, date, symbol, totalChange));
+        alertsList.add(new Notification(String.format("%.3f%% %s ↑ %s", totalChange, symbol, prediction),
+                String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                timeSeries, date, symbol, totalChange));
     }
 
     public static List<StockUnit> getSymbolTimeline(String symbol) {

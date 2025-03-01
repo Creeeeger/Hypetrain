@@ -1,3 +1,5 @@
+import os
+
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -11,7 +13,6 @@ from keras.src.regularizers import regularizers
 from sklearn.compose import ColumnTransformer
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.utils import compute_class_weight
 
 
 # 1. Feature Engineering
@@ -64,35 +65,25 @@ def create_features(data_of_csv):
 
     data_of_csv['bollinger_bands'] = calculate_bollinger_bands(data_of_csv, period=20)
 
-    data_of_csv['positive_closes'] = data_of_csv.apply(
-        lambda row: consecutive_positive_closes(row, data_of_csv, dip_tolerance=0.2), axis=1)
+    data_of_csv['positive_closes'] = calculate_positive_closes(data_of_csv)
 
-    data_of_csv['higher_highs'] = data_of_csv.apply(
-        lambda row: is_higher_highs(data_of_csv[:row.name + 1], min_consecutive=3), axis=1)
+    data_of_csv['higher_highs'] = calculate_higher_highs(data_of_csv, min_consecutive=3)
 
-    data_of_csv['trendline_breakout'] = data_of_csv.apply(
-        lambda row: is_trendline_breakout(row, data_of_csv, lookback=20), axis=1)
+    data_of_csv['trendline_breakout'] = is_trendline_breakout(data_of_csv, lookback=20)
 
-    data_of_csv['cumulative_spike'] = data_of_csv.apply(
-        lambda row: is_cumulative_spike(row, data_of_csv, period=10, threshold=0.55), axis=1)
+    data_of_csv['cumulative_spike'] = calculate_cumulative_spike(data_of_csv, period=10, threshold=0.55)
 
-    data_of_csv['cumulative_change'] = data_of_csv.apply(
-        lambda row: cumulative_percentage_change(row, data_of_csv, last_change_length=5), axis=1)
+    data_of_csv['cumulative_change'] = calculate_cumulative_change(data_of_csv)
 
-    data_of_csv['parabolic_sar_bullish'] = data_of_csv.apply(
-        lambda row: is_parabolic_sar_bullish(row, data_of_csv, period=20, acceleration=0.01),
-        axis=1)
+    data_of_csv['parabolic_sar_bullish'] = is_parabolic_sar_bullish(data_of_csv, period=20, acceleration=0.01)
 
-    data_of_csv['keltner_breakout'] = data_of_csv.apply(
-        lambda row: is_keltner_breakout(row, data_of_csv, ema_period=20, atr_period=20, multiplier=0.2), axis=1)
+    data_of_csv['keltner_breakout'] = calculate_keltner_breakout(data_of_csv)
 
-    data_of_csv['elder_ray_index'] = data_of_csv.apply(lambda row: elder_ray_index(row, data_of_csv, ema_period=12),
-                                                       axis=1)
+    data_of_csv['elder_ray_index'] = calculate_elder_ray_index(data_of_csv)
 
     data_of_csv['atr'] = calculate_atr(data_of_csv, period=20)
 
-    # label rows which are spikes (0.8% spike)
-    data_of_csv['target'] = (data_of_csv['close'].shift(-10) / data_of_csv['close'] - 1 >= 0.008).astype(int)
+    data_of_csv['target'] = data_of_csv['target'].astype(int)
 
     data_of_csv.dropna(inplace=True)
 
@@ -166,58 +157,86 @@ def calculate_bollinger_bands(data_of_csv, period):
     return bandwidth
 
 
-def consecutive_positive_closes(row, data_of_csv, dip_tolerance):
-    idx = row.name  # Get current row index
+def calculate_positive_closes(data, dip_tolerance=0.2):
+    if 'returns' not in data:
+        data['returns'] = data['close'].pct_change()
 
-    if idx == 0:
-        return 0  # First row cannot have previous consecutive closes
+    returns_pct = data['returns'] * 100
+    n = len(data)
+    counts = np.zeros(n, dtype=int)
+    current_streak = 0
 
-    count = 0
-    for i in range(idx, -1, -1):  # Iterate backward from current row
-        if data_of_csv['returns'].iloc[i] * 100 > 0:
-            count += 1  # Increase count for consecutive positive close
-        elif data_of_csv['returns'].iloc[i] * 100 < -dip_tolerance:
-            break  # Reset if there's a dip beyond tolerance
+    for i in range(1, n):
+        prev_return = returns_pct.iloc[i - 1]
 
-    return count
+        # Reset streak if previous period had a dip
+        if prev_return < -dip_tolerance:
+            current_streak = 0
+        # Increment streak if previous period was positive
+        elif prev_return > 0:
+            current_streak += 1
+        # Reset for neutral returns (0 or between 0 and -tolerance)
+        else:
+            current_streak = 0
 
+        counts[i] = current_streak
 
-def is_higher_highs(data_of_csv, min_consecutive):
-    if len(data_of_csv) < min_consecutive:
-        return 0  # Not enough data to evaluate
-
-    for i in range(len(data_of_csv) - min_consecutive, len(data_of_csv) - 1):
-        if data_of_csv['close'].iloc[i + 1] <= data_of_csv['close'].iloc[i]:
-            return 0
-
-    return 1
+    return pd.Series(counts, index=data.index)
 
 
-def is_trendline_breakout(row, data_of_csv, lookback):
-    # Get the index of the current row
-    idx = row.name
+def calculate_higher_highs(data, min_consecutive=3):
+    # Calculate positive price differences
+    price_rising = data['close'].diff().gt(0)
 
-    # Ensure we have enough data for the lookback period
-    if idx < lookback:
-        return 0
+    # Create rolling window to check for consecutive rises
+    window_size = min_consecutive - 1
+    return price_rising.rolling(
+        window=window_size,
+        min_periods=window_size
+    ).apply(lambda x: x.all()).fillna(0).astype(int)
 
-    # Find pivot highs for the trend line
-    pivot_highs = []
-    for i in range(lookback):
-        if idx - i - 1 >= 0 and idx - i + 1 < len(data_of_csv):  # Ensure indices are within bounds
-            p = data_of_csv.iloc[idx - i]
-            if p['high'] > data_of_csv.iloc[idx - i - 1]['high'] and p['high'] > data_of_csv.iloc[idx - i + 1]['high']:
-                pivot_highs.append(p['high'])
 
-    if len(pivot_highs) < 2:
-        return 0
+def is_trendline_breakout(data, lookback=20):
+    high = data['high'].values
+    close = data['close'].values
+    n = len(data)
+    breakout = np.zeros(n, dtype=int)
 
-    # Calculate the expected high using linear regression
-    expected_high = get_expected_high(pivot_highs)
-    current_close = row['close']
+    # Precompute pivot highs
+    pivot_mask = np.zeros(n, dtype=bool)
+    for i in range(1, n - 1):
+        pivot_mask[i] = (high[i] > high[i - 1]) and (high[i] > high[i + 1])
 
-    # Return 1 if breakout condition is met
-    return 1 if current_close > expected_high and current_close > data_of_csv['close'].iloc[idx - 1] else 0
+    # Track valid pivots with sliding window
+    valid_pivots = []
+    for i in range(n):
+        # Remove outdated pivots
+        while valid_pivots and valid_pivots[0] < (i - lookback):
+            valid_pivots.pop(0)
+
+        # Add new pivot if current is pivoted
+        if pivot_mask[i]:
+            valid_pivots.append(i)
+
+        # Need at least 2 pivots for trendline
+        if len(valid_pivots) >= 2:
+            # Get two most recent pivots
+            p1, p2 = valid_pivots[-2], valid_pivots[-1]
+
+            # Calculate trendline equation
+            slope = (high[p2] - high[p1]) / (p2 - p1)
+            intercept = high[p2] - slope * p2
+
+            # Projected price at current position
+            expected_high = slope * i + intercept
+
+            # Breakout conditions
+            if (close[i] > expected_high) and (close[i] > close[i - 1]):
+                breakout[i] = 1
+
+    # Handle initial values
+    breakout[:lookback] = 0
+    return breakout
 
 
 def get_expected_high(pivot_highs):
@@ -235,91 +254,130 @@ def get_expected_high(pivot_highs):
     return slope * n + intercept
 
 
-def is_cumulative_spike(row, data_of_csv, period, threshold):
-    # Get the index of the current row
-    idx = row.name
+def calculate_cumulative_spike(data, period=10, threshold=0.55):
+    # Calculate returns if not already present
+    if 'returns' not in data:
+        data['returns'] = data['close'].pct_change()
 
-    # Ensure we have enough data for the lookback period
-    if idx < period:
-        return 0  # Not enough data
+    # Use logarithmic returns for numerical stability
+    log_returns = np.log1p(data['returns'])
 
-    # Compute cumulative return using compounding formula
-    cumulative_return = ((data_of_csv['returns'].iloc[idx - period:idx] + 1).prod() - 1) * 100
+    # Calculate rolling cumulative return using sum of logs
+    cumulative_return = (
+        log_returns
+        .rolling(window=period, min_periods=period)
+        .sum()
+        .shift(1)  # Look back at previous period window
+        .pipe(lambda x: np.exp(x) - 1)  # Convert back to linear scale
+        .mul(100)  # Convert to percentage
+    )
 
-    # Return 1 if it meets the threshold, otherwise 0
-    return 1 if cumulative_return >= threshold else 0
-
-
-def cumulative_percentage_change(row, data_of_csv, last_change_length):
-    # Get the index of the current row
-    idx = row.name
-
-    # Ensure there are enough previous rows to compute change
-    if idx < last_change_length:
-        return 0  # Not enough data
-
-    # Compute cumulative percentage change using compounding formula
-    return ((data_of_csv['returns'].iloc[idx - last_change_length:idx] + 1).prod() - 1) * 100
+    # Create spike indicator
+    return (cumulative_return >= threshold).fillna(0).astype(int)
 
 
-def is_parabolic_sar_bullish(row, data_of_csv, period, acceleration):
-    idx = row.name  # Get the index of the current row
+def calculate_cumulative_change(data, last_change_length=5):
+    # Calculate returns if missing
+    if 'returns' not in data:
+        data['returns'] = data['close'].pct_change()
 
-    # Ensure we have enough data for the period
-    if idx < period:
-        return 0  # Not enough data to compute SAR
+    # Use logarithmic returns for numerical stability
+    log_returns = np.log1p(data['returns'])
 
-    # Use the last 'period' number of data points (rows) up to the current row
-    df_period = data_of_csv.iloc[idx - period:idx]
+    # Calculate rolling sum of log returns
+    cumulative_log = (
+        log_returns
+        .rolling(window=last_change_length, min_periods=last_change_length)
+        .sum()
+        .shift(1)  # Align with previous window
+    )
 
-    # Initial values
-    prev_sar = df_period.iloc[0]['close']  # First SAR value from the period
-    uptrend = True
-    extreme_point = df_period.iloc[0]['close']  # Start from the first close price
+    # Convert back to linear scale and format
+    return (
+            np.exp(cumulative_log) - 1
+    ).mul(100).fillna(0).astype(float)
 
-    # Loop through only the 'period' length data
-    for i in range(1, period):
-        current_close = df_period.iloc[i]['close']
 
-        if uptrend:
-            current_sar = prev_sar + acceleration * (extreme_point - prev_sar)
-            if current_close < current_sar:
-                # Switch to downtrend
-                uptrend = False
-                prev_sar = extreme_point  # Reset SAR
-                extreme_point = current_close
+def is_parabolic_sar_bullish(data, period, acceleration):
+    close = data['close'].values
+    n = len(close)
+    sar_bullish = np.zeros(n, dtype=int)
+
+    # Pre-allocate window buffer
+    window = np.zeros(period)
+    prev_sar = np.zeros(n)
+    uptrend = np.zeros(n, dtype=bool)
+    extreme_point = np.zeros(n)
+
+    # Main processing loop
+    for i in range(1, n):
+        if i < period:
+            # Initialize values for first period
+            prev_sar[i] = close[i - 1]
+            uptrend[i] = True
+            extreme_point[i] = close[i - 1]
+            continue
+
+        # Roll window buffer
+        window[:-1] = window[1:]
+        window[-1] = close[i - 1]
+
+        # Initialize from buffer
+        current_sar = prev_sar[i - 1]
+        current_uptrend = uptrend[i - 1]
+        current_extreme = extreme_point[i - 1]
+
+        # Update SAR for current position
+        if current_uptrend:
+            current_sar += acceleration * (current_extreme - current_sar)
+            if window[-1] < current_sar:
+                current_uptrend = False
+                current_sar = current_extreme
+                current_extreme = window[-1]
             else:
-                prev_sar = current_sar  # Update SAR for uptrend
-                extreme_point = max(extreme_point, current_close)
+                current_extreme = max(current_extreme, window[-1])
         else:
-            current_sar = prev_sar - acceleration * (prev_sar - extreme_point)
-            if current_close > current_sar:
-                # Switch to uptrend
-                uptrend = True
-                prev_sar = extreme_point  # Reset SAR
-                extreme_point = current_close
+            current_sar -= acceleration * (current_sar - current_extreme)
+            if window[-1] > current_sar:
+                current_uptrend = True
+                current_sar = current_extreme
+                current_extreme = window[-1]
             else:
-                prev_sar = current_sar  # Update SAR for downtrend
-                extreme_point = min(extreme_point, current_close)
+                current_extreme = min(current_extreme, window[-1])
 
-    # Compare the last closing price with the final SAR value
-    return 1 if row['close'] > prev_sar else 0
+        # Store values for next iteration
+        prev_sar[i] = current_sar
+        uptrend[i] = current_uptrend
+        extreme_point[i] = current_extreme
 
+        # Check bullish condition
+        sar_bullish[i] = int(close[i] > current_sar)
 
-def is_keltner_breakout(row, data_of_csv, ema_period, atr_period, multiplier):
-    ema = data_of_csv['close'].ewm(span=ema_period, adjust=False).mean()
-    atr = calculate_atr(data_of_csv, atr_period)
-
-    # Compute upper band
-    upper_band = ema + (multiplier * atr)
-
-    # Check if the close price of the given row is greater than the upper band
-    return 1 if row['close'] > upper_band.loc[row.name] else 0
+    # Set first period values to 0
+    sar_bullish[:period] = 0
+    return sar_bullish
 
 
-def elder_ray_index(row, data_of_csv, ema_period):
-    ema = data_of_csv['close'].ewm(span=ema_period, adjust=False).mean()
-    return row['close'] - ema.loc[row.name]
+def calculate_keltner_breakout(data, ema_period=20, atr_period=20, multiplier=0.2):
+    # Precompute EMA and ATR
+    data['ema'] = data['close'].ewm(span=ema_period, adjust=False).mean()
+    data['atr'] = calculate_atr(data, atr_period)
+
+    # Calculate upper band
+    upper_band = data['ema'] + (multiplier * data['atr'])
+
+    # Determine breakouts
+    breakouts = (data['close'] > upper_band).astype(int)
+
+    # Cleanup temporary columns
+    data.drop(columns=['ema', 'atr'], inplace=True)
+
+    return breakouts
+
+
+def calculate_elder_ray_index(data, ema_period=12):
+    ema = data['close'].ewm(span=ema_period, adjust=False).mean()
+    return data['close'] - ema
 
 
 def calculate_atr(data_of_csv, period):
@@ -351,40 +409,41 @@ def prepare_sequences(data, features, window_size):
     # Apply the preprocessor to the data
     scaled_data = preprocessor.fit_transform(data[features])
 
-    feature, label = [], []
+    label = data['target'].values[window_size:]
+
+    feature = []
     for i in range(window_size, len(data)):
         feature.append(scaled_data[i - window_size:i])
-        label.append(data['target'].iloc[i])
 
     return np.array(feature), np.array(label), preprocessor
 
 
 # 3. Model architecture construction
 def build_model(input_shape):
-    l2_regularizer = regularizers.L2(0.001)
+    l2s = regularizers.L2(0.001)
     inputs = Input(shape=input_shape)
 
     # Convolutional block: extract local features from the sequence
     x = Conv1D(filters=64, kernel_size=3, activation='relu', padding='same',
-               kernel_regularizer=l2_regularizer)(inputs)
+               kernel_regularizer=l2s)(inputs)
     x = BatchNormalization()(x)
     x = MaxPooling1D(pool_size=2, strides=2, padding='same')(x)
     x = Dropout(0.3)(x)
 
     # Optional second convolutional block for deeper feature extraction
     x = Conv1D(filters=128, kernel_size=3, activation='relu', padding='same',
-               kernel_regularizer=l2_regularizer)(x)
+               kernel_regularizer=l2s)(x)
     x = BatchNormalization()(x)
     x = MaxPooling1D(pool_size=2, strides=2, padding='same')(x)
     x = Dropout(0.3)(x)
 
     # LSTM layer to capture the sequential dependencies after CNN processing
-    x = LSTM(64, return_sequences=False, kernel_regularizer=l2_regularizer, recurrent_activation="tanh")(x)
+    x = LSTM(64, return_sequences=False, kernel_regularizer=l2s, recurrent_activation="tanh")(x)
     x = BatchNormalization()(x)
     x = Dropout(0.3)(x)
 
     # Dense layers for further processing before final output
-    x = Dense(64, activation='relu', kernel_regularizer=l2_regularizer)(x)
+    x = Dense(64, activation='relu', kernel_regularizer=l2s)(x)
     x = Dropout(0.3)(x)
 
     outputs = Dense(1, activation='sigmoid', dtype='float32')(x)
@@ -444,22 +503,21 @@ def train_spike_predictor(data_path):
 
     # Update class weight calculation using resampled data
     print("Resampled class distribution:", np.bincount(labels_train_res.flatten()))
-    class_weights = compute_class_weight('balanced', classes=np.unique(labels_train_res), y=labels_train_res)
-    class_weights_dict = {0: class_weights[0], 1: class_weights[1]}
-
     print("Class distribution:", np.bincount(labels_train.flatten()))
-    print("Unique label values:", np.unique(labels_train))
 
     # training process of the model CPU has in my case better performance than GPU
-    # Train with resampled data
+    # Explanation: tasks are moved around from cpu to gpu vice versa. Sometimes tasks are split between both which
+    # introduces the constant of latency between communication which is 20ms per step vs 10 ms
+    # since the architecture and the wide variety of components of this network don't allow
+    # execution on one EP only efficient TensorFlow splits the process up but that isn't effective
+    # hybrid models with assigning certain tasks forceful to EPs did improve the performance by 25% to 15 ms.
     with tf.device('/CPU:0'):
         model.fit(
-            features_train_res, labels_train_res,  # Use resampled data
+            features_train_res, labels_train_res,
             epochs=256,
             batch_size=128,
             validation_data=(features_test, labels_test),
             callbacks=[early_stop, reduce_lr],
-            class_weight=class_weights_dict  # Optional as classes are balanced
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
@@ -470,5 +528,13 @@ def train_spike_predictor(data_path):
 
 
 if __name__ == "__main__":
+    # Disable GPU to get 50% faster training (see explanation before training)
+    os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+    tf.config.set_visible_devices([], 'GPU')
+
     train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
     print("Training done!")
+
+    # TODO
+    # 1. Improve trainings process
+    # 2. Do accuracy tests

@@ -37,18 +37,7 @@ public class RallyPredictor implements AutoCloseable {
     public static float predict(float[] features) {
         String modelPath = "./rallyMLModel/spike_predictor.onnx";
         try {
-            RallyPredictor predictor = RallyPredictor.getInstance(modelPath);
-
-            Float spikeProbability = predictor.updateAndPredict(features);
-            if (spikeProbability != null) {
-                if (pLTester.debug) {
-                    System.out.println("High spike probability: " + spikeProbability);
-                }
-                return spikeProbability;
-            } else {
-                return 0;
-            }
-
+            return RallyPredictor.getInstance(modelPath).updateAndPredict(features);
         } catch (Exception e) {
             e.printStackTrace();
             return 0;
