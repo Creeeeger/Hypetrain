@@ -5,6 +5,8 @@ import org.jfree.data.time.Minute;
 import org.jfree.data.time.TimeSeries;
 
 import java.io.*;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -212,8 +214,8 @@ public class pLTester {
 
     public static void exportToCSV(List<StockUnit> stocks) {
         try {
-            String filePath = System.getProperty("user.dir") + "/rallyMLModel/highFrequencyStocks.csv";
-            File file = new File(filePath);
+            Path filePath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "highFrequencyStocks.csv");
+            File file = filePath.toFile();
 
             // Check if file exists to determine if we need headers
             boolean fileExists = file.exists();

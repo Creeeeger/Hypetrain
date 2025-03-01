@@ -26,11 +26,13 @@ import java.awt.geom.Point2D;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
-import java.util.List;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -110,7 +112,9 @@ public class Main_UI extends JFrame {
 
         updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the Stock data section
 
-        File config = new File("config.xml");
+        // Dynamically construct the file path
+        Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
+        File config = configPath.toFile();
         if (!config.exists()) {
             config_handler.create_config();
             setValues();
@@ -1012,7 +1016,8 @@ public class Main_UI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Define the source file (config.xml in the root directory)
-            File configFile = new File("config.xml");
+            Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
+            File configFile = configPath.toFile();
 
             // Check if the config file exists
             if (!configFile.exists()) {
@@ -1104,7 +1109,8 @@ public class Main_UI extends JFrame {
                 File selectedFile = fileChooser.getSelectedFile();
 
                 // Define the target file in the root directory with the name "config.xml"
-                File configFile = new File("config.xml");
+                Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
+                File configFile = configPath.toFile();
 
                 try {
                     // Copy and rename the file, overwriting if it exists
