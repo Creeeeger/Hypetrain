@@ -1,9 +1,26 @@
 package org.crecker;
 
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import org.jetbrains.annotations.NotNull;
+import org.jfree.chart.ChartFactory;
+import org.jfree.chart.ChartPanel;
+import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.NumberAxis;
+import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.chart.plot.ValueMarker;
+import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.Minute;
+import org.jfree.data.time.RegularTimePeriod;
 import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
 
+import javax.swing.*;
+import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.awt.geom.Point2D;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -11,21 +28,31 @@ import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.gui;
 import static org.crecker.Main_data_handler.*;
-import static org.crecker.data_tester.*;
+import static org.crecker.data_tester.getData;
+import static org.crecker.data_tester.parseStockUnit;
 
 public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
     public static boolean debug = true; // Flag for printing PL
+    public static JLabel percentageChange;
     static boolean saveData = false;
     static double spikeThreshold = 0.8;
     static int lookBackWindow = 5;
+    private static double point1X = Double.NaN;
+    private static double point1Y = Double.NaN;
+    private static double point2X = Double.NaN;
+    private static double point2Y = Double.NaN;
+    private static ValueMarker marker1 = null;
+    private static ValueMarker marker2 = null;
+    private static IntervalMarker shadedRegion = null;
 
     public static void main(String[] args) {
         //updateStocks();
@@ -95,7 +122,6 @@ public class pLTester {
                 }
             }
         }
-        //createTimeline(SYMBOLS[stock]);
         if (debug) {
             createTimeline(SYMBOLS[stock]);
             logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
@@ -340,27 +366,215 @@ public class pLTester {
 
     private static void createTimeline(String symbol) {
         try {
-            symbol = symbol.toUpperCase().replace(".TXT", "");
-            List<StockUnit> timeline = getSymbolTimeline(symbol);
+            String processedSymbol = symbol.toUpperCase().replace(".TXT", "");
+            List<StockUnit> timeline = getSymbolTimeline(processedSymbol);
 
             if (timeline.isEmpty()) {
-                System.out.println("No data available for " + symbol);
+                System.out.println("No data available for " + processedSymbol);
                 return;
             }
 
-            TimeSeries timeSeries = new TimeSeries(symbol + " Price Timeline");
-
+            // Create main price series
+            TimeSeries priceSeries = new TimeSeries(processedSymbol + " Price Timeline");
             for (StockUnit unit : timeline) {
-                timeSeries.addOrUpdate(
-                        new Minute(unit.getDateDate()),
-                        unit.getClose()
-                );
+                priceSeries.add(new Minute(unit.getDateDate()), unit.getClose());
             }
 
-            plotData(timeSeries, symbol + " Historical Prices", "Time", "Price");
+            // Create indicator series
+            TimeSeries indicatorSeries = new TimeSeries("Indicator");
+
+            indicatorTimeSeries.getTimePeriods().forEach(period -> {
+                Number value = indicatorTimeSeries.getValue((RegularTimePeriod) period);
+                if (value != null) {
+                    indicatorSeries.add((RegularTimePeriod) period, value.doubleValue());
+                }
+            });
+
+            // Create combined dataset
+            TimeSeriesCollection dataset = new TimeSeriesCollection();
+            dataset.addSeries(priceSeries);
+            TimeSeriesCollection indicatorDataset = new TimeSeriesCollection();
+            indicatorDataset.addSeries(indicatorSeries);
+
+            // Create chart with primary dataset
+            JFreeChart chart = ChartFactory.createTimeSeriesChart(
+                    processedSymbol + " Analysis",
+                    "Time",
+                    "Price",
+                    dataset,
+                    true,
+                    true,
+                    false
+            );
+
+            XYPlot plot = chart.getXYPlot();
+
+            // Configure secondary axis for indicator
+            NumberAxis indicatorAxis = new NumberAxis();
+            indicatorAxis.setRange(-1.5, 1.5);
+            indicatorAxis.setAxisLinePaint(Color.GRAY);
+            indicatorAxis.setLabelPaint(Color.GRAY);
+            indicatorAxis.setTickLabelPaint(Color.GRAY);
+            plot.setRangeAxis(1, indicatorAxis);
+            plot.setDataset(1, indicatorDataset);
+            plot.mapDatasetToRangeAxis(1, 1);
+
+            // Configure indicator renderer
+            XYLineAndShapeRenderer indicatorRenderer = new XYLineAndShapeRenderer();
+            indicatorRenderer.setSeriesPaint(0, new Color(100, 100, 255));
+            indicatorRenderer.setSeriesStroke(0, new BasicStroke(0.5f));
+            indicatorRenderer.setSeriesShapesVisible(0, false);
+            plot.setRenderer(1, indicatorRenderer);
+
+            // Add notification markers (existing code)
+            addNotificationMarkers(plot, processedSymbol, timeline);
+
+            // Configure main series renderer
+            XYLineAndShapeRenderer priceRenderer = (XYLineAndShapeRenderer) plot.getRenderer();
+            priceRenderer.setSeriesPaint(0, Color.BLACK);
+            priceRenderer.setDefaultShapesVisible(false);
+
+            // Create chart panel and controls (existing code)
+            ChartPanel chartPanel = createChartPanel(chart);
+            JPanel controlPanel = getjPanel(chartPanel);
+
+            JFrame frame = new JFrame("Price Timeline Analysis");
+            frame.setLayout(new BorderLayout());
+            frame.add(chartPanel, BorderLayout.CENTER);
+            frame.add(controlPanel, BorderLayout.SOUTH);
+            frame.pack();
+            frame.setVisible(true);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    private static ChartPanel createChartPanel(JFreeChart chart) {
+        ChartPanel chartPanel = new ChartPanel(chart);
+        chartPanel.setMouseWheelEnabled(true);
+        chartPanel.setZoomAroundAnchor(true);
+        chartPanel.setRangeZoomable(true);
+        chartPanel.setDomainZoomable(true);
+
+        chartPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                Point2D p = chartPanel.translateScreenToJava2D(e.getPoint());
+                XYPlot plot = chart.getXYPlot();
+                ValueAxis xAxis = plot.getDomainAxis();
+                ValueAxis yAxis = plot.getRangeAxis();
+
+                double x = xAxis.java2DToValue(p.getX(), chartPanel.getScreenDataArea(), plot.getDomainAxisEdge());
+                double y = yAxis.java2DToValue(p.getY(), chartPanel.getScreenDataArea(), plot.getRangeAxisEdge());
+
+                if (Double.isNaN(point1X)) {
+                    point1X = x;
+                    point1Y = y;
+                    addFirstMarker(plot, point1X);
+                } else {
+                    point2X = x;
+                    point2Y = y;
+                    addSecondMarkerAndShade(plot);
+                    resetPoints();
+                }
+            }
+        });
+        return chartPanel;
+    }
+
+    private static void addNotificationMarkers(XYPlot plot, String symbol, List<StockUnit> timeline) {
+        for (Notification notification : notificationsForPLAnalysis) {
+            if (!notification.getSymbol().equalsIgnoreCase(symbol)) continue;
+
+            LocalDateTime notifyTime = notification.getLocalDateTime();
+            Integer index = getIndexForTime(symbol, notifyTime);
+
+            if (index != null && index < timeline.size()) {
+                StockUnit unit = timeline.get(index);
+                ValueMarker marker = new ValueMarker(unit.getDateDate().getTime());
+                marker.setPaint(new Color(220, 20, 60, 150));
+                marker.setStroke(new BasicStroke(1.5f));
+                plot.addDomainMarker(marker);
+            }
+        }
+    }
+
+    private static void addFirstMarker(XYPlot plot, double xPosition) {
+        // Clear previous markers if any
+        if (marker1 != null) {
+            plot.removeDomainMarker(marker1);
+        }
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Create and add the first marker
+        marker1 = new ValueMarker(xPosition);
+        marker1.setPaint(Color.GREEN);  // First marker in green
+        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
+        plot.addDomainMarker(marker1);
+    }
+
+    private static void addSecondMarkerAndShade(XYPlot plot) {
+        // Clear previous markers and shaded region if they exist
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Calculate the percentage difference between the two y-values
+        double percentageDiff = ((point2Y - point1Y) / point1Y) * 100;
+
+        // Determine the color of the second marker based on percentage difference
+        Color markerColor = (percentageDiff >= 0) ? Color.GREEN : Color.RED;
+        Color shadeColor = (percentageDiff >= 0) ? new Color(100, 200, 100, 50) : new Color(200, 100, 100, 50);
+
+        // Create and add the second marker
+        marker2 = new ValueMarker(point2X);
+        marker2.setPaint(markerColor);
+        marker2.setStroke(new BasicStroke(1.5f)); // Customize thickness
+        plot.addDomainMarker(marker2);
+
+        // Create and add the shaded region between the two markers
+        shadedRegion = new IntervalMarker(Math.min(point1X, point2X), Math.max(point1X, point2X));
+        shadedRegion.setPaint(shadeColor);  // Translucent green or red shade
+        plot.addDomainMarker(shadedRegion);
+        percentageChange.setText(String.format("Percentage Change: %.3f%%", percentageDiff));
+    }
+
+    @NotNull
+    private static JPanel getjPanel(ChartPanel chartPanel) {
+        JButton autoRangeButton = new JButton("Auto Range");
+        autoRangeButton.addActionListener(e -> chartPanel.restoreAutoBounds()); // Reset to original scale
+
+        JButton zoomInButton = new JButton("Zoom In");
+        zoomInButton.addActionListener(e -> chartPanel.zoomInBoth(0.5, 0.5)); // Zoom in by 50%
+
+        JButton zoomOutButton = new JButton("Zoom Out");
+        zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
+
+        JPanel controlPanel = new JPanel();
+        percentageChange = new JLabel("Percentage Change");
+
+        controlPanel.add(autoRangeButton);
+        controlPanel.add(zoomInButton);
+        controlPanel.add(zoomOutButton);
+        controlPanel.add(percentageChange);
+        return controlPanel;
+    }
+
+    private static void resetPoints() {
+        point1X = Double.NaN;
+        point1Y = Double.NaN;
+        point2X = Double.NaN;
+        point2Y = Double.NaN;
     }
 
     private static void getNext5Minutes(double capital, LocalDateTime startTime, String symbol) {
