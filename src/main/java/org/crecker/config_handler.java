@@ -13,6 +13,8 @@ import javax.xml.transform.TransformerFactory;
 import javax.xml.transform.dom.DOMSource;
 import javax.xml.transform.stream.StreamResult;
 import java.io.File;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class config_handler {
     public static String[][] load_config() {
@@ -20,7 +22,8 @@ public class config_handler {
         // It returns a 2D array where [index][0] is the key and [index][1] is the value
         try {
             // Create a new File instance pointing to the config.xml file
-            File inputFile = new File("config.xml");
+            Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
+            File inputFile = configPath.toFile();
 
             // Create a DocumentBuilderFactory instance which is used to create a DocumentBuilder
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
@@ -113,7 +116,13 @@ public class config_handler {
 
             // Define the source (the document we created) and the destination (the output file)
             DOMSource domSource = new DOMSource(document);
-            StreamResult streamResult = new StreamResult(new File("config.xml"));
+
+            // Get the path dynamically
+            Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
+            File configFile = configPath.toFile();
+
+            // Use the file in StreamResult
+            StreamResult streamResult = new StreamResult(configFile);
 
             // Perform the transformation from the Document to an XML file
             transformer.transform(domSource, streamResult);
@@ -180,7 +189,12 @@ public class config_handler {
 
             // Set up the input source (the document) and output target (the config.xml file)
             DOMSource domSource = new DOMSource(doc);
-            StreamResult result = new StreamResult(new File("config.xml"));
+            // Get the path dynamically
+            Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
+            File configFile = configPath.toFile();
+
+            // Use the file in StreamResult
+            StreamResult result = new StreamResult(configFile);
 
             // Transform the XML Document into an XML file on disk
             transformer.transform(domSource, result);

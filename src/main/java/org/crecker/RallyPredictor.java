@@ -5,6 +5,8 @@ import ai.onnxruntime.OrtEnvironment;
 import ai.onnxruntime.OrtException;
 import ai.onnxruntime.OrtSession;
 
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.concurrent.locks.ReentrantLock;
@@ -22,7 +24,6 @@ public class RallyPredictor implements AutoCloseable {
         this.env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
         this.session = env.createSession(modelPath, options);
-
         this.buffer = new LinkedList<>();
     }
 
@@ -35,9 +36,9 @@ public class RallyPredictor implements AutoCloseable {
     }
 
     public static float predict(float[] features) {
-        String modelPath = "./rallyMLModel/spike_predictor.onnx";
+        Path modelPath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "spike_predictor.onnx");
         try {
-            return RallyPredictor.getInstance(modelPath).updateAndPredict(features);
+            return RallyPredictor.getInstance(modelPath.toString()).updateAndPredict(features);
         } catch (Exception e) {
             e.printStackTrace();
             return 0;
