@@ -380,61 +380,84 @@ public class pLTester {
                 priceSeries.add(new Minute(unit.getDateDate()), unit.getClose());
             }
 
-            // Create indicator series
-            TimeSeries indicatorSeries = new TimeSeries("Indicator");
+            // Create datasets
+            TimeSeriesCollection priceDataset = new TimeSeriesCollection();
+            priceDataset.addSeries(priceSeries);
 
-            indicatorTimeSeries.getTimePeriods().forEach(period -> {
-                Number value = indicatorTimeSeries.getValue((RegularTimePeriod) period);
-                if (value != null) {
-                    indicatorSeries.add((RegularTimePeriod) period, value.doubleValue());
-                }
-            });
-
-            // Create combined dataset
-            TimeSeriesCollection dataset = new TimeSeriesCollection();
-            dataset.addSeries(priceSeries);
+            // Create indicator series with synchronization
             TimeSeriesCollection indicatorDataset = new TimeSeriesCollection();
-            indicatorDataset.addSeries(indicatorSeries);
+            synchronized (indicatorTimeSeries) {
+                TimeSeries indicatorSeries = new TimeSeries("Indicator");
+                indicatorTimeSeries.getTimePeriods().forEach(period -> {
+                    Number value = indicatorTimeSeries.getValue((RegularTimePeriod) period);
+                    if (value != null) {
+                        indicatorSeries.add((RegularTimePeriod) period, value.doubleValue());
+                    }
+                });
+                indicatorDataset.addSeries(indicatorSeries);
+            }
 
-            // Create chart with primary dataset
+            // Create prediction series with synchronization
+            TimeSeriesCollection predictionDataset = new TimeSeriesCollection();
+            synchronized (predictionTimeSeries) {
+                TimeSeries predictionSeries = new TimeSeries("Prediction");
+                predictionTimeSeries.getTimePeriods().forEach(period -> {
+                    Number value = predictionTimeSeries.getValue((RegularTimePeriod) period);
+                    if (value != null) {
+                        predictionSeries.add((RegularTimePeriod) period, value.doubleValue());
+                    }
+                });
+                predictionDataset.addSeries(predictionSeries);
+            }
+
+            // Create chart
             JFreeChart chart = ChartFactory.createTimeSeriesChart(
                     processedSymbol + " Analysis",
                     "Time",
                     "Price",
-                    dataset,
+                    priceDataset,
                     true,
                     true,
                     false
             );
 
-            XYPlot plot = chart.getXYPlot();
+            XYPlot plot = getXyPlot(chart);
 
-            // Configure secondary axis for indicator
-            NumberAxis indicatorAxis = new NumberAxis();
-            indicatorAxis.setRange(-1.5, 1.5);
-            indicatorAxis.setAxisLinePaint(Color.GRAY);
-            indicatorAxis.setLabelPaint(Color.GRAY);
-            indicatorAxis.setTickLabelPaint(Color.GRAY);
-            plot.setRangeAxis(1, indicatorAxis);
+            // Add datasets to plot
             plot.setDataset(1, indicatorDataset);
-            plot.mapDatasetToRangeAxis(1, 1);
+            plot.setDataset(2, predictionDataset);
 
-            // Configure indicator renderer
+            // Map datasets to axes
+            plot.mapDatasetToRangeAxis(1, 1);  // Indicator to left axis
+            plot.mapDatasetToRangeAxis(2, 2);  // Prediction to right axis
+
+            // Configure renderers
+            // Indicator renderer (subtle blue line without markers)
             XYLineAndShapeRenderer indicatorRenderer = new XYLineAndShapeRenderer();
             indicatorRenderer.setSeriesPaint(0, new Color(100, 100, 255));
-            indicatorRenderer.setSeriesStroke(0, new BasicStroke(0.5f));
-            indicatorRenderer.setSeriesShapesVisible(0, false);
-            plot.setRenderer(1, indicatorRenderer);
+            indicatorRenderer.setSeriesStroke(0, new BasicStroke(1f));
+            indicatorRenderer.setSeriesShapesVisible(0, false);  // Disable shapes (dots, arrows, etc.)
 
-            // Add notification markers (existing code)
+            // Prediction renderer (bright red line without markers)
+            XYLineAndShapeRenderer predictionRenderer = new XYLineAndShapeRenderer();
+            predictionRenderer.setSeriesPaint(0, new Color(78, 255, 0));
+            predictionRenderer.setSeriesStroke(0, new BasicStroke(1f));
+            predictionRenderer.setSeriesShapesVisible(0, false);  // Disable shapes
+
+            // Assign renderers to datasets
+            plot.setRenderer(1, indicatorRenderer);
+            plot.setRenderer(2, predictionRenderer);
+
+            // Configure main series renderer (solid black line without markers)
+            XYLineAndShapeRenderer priceRenderer = (XYLineAndShapeRenderer) plot.getRenderer();
+            priceRenderer.setSeriesPaint(0, Color.BLACK);  // Solid black line
+            priceRenderer.setSeriesStroke(0, new BasicStroke(0.5f));
+            priceRenderer.setSeriesShapesVisible(0, false);  // Disable shapes
+
+            // Add notification markers
             addNotificationMarkers(plot, processedSymbol, timeline);
 
-            // Configure main series renderer
-            XYLineAndShapeRenderer priceRenderer = (XYLineAndShapeRenderer) plot.getRenderer();
-            priceRenderer.setSeriesPaint(0, Color.BLACK);
-            priceRenderer.setDefaultShapesVisible(false);
-
-            // Create chart panel and controls (existing code)
+            // Chart panel and frame setup
             ChartPanel chartPanel = createChartPanel(chart);
             JPanel controlPanel = getjPanel(chartPanel);
 
@@ -443,12 +466,33 @@ public class pLTester {
             frame.add(chartPanel, BorderLayout.CENTER);
             frame.add(controlPanel, BorderLayout.SOUTH);
             frame.pack();
+            frame.setSize(1700, 1000);
+            frame.setLocation(60, 20);
+            frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             frame.setVisible(true);
-            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
 
         } catch (Exception e) {
             e.printStackTrace();
         }
+    }
+
+    @NotNull
+    private static XYPlot getXyPlot(JFreeChart chart) {
+        XYPlot plot = chart.getXYPlot();
+
+        // Configure secondary axes
+        // Indicator Axis (left side)
+        NumberAxis indicatorAxis = new NumberAxis("Indicator");
+        indicatorAxis.setRange(-1.5, 1.5);
+        indicatorAxis.setAxisLinePaint(Color.BLUE);
+        plot.setRangeAxis(1, indicatorAxis);
+
+        // Prediction Axis (right side)
+        NumberAxis predictionAxis = new NumberAxis("Prediction");
+        predictionAxis.setRange(0, 1);
+        predictionAxis.setAxisLinePaint(Color.RED);
+        plot.setRangeAxis(2, predictionAxis);
+        return plot;
     }
 
     private static ChartPanel createChartPanel(JFreeChart chart) {

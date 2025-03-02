@@ -34,6 +34,7 @@ public class Main_data_handler {
     static final Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
+    static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
     public static boolean test = true; // If True use demo url for real Time Updates
     static int frameSize = 30; // Frame size for analysis
@@ -633,15 +634,18 @@ public class Main_data_handler {
             }
         });
 
-        //feed normalized unweighted features
+        // feed normalized unweighted features
         double prediction = predict(normalized);
-        System.out.printf("Date: %s, Prob: %.4f%n", stocks.get(stocks.size() - 1).getDateDate(), prediction);
-        int feature = 0;
 
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(
                     new Minute(stocks.get(stocks.size() - 1).getDateDate()),
-                    features[feature]
+                    features[6]
+            );
+
+            predictionTimeSeries.addOrUpdate(
+                    new Minute(stocks.get(stocks.size() - 1).getDateDate()),
+                    prediction
             );
         }
 
