@@ -423,26 +423,23 @@ def build_model(input_shape):
     l2s = regularizers.L2(0.001)
     inputs = Input(shape=input_shape)
 
-    # Convolutional block: extract local features from the sequence
-    x = Conv1D(filters=64, kernel_size=3, activation='relu', padding='same',
-               kernel_regularizer=l2s)(inputs)
+    # ========== CNN Layers ==========
+    # First Conv Block
+    x = Conv1D(64, kernel_size=3, padding='same', activation='relu', kernel_regularizer=l2s)(inputs)
     x = BatchNormalization()(x)
-    x = MaxPooling1D(pool_size=2, strides=2, padding='same')(x)
-    x = Dropout(0.3)(x)
+    x = MaxPooling1D(pool_size=2, padding='same')(x)
 
-    # Optional second convolutional block for deeper feature extraction
-    x = Conv1D(filters=128, kernel_size=3, activation='relu', padding='same',
-               kernel_regularizer=l2s)(x)
+    # Second Conv Block
+    x = Conv1D(128, kernel_size=3, padding='same', activation='relu', kernel_regularizer=l2s)(x)
     x = BatchNormalization()(x)
-    x = MaxPooling1D(pool_size=2, strides=2, padding='same')(x)
-    x = Dropout(0.3)(x)
+    x = MaxPooling1D(pool_size=2, padding='same')(x)
 
-    # LSTM layer to capture the sequential dependencies after CNN processing
+    # ========== LSTM Layer ==========
     x = LSTM(64, return_sequences=False, kernel_regularizer=l2s, recurrent_activation="tanh")(x)
     x = BatchNormalization()(x)
     x = Dropout(0.3)(x)
 
-    # Dense layers for further processing before final output
+    # ========== Dense Layers ==========
     x = Dense(64, activation='relu', kernel_regularizer=l2s)(x)
     x = Dropout(0.3)(x)
 
@@ -534,7 +531,3 @@ if __name__ == "__main__":
 
     train_spike_predictor('highFrequencyStocks.csv')  # Main function for training
     print("Training done!")
-
-    # TODO
-    # 1. Improve trainings process
-    # 2. Do accuracy tests

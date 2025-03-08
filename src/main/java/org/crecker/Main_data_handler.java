@@ -675,17 +675,17 @@ public class Main_data_handler {
         //10 - Trend Line Breakout (20)
         //11 - Cumulative Spike (10, 0.55 threshold)
         //12 - Cumulative Percentage Change
-        //13 - Parabolic SAR Bullish (20, 0.01 step)
-        //14 - Keltner Breakout (20 EMA, 20 ATR, 0.2 multiplier)
-        //15 - Elder Ray Index (12)
-        //16 - ATR (20)
+        //15 - Elder Ray Index  >0
+        //16 - ATR XX
 
 
         if (features[0] == 1 && features[2] > 0.12) {
-            createNotification(symbol, stocks.stream()
-                    .skip(stocks.size() - 4)
-                    .mapToDouble(StockUnit::getPercentageChange)
-                    .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+            if (features[14] == 1 && features[13] == 1) { // Keltner Breakout excellent & parabolic bullish sar
+                createNotification(symbol, stocks.stream()
+                        .skip(stocks.size() - 4)
+                        .mapToDouble(StockUnit::getPercentageChange)
+                        .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+            }
         }
 
         return alertsList;
@@ -1111,13 +1111,34 @@ public class Main_data_handler {
     }
 
     // 15. Keltner Channels Breakout
-    public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier) {
+    public static int isKeltnerBreakout(List<StockUnit> window,
+                                        int emaPeriod,
+                                        int atrPeriod,
+                                        double multiplier) {
+        // Check if we have enough data for calculations
+        if (window.size() < Math.max(emaPeriod, 4) + 1) {
+            return 0; // Not enough data points
+        }
+
+        // Original Keltner Channel calculation
         double ema = calculateEMA(window, emaPeriod);
         double atr = calculateATR(window, atrPeriod);
         double upperBand = ema + (multiplier * atr);
 
-        // Return 1 if the close is greater than the upper band, otherwise return 0
-        return (window.get(window.size() - 1).getClose() > upperBand) ? 1 : 0;
+        // Cumulative percentage change check
+        int currentIndex = window.size() - 1;
+        int referenceIndex = currentIndex - 4;
+
+        double currentClose = window.get(currentIndex).getClose();
+        double referenceClose = window.get(referenceIndex).getClose();
+
+        double cumulativeChange = ((currentClose - referenceClose) / referenceClose) * 100;
+
+        // Combined condition check
+        boolean isBreakout = currentClose > upperBand;
+        boolean hasSignificantMove = Math.abs(cumulativeChange) >= 0.8;
+
+        return (isBreakout && hasSignificantMove) ? 1 : 0;
     }
 
     // 16. Elder-Ray Index Approximation
