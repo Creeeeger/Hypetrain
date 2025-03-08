@@ -3,8 +3,6 @@ KEY
 - check if a premium API key works
 
 CODE
-- add variable exit value (greater rise > greater drop allowed) (test if useful)
-
 1 do manual comparison of return data
 2 optimize weights and interference
 

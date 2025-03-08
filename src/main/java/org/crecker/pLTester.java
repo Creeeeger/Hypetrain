@@ -44,8 +44,9 @@ import static org.crecker.data_tester.parseStockUnit;
 public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
-    public static boolean debug = true; // Flag for printing PL
-    public static JLabel percentageChange;
+    private static final boolean debug = true; // Flag for printing PL
+    private static final boolean dynamic = false;
+    static JLabel percentageChange;
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
     private static double point1X = Double.NaN;
     private static double point1Y = Double.NaN;
@@ -77,12 +78,14 @@ public class pLTester {
         //   final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
         final String[] SYMBOLS = {"MARA.txt"};
 
-        final double INITIAL_CAPITAL = 130000;
+        double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
-        final double DIP_LEVEL = -0.3;
+        int cut = 2000;
+        double DIP_LEVEL = -0.3; // Change value after testing
+        double DIP_ADJUSTMENT_FACTOR = 0.7; // For dynamic dips (change value after testing)
 
-        prepData(SYMBOLS, 800);
+        prepData(SYMBOLS, cut);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(symbol.replace(".txt", ""),
@@ -113,7 +116,7 @@ public class pLTester {
             StockUnit nextUnit = timeline.get(index + 1);
 
             if (shouldProcessDip(nextUnit, DIP_LEVEL, lastTradeTime)) {
-                TradeResult result = processTradeSequence(timeline, index + 1, DIP_LEVEL, capital, notification.getSymbol());
+                TradeResult result = processTradeSequence(timeline, index + 1, DIP_LEVEL, capital, notification.getSymbol(), DIP_ADJUSTMENT_FACTOR);
                 capital = result.newCapital() - FEE;
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
@@ -123,6 +126,7 @@ public class pLTester {
                 }
             }
         }
+
         if (debug) {
             createTimeline(SYMBOLS[stock]);
             logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
@@ -143,11 +147,11 @@ public class pLTester {
 
     private static boolean shouldProcessDip(StockUnit nextUnit, double dipLevel, LocalDateTime lastTradeTime) {
         return (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime)
-                //&& nextUnit.getPercentageChange() >= dipLevel // Try later if beneficial
+                && nextUnit.getPercentageChange() >= dipLevel // Try later if beneficial
         );
     }
 
-    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol) {
+    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol, double dipAdjustmentFactor) {
         double currentCapital = capital;
         int currentIndex = startIndex;
         final int maxSteps = Math.min(timeline.size(), startIndex + 100); // Safety limit
@@ -156,13 +160,28 @@ public class pLTester {
             StockUnit unit = timeline.get(currentIndex);
             currentCapital *= (1 + (unit.getPercentageChange() / 100));
 
-            if (debug) {
-                System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, capital, unit.getPercentageChange(), unit.getDateDate());
+            if (dynamic) {
+                // Calculate cumulative gain percentage
+                double cumulativeGainPercentage = ((currentCapital / capital) - 1) * 100;
+                double dynamicDipLevel = dipLevel - (cumulativeGainPercentage * dipAdjustmentFactor);
+
+                System.out.printf("Cumulative Gain: %.2f%%, Dynamic Dip Level: %.2f%%%n", cumulativeGainPercentage, dynamicDipLevel);
+
+                if (unit.getPercentageChange() < dynamicDipLevel) {
+                    break;
+                }
             }
 
-            if (unit.getPercentageChange() < dipLevel) {
-                break;
+            if (debug) {
+                System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, currentCapital, unit.getPercentageChange(), unit.getDateDate());
             }
+
+            if (!dynamic) {
+                if (unit.getPercentageChange() < dipLevel) {
+                    break;
+                }
+            }
+
             currentIndex++;
         }
 
