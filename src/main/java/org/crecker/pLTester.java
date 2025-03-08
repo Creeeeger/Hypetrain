@@ -18,9 +18,12 @@ import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
+import java.awt.event.KeyAdapter;
+import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
+import java.awt.geom.Rectangle2D;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
@@ -43,9 +46,7 @@ public class pLTester {
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
     public static boolean debug = true; // Flag for printing PL
     public static JLabel percentageChange;
-    static boolean saveData = false;
-    static double spikeThreshold = 0.8;
-    static int lookBackWindow = 5;
+    static List<TimeInterval> labeledIntervals = new ArrayList<>();
     private static double point1X = Double.NaN;
     private static double point1Y = Double.NaN;
     private static double point2X = Double.NaN;
@@ -79,9 +80,9 @@ public class pLTester {
         final double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
-        final double DIP_LEVEL = -0.5;
+        final double DIP_LEVEL = -0.3;
 
-        prepData(SYMBOLS, 2000);
+        prepData(SYMBOLS, 800);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(symbol.replace(".txt", ""),
@@ -112,7 +113,7 @@ public class pLTester {
             StockUnit nextUnit = timeline.get(index + 1);
 
             if (shouldProcessDip(nextUnit, DIP_LEVEL, lastTradeTime)) {
-                TradeResult result = processTradeSequence(timeline, index + 2, DIP_LEVEL, capital, notification.getSymbol());
+                TradeResult result = processTradeSequence(timeline, index + 1, DIP_LEVEL, capital, notification.getSymbol());
                 capital = result.newCapital() - FEE;
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
@@ -141,7 +142,9 @@ public class pLTester {
     }
 
     private static boolean shouldProcessDip(StockUnit nextUnit, double dipLevel, LocalDateTime lastTradeTime) {
-        return nextUnit.getPercentageChange() >= dipLevel && (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime));
+        return (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime)
+                //&& nextUnit.getPercentageChange() >= dipLevel // Try later if beneficial
+        );
     }
 
     private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol) {
@@ -207,35 +210,13 @@ public class pLTester {
         List<StockUnit> fileUnits = readStockUnitsFromFile(filePath, retainLast);
         symbol = symbol.toUpperCase();
 
-        // Engineer the target feature for the Data export for training
         fileUnits.forEach(unit -> unit.setTarget(0));
-
-        // Iterate through all units to find spikes
-        for (int i = 0; i < fileUnits.size() - lookBackWindow; i++) {
-            int windowEnd = i + lookBackWindow - 1;
-            StockUnit start = fileUnits.get(i);
-            StockUnit end = fileUnits.get(windowEnd);
-
-            // Calculate cumulative change for the window
-            double cumulativeChange = ((end.getClose() / start.getClose()) - 1) * 100;
-
-            // Check if current row is a spike
-            if (cumulativeChange >= spikeThreshold) {
-                for (int j = i; j <= windowEnd; j++) {
-                    fileUnits.get(j).setTarget(1);
-                }
-            }
-        }
 
         List<StockUnit> existing = symbolTimelines.getOrDefault(symbol, new ArrayList<>());
         existing.addAll(fileUnits);
         symbolTimelines.put(symbol, existing);
 
         System.out.println("Loaded " + fileUnits.size() + " entries for " + symbol);
-
-        if (saveData) {
-            exportToCSV(fileUnits);
-        }
     }
 
     public static void exportToCSV(List<StockUnit> stocks) {
@@ -432,17 +413,17 @@ public class pLTester {
             plot.mapDatasetToRangeAxis(2, 2);  // Prediction to right axis
 
             // Configure renderers
-            // Indicator renderer (subtle blue line without markers)
+            // Indicator renderer (distinct blue line without markers)
             XYLineAndShapeRenderer indicatorRenderer = new XYLineAndShapeRenderer();
-            indicatorRenderer.setSeriesPaint(0, new Color(100, 100, 255));
+            indicatorRenderer.setSeriesPaint(0, new Color(0, 0, 255)); // Blue
             indicatorRenderer.setSeriesStroke(0, new BasicStroke(1f));
-            indicatorRenderer.setSeriesShapesVisible(0, false);  // Disable shapes (dots, arrows, etc.)
+            indicatorRenderer.setSeriesShapesVisible(0, false);
 
-            // Prediction renderer (bright red line without markers)
+            // Prediction renderer (orange line without markers)
             XYLineAndShapeRenderer predictionRenderer = new XYLineAndShapeRenderer();
-            predictionRenderer.setSeriesPaint(0, new Color(78, 255, 0));
+            predictionRenderer.setSeriesPaint(0, new Color(255, 165, 0)); // Orange
             predictionRenderer.setSeriesStroke(0, new BasicStroke(1f));
-            predictionRenderer.setSeriesShapesVisible(0, false);  // Disable shapes
+            predictionRenderer.setSeriesShapesVisible(0, false);
 
             // Assign renderers to datasets
             plot.setRenderer(1, indicatorRenderer);
@@ -451,15 +432,21 @@ public class pLTester {
             // Configure main series renderer (solid black line without markers)
             XYLineAndShapeRenderer priceRenderer = (XYLineAndShapeRenderer) plot.getRenderer();
             priceRenderer.setSeriesPaint(0, Color.BLACK);  // Solid black line
-            priceRenderer.setSeriesStroke(0, new BasicStroke(0.5f));
-            priceRenderer.setSeriesShapesVisible(0, false);  // Disable shapes
+            priceRenderer.setSeriesStroke(0, new BasicStroke(1f));
+            priceRenderer.setSeriesShapesVisible(0, false);
+
+            // Set chart background to white for better visibility
+            chart.setBackgroundPaint(Color.WHITE);
+            plot.setBackgroundPaint(Color.WHITE);
+            plot.setDomainGridlinePaint(Color.LIGHT_GRAY);
+            plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
 
             // Add notification markers
             addNotificationMarkers(plot, processedSymbol, timeline);
 
             // Chart panel and frame setup
-            ChartPanel chartPanel = createChartPanel(chart);
-            JPanel controlPanel = getjPanel(chartPanel);
+            ChartPanel chartPanel = createChartPanel(chart, processedSymbol);
+            JPanel controlPanel = getControlPanel(chartPanel, processedSymbol);
 
             JFrame frame = new JFrame("Price Timeline Analysis");
             frame.setLayout(new BorderLayout());
@@ -495,13 +482,165 @@ public class pLTester {
         return plot;
     }
 
-    private static ChartPanel createChartPanel(JFreeChart chart) {
-        ChartPanel chartPanel = new ChartPanel(chart);
-        chartPanel.setMouseWheelEnabled(true);
-        chartPanel.setZoomAroundAnchor(true);
-        chartPanel.setRangeZoomable(true);
-        chartPanel.setDomainZoomable(true);
+    private static ChartPanel createChartPanel(JFreeChart chart, String symbol) {
+        final Point2D[] dragStartPoint = {null};
+        final boolean[] isZoomMode = {false};
 
+        ChartPanel chartPanel = getStockPanel(chart, dragStartPoint);
+
+        createPercentageMarkers(chart, chartPanel);
+
+        // Enable native zoom capabilities
+        chartPanel.setDomainZoomable(true);
+        chartPanel.setRangeZoomable(true);
+        chartPanel.setMouseWheelEnabled(true);
+
+        chartPanel.addMouseListener(new MouseAdapter() {
+            private double dragStartTime;
+
+            @Override
+            public void mousePressed(MouseEvent e) {
+                isZoomMode[0] = e.isShiftDown();
+
+                if (!isZoomMode[0]) {
+                    chartPanel.setDomainZoomable(false);
+                    chartPanel.setRangeZoomable(false);
+                    chartPanel.setMouseWheelEnabled(false);
+
+                    // Start labeling drag
+                    dragStartPoint[0] = chartPanel.translateScreenToJava2D(e.getPoint());
+                    dragStartTime = chart.getXYPlot().getDomainAxis().java2DToValue(
+                            dragStartPoint[0].getX(),
+                            chartPanel.getScreenDataArea(),
+                            chart.getXYPlot().getDomainAxisEdge()
+                    );
+                    e.consume();
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (!isZoomMode[0] && dragStartPoint[0] != null) {
+                    // Handle label completion
+                    Point2D endPoint = chartPanel.translateScreenToJava2D(e.getPoint());
+                    XYPlot plot = chart.getXYPlot();
+                    double endTime = plot.getDomainAxis().java2DToValue(
+                            endPoint.getX(),
+                            chartPanel.getScreenDataArea(),
+                            plot.getDomainAxisEdge()
+                    );
+
+                    labeledIntervals.add(new TimeInterval(
+                            Math.min(dragStartTime, endTime),
+                            Math.max(dragStartTime, endTime)
+                    ));
+
+                    updateLabelsForInterval(symbol, dragStartTime, endTime, 1);
+                    chartPanel.repaint();
+                    e.consume();
+                }
+
+                chartPanel.setDomainZoomable(true);
+                chartPanel.setRangeZoomable(true);
+                chartPanel.setMouseWheelEnabled(true);
+
+                dragStartPoint[0] = null;
+                isZoomMode[0] = false;
+            }
+        });
+
+        chartPanel.addMouseMotionListener(new MouseAdapter() {
+            @Override
+            public void mouseDragged(MouseEvent e) {
+                if (!isZoomMode[0]) {
+                    // Only update preview for labeling
+                    chartPanel.repaint();
+                    e.consume();
+                }
+            }
+        });
+
+        // Add key listener for shift key state changes
+        chartPanel.addKeyListener(new KeyAdapter() {
+            @Override
+            public void keyPressed(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_SHIFT) {
+                    chartPanel.setCursor(Cursor.getPredefinedCursor(Cursor.CROSSHAIR_CURSOR));
+                }
+            }
+
+            @Override
+            public void keyReleased(KeyEvent e) {
+                if (e.getKeyCode() == KeyEvent.VK_SHIFT) {
+                    chartPanel.setCursor(Cursor.getDefaultCursor());
+                }
+            }
+        });
+
+        // Enable keyboard focus for shift detection
+        chartPanel.setFocusable(true);
+        chartPanel.requestFocusInWindow();
+
+        return chartPanel;
+    }
+
+    @NotNull
+    private static ChartPanel getStockPanel(JFreeChart chart, Point2D[] dragStartPoint) {
+        return new ChartPanel(chart) {
+            @Override
+            public void paintComponent(Graphics g) {
+                super.paintComponent(g);
+                Graphics2D g2 = (Graphics2D) g.create();
+
+                // Get current plot dimensions
+                XYPlot plot = chart.getXYPlot();
+                Rectangle2D dataArea = this.getScreenDataArea();
+                ValueAxis domainAxis = plot.getDomainAxis();
+
+                // Draw historical intervals
+                for (TimeInterval interval : labeledIntervals) {
+                    double startX = domainAxis.valueToJava2D(interval.startTime, dataArea, plot.getDomainAxisEdge());
+                    double endX = domainAxis.valueToJava2D(interval.endTime, dataArea, plot.getDomainAxisEdge());
+
+                    g2.setColor(new Color(0, 255, 0, 30));
+                    g2.fillRect(
+                            (int) Math.min(startX, endX),
+                            0,
+                            (int) Math.abs(endX - startX),
+                            this.getHeight()
+                    );
+                }
+
+                // Draw current drag preview
+                if (dragStartPoint[0] != null) {
+                    Point2D currentPoint = this.getMousePosition();
+                    if (currentPoint != null) {
+                        currentPoint = translateScreenToJava2D((Point) currentPoint);
+                        double startX = domainAxis.valueToJava2D(
+                                domainAxis.java2DToValue(dragStartPoint[0].getX(), dataArea, plot.getDomainAxisEdge()),
+                                dataArea, plot.getDomainAxisEdge()
+                        );
+                        double currentX = domainAxis.valueToJava2D(
+                                domainAxis.java2DToValue(currentPoint.getX(), dataArea, plot.getDomainAxisEdge()),
+                                dataArea, plot.getDomainAxisEdge()
+                        );
+
+                        g2.setColor(new Color(0, 0, 255, 30));
+                        g2.fillRect(
+                                (int) Math.min(startX, currentX),
+                                0,
+                                (int) Math.abs(currentX - startX),
+                                this.getHeight()
+                        );
+                    }
+                }
+
+                g2.dispose();
+            }
+        };
+    }
+
+    private static void createPercentageMarkers(JFreeChart chart, ChartPanel chartPanel) {
         chartPanel.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -525,7 +664,61 @@ public class pLTester {
                 }
             }
         });
-        return chartPanel;
+    }
+
+    private static JPanel getControlPanel(ChartPanel chartPanel, String symbol) {
+        JButton saveButton = new JButton("Save All Labels");
+        saveButton.addActionListener(e -> saveLabels(symbol));
+
+        JButton clearButton = new JButton("Clear Last");
+        clearButton.addActionListener(e -> clearLastInterval(chartPanel, symbol));
+
+        JButton autoRangeButton = new JButton("Auto Range");
+        autoRangeButton.addActionListener(e -> chartPanel.restoreAutoBounds());
+
+        percentageChange = new JLabel("Percentage Change");
+
+        JPanel panel = new JPanel();
+        panel.add(autoRangeButton);
+        panel.add(saveButton);
+        panel.add(clearButton);
+        panel.add(percentageChange);
+
+        return panel;
+    }
+
+    private static void saveLabels(String symbol) {
+        List<StockUnit> timeline = symbolTimelines.get(symbol);
+        if (timeline != null) {
+            exportToCSV(timeline);
+            JOptionPane.showMessageDialog(null, "All labels saved successfully!");
+        }
+    }
+
+    private static void clearLastInterval(ChartPanel chartPanel, String symbol) {
+        if (labeledIntervals.isEmpty()) return;
+
+        TimeInterval last = labeledIntervals.remove(labeledIntervals.size() - 1);
+        updateLabelsForInterval(symbol, last.startTime, last.endTime, 0);
+        chartPanel.repaint();
+    }
+
+    private static void updateLabelsForInterval(String symbol, double startTime, double endTime, int value) {
+        List<StockUnit> timeline = symbolTimelines.get(symbol);
+        if (timeline == null) return;
+
+        synchronized (indicatorTimeSeries) {
+            timeline.stream()
+                    .filter(unit -> {
+                        long unitTime = unit.getDateDate().getTime();
+                        return unitTime >= startTime && unitTime <= endTime;
+                    })
+                    .forEach(unit -> {
+                        unit.setTarget(value);
+                        Minute m = new Minute(unit.getDateDate());
+                        indicatorTimeSeries.addOrUpdate(m, value);
+                    });
+        }
     }
 
     private static void addNotificationMarkers(XYPlot plot, String symbol, List<StockUnit> timeline) {
@@ -539,7 +732,7 @@ public class pLTester {
                 StockUnit unit = timeline.get(index);
                 ValueMarker marker = new ValueMarker(unit.getDateDate().getTime());
                 marker.setPaint(new Color(220, 20, 60, 150));
-                marker.setStroke(new BasicStroke(1.5f));
+                marker.setStroke(new BasicStroke(0.5f));
                 plot.addDomainMarker(marker);
             }
         }
@@ -591,27 +784,6 @@ public class pLTester {
         shadedRegion.setPaint(shadeColor);  // Translucent green or red shade
         plot.addDomainMarker(shadedRegion);
         percentageChange.setText(String.format("Percentage Change: %.3f%%", percentageDiff));
-    }
-
-    @NotNull
-    private static JPanel getjPanel(ChartPanel chartPanel) {
-        JButton autoRangeButton = new JButton("Auto Range");
-        autoRangeButton.addActionListener(e -> chartPanel.restoreAutoBounds()); // Reset to original scale
-
-        JButton zoomInButton = new JButton("Zoom In");
-        zoomInButton.addActionListener(e -> chartPanel.zoomInBoth(0.5, 0.5)); // Zoom in by 50%
-
-        JButton zoomOutButton = new JButton("Zoom Out");
-        zoomOutButton.addActionListener(e -> chartPanel.zoomOutBoth(0.5, 0.5)); // Zoom out by 50%
-
-        JPanel controlPanel = new JPanel();
-        percentageChange = new JLabel("Percentage Change");
-
-        controlPanel.add(autoRangeButton);
-        controlPanel.add(zoomInButton);
-        controlPanel.add(zoomOutButton);
-        controlPanel.add(percentageChange);
-        return controlPanel;
     }
 
     private static void resetPoints() {
@@ -667,7 +839,9 @@ public class pLTester {
         }
     }
 
-    // Record for trade results
+    private record TimeInterval(double startTime, double endTime) {
+    }
+
     private record TradeResult(double newCapital, LocalDateTime lastTradeTime) {
     }
 }
