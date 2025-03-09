@@ -17,7 +17,7 @@ public class RallyPredictor implements AutoCloseable {
     private final OrtSession session;
     private final LinkedList<float[]> buffer;
     private final ReentrantLock bufferLock = new ReentrantLock();
-    private final int length = weightRangeMap.INDICATOR_RANGE_MAP.size();
+    private final int length = Main_data_handler.INDICATOR_RANGE_MAP.size();
 
     // Private constructor to prevent instantiation
     private RallyPredictor(String modelPath) throws OrtException {
