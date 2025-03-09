@@ -49,39 +49,20 @@ def create_features(data_of_csv):
         .astype(int)
     )
 
-    data_of_csv['macd_line'] = calculate_ema(data_of_csv['close'], 6) - calculate_ema(data_of_csv['close'], 13)
-    data_of_csv['signal_line'] = calculate_ema(data_of_csv['macd_line'], 5)
-    data_of_csv['macd_histogram'] = data_of_csv['macd_line'] - data_of_csv['signal_line']
-
     data_of_csv['trix'] = calculate_trix(data_of_csv, period=5)
-
-    data_of_csv['rsi'] = calculate_rsi(data_of_csv, period=15)
 
     data_of_csv['roc'] = calculate_roc(data_of_csv, period=20)
 
-    data_of_csv['momentum'] = calculate_momentum(data_of_csv, period=10)
-
-    data_of_csv['cmo'] = calculate_cmo(data_of_csv, period=20)
-
     data_of_csv['bollinger_bands'] = calculate_bollinger_bands(data_of_csv, period=20)
 
-    data_of_csv['positive_closes'] = calculate_positive_closes(data_of_csv)
+    data_of_csv['cumulative_spike'] = calculate_cumulative_spike(data_of_csv, period=10, threshold=0.35)
 
-    data_of_csv['higher_highs'] = calculate_higher_highs(data_of_csv, min_consecutive=3)
+    data_of_csv['cumulative_change'] = calculate_cumulative_change(data_of_csv, last_change_length=8)
 
-    data_of_csv['trendline_breakout'] = is_trendline_breakout(data_of_csv, lookback=20)
+    data_of_csv['keltner_breakout'] = calculate_keltner_breakout(data_of_csv, ema_period=12, atr_period=10,
+                                                                 multiplier=0.3)
 
-    data_of_csv['cumulative_spike'] = calculate_cumulative_spike(data_of_csv, period=10, threshold=0.55)
-
-    data_of_csv['cumulative_change'] = calculate_cumulative_change(data_of_csv)
-
-    data_of_csv['parabolic_sar_bullish'] = is_parabolic_sar_bullish(data_of_csv, period=20, acceleration=0.01)
-
-    data_of_csv['keltner_breakout'] = calculate_keltner_breakout(data_of_csv)
-
-    data_of_csv['elder_ray_index'] = calculate_elder_ray_index(data_of_csv)
-
-    data_of_csv['atr'] = calculate_atr(data_of_csv, period=20)
+    data_of_csv['elder_ray_index'] = calculate_elder_ray_index(data_of_csv, ema_period=12)
 
     data_of_csv['target'] = data_of_csv['target'].astype(int)
 
@@ -98,30 +79,8 @@ def calculate_ema(series, period):
     return series.ewm(span=period, adjust=False).mean()
 
 
-def calculate_cmo(data_of_csv, period):
-    delta = data_of_csv['close'].diff()
-    gain = delta.where(delta > 0, 0).rolling(window=period).sum()
-    loss = -delta.where(delta < 0, 0).rolling(window=period).sum()
-    cmo = (gain - loss) / (gain + loss) * 100
-    return cmo
-
-
-def calculate_momentum(data_of_csv, period):
-    momentum = data_of_csv['close'].diff(period)
-    return momentum
-
-
 def calculate_roc(data_of_csv, period):
     return data_of_csv['close'].pct_change(periods=period, fill_method=None) * 100
-
-
-def calculate_rsi(data_of_csv, period):
-    delta = data_of_csv['close'].diff()
-    gain = (delta.where(delta > 0, 0)).ewm(alpha=1 / period, adjust=False).mean()
-    loss = (-delta.where(delta < 0, 0)).ewm(alpha=1 / period, adjust=False).mean()
-    rs = gain / loss
-    rsi = 100 - (100 / (1 + rs))
-    return rsi
 
 
 def calculate_trix(data_of_csv, period):
@@ -157,104 +116,7 @@ def calculate_bollinger_bands(data_of_csv, period):
     return bandwidth
 
 
-def calculate_positive_closes(data, dip_tolerance=0.2):
-    if 'returns' not in data:
-        data['returns'] = data['close'].pct_change()
-
-    returns_pct = data['returns'] * 100
-    n = len(data)
-    counts = np.zeros(n, dtype=int)
-    current_streak = 0
-
-    for i in range(1, n):
-        prev_return = returns_pct.iloc[i - 1]
-
-        # Reset streak if previous period had a dip
-        if prev_return < -dip_tolerance:
-            current_streak = 0
-        # Increment streak if previous period was positive
-        elif prev_return > 0:
-            current_streak += 1
-        # Reset for neutral returns (0 or between 0 and -tolerance)
-        else:
-            current_streak = 0
-
-        counts[i] = current_streak
-
-    return pd.Series(counts, index=data.index)
-
-
-def calculate_higher_highs(data, min_consecutive=3):
-    # Calculate positive price differences
-    price_rising = data['close'].diff().gt(0)
-
-    # Create rolling window to check for consecutive rises
-    window_size = min_consecutive - 1
-    return price_rising.rolling(
-        window=window_size,
-        min_periods=window_size
-    ).apply(lambda x: x.all()).fillna(0).astype(int)
-
-
-def is_trendline_breakout(data, lookback=20):
-    high = data['high'].values
-    close = data['close'].values
-    n = len(data)
-    breakout = np.zeros(n, dtype=int)
-
-    # Precompute pivot highs
-    pivot_mask = np.zeros(n, dtype=bool)
-    for i in range(1, n - 1):
-        pivot_mask[i] = (high[i] > high[i - 1]) and (high[i] > high[i + 1])
-
-    # Track valid pivots with sliding window
-    valid_pivots = []
-    for i in range(n):
-        # Remove outdated pivots
-        while valid_pivots and valid_pivots[0] < (i - lookback):
-            valid_pivots.pop(0)
-
-        # Add new pivot if current is pivoted
-        if pivot_mask[i]:
-            valid_pivots.append(i)
-
-        # Need at least 2 pivots for trendline
-        if len(valid_pivots) >= 2:
-            # Get two most recent pivots
-            p1, p2 = valid_pivots[-2], valid_pivots[-1]
-
-            # Calculate trendline equation
-            slope = (high[p2] - high[p1]) / (p2 - p1)
-            intercept = high[p2] - slope * p2
-
-            # Projected price at current position
-            expected_high = slope * i + intercept
-
-            # Breakout conditions
-            if (close[i] > expected_high) and (close[i] > close[i - 1]):
-                breakout[i] = 1
-
-    # Handle initial values
-    breakout[:lookback] = 0
-    return breakout
-
-
-def get_expected_high(pivot_highs):
-    n = len(pivot_highs)
-    sum_x = sum(range(n))
-    sum_y = sum(pivot_highs)
-    sum_xy = sum(i * pivot_highs[i] for i in range(n))
-    sum_x2 = sum(i * i for i in range(n))
-
-    # Calculate the slope and intercept of the linear regression
-    slope = (n * sum_xy - sum_x * sum_y) / (n * sum_x2 - sum_x * sum_x)
-    intercept = (sum_y - slope * sum_x) / n
-
-    # Project the expected high for the next period (n+1)
-    return slope * n + intercept
-
-
-def calculate_cumulative_spike(data, period=10, threshold=0.55):
+def calculate_cumulative_spike(data, period, threshold):
     # Calculate returns if not already present
     if 'returns' not in data:
         data['returns'] = data['close'].pct_change()
@@ -276,7 +138,7 @@ def calculate_cumulative_spike(data, period=10, threshold=0.55):
     return (cumulative_return >= threshold).fillna(0).astype(int)
 
 
-def calculate_cumulative_change(data, last_change_length=5):
+def calculate_cumulative_change(data, last_change_length):
     # Calculate returns if missing
     if 'returns' not in data:
         data['returns'] = data['close'].pct_change()
@@ -298,67 +160,7 @@ def calculate_cumulative_change(data, last_change_length=5):
     ).mul(100).fillna(0).astype(float)
 
 
-def is_parabolic_sar_bullish(data, period, acceleration):
-    close = data['close'].values
-    n = len(close)
-    sar_bullish = np.zeros(n, dtype=int)
-
-    # Pre-allocate window buffer
-    window = np.zeros(period)
-    prev_sar = np.zeros(n)
-    uptrend = np.zeros(n, dtype=bool)
-    extreme_point = np.zeros(n)
-
-    # Main processing loop
-    for i in range(1, n):
-        if i < period:
-            # Initialize values for first period
-            prev_sar[i] = close[i - 1]
-            uptrend[i] = True
-            extreme_point[i] = close[i - 1]
-            continue
-
-        # Roll window buffer
-        window[:-1] = window[1:]
-        window[-1] = close[i - 1]
-
-        # Initialize from buffer
-        current_sar = prev_sar[i - 1]
-        current_uptrend = uptrend[i - 1]
-        current_extreme = extreme_point[i - 1]
-
-        # Update SAR for current position
-        if current_uptrend:
-            current_sar += acceleration * (current_extreme - current_sar)
-            if window[-1] < current_sar:
-                current_uptrend = False
-                current_sar = current_extreme
-                current_extreme = window[-1]
-            else:
-                current_extreme = max(current_extreme, window[-1])
-        else:
-            current_sar -= acceleration * (current_sar - current_extreme)
-            if window[-1] > current_sar:
-                current_uptrend = True
-                current_sar = current_extreme
-                current_extreme = window[-1]
-            else:
-                current_extreme = min(current_extreme, window[-1])
-
-        # Store values for next iteration
-        prev_sar[i] = current_sar
-        uptrend[i] = current_uptrend
-        extreme_point[i] = current_extreme
-
-        # Check bullish condition
-        sar_bullish[i] = int(close[i] > current_sar)
-
-    # Set first period values to 0
-    sar_bullish[:period] = 0
-    return sar_bullish
-
-
-def calculate_keltner_breakout(data, ema_period=20, atr_period=20, multiplier=0.2):
+def calculate_keltner_breakout(data, ema_period, atr_period, multiplier):
     # Precompute EMA and ATR
     data['ema'] = data['close'].ewm(span=ema_period, adjust=False).mean()
     data['atr'] = calculate_atr(data, atr_period)
@@ -375,7 +177,7 @@ def calculate_keltner_breakout(data, ema_period=20, atr_period=20, multiplier=0.
     return breakouts
 
 
-def calculate_elder_ray_index(data, ema_period=12):
+def calculate_elder_ray_index(data, ema_period):
     ema = data['close'].ewm(span=ema_period, adjust=False).mean()
     return data['close'] - ema
 
@@ -466,12 +268,11 @@ def train_spike_predictor(data_path):
 
     # feature categories from Java feature creator
     features_list = [
-        'sma_crossover', 'macd_line', 'trix',
-        'rsi', 'roc', 'momentum', 'cmo',
+        'sma_crossover', 'trix',
+        'roc',
         'bollinger_bands',
-        'positive_closes', 'higher_highs', 'trendline_breakout',
         'cumulative_spike', 'cumulative_change',
-        'parabolic_sar_bullish', 'keltner_breakout', 'elder_ray_index', 'atr'
+        'keltner_breakout', 'elder_ray_index'
     ]
 
     # Scale the data to values between 0 and 1
