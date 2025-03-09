@@ -11,7 +11,6 @@ from keras.src.layers import LSTM, Dense, Dropout, BatchNormalization, MaxPoolin
 from keras.src.metrics import Precision, Recall, AUC
 from keras.src.regularizers import regularizers
 from sklearn.compose import ColumnTransformer
-from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler
 
 
@@ -210,7 +209,7 @@ def calculate_atr(data_of_csv, period):
 
 
 # 2. Dataset preparation
-def prepare_sequences(data, features, window_size):
+def prepare_sequences(data, features, window_size, preprocessor=None):
     # Identify numeric features
     numeric_features = data[features].select_dtypes(include=['float64', 'int64']).columns
 
@@ -218,19 +217,20 @@ def prepare_sequences(data, features, window_size):
     if data[numeric_features].isna().any().any():
         data = data.dropna(subset=numeric_features)
 
-    # Scale all numeric features using MinMaxScaler for consistency (instead of low-range/high-range distinction)
-    preprocessor = ColumnTransformer(
-        transformers=[
-            ('scaler', MinMaxScaler(), numeric_features)
-        ]
-    )
-
-    # Apply the preprocessor to the data
-    scaled_data = preprocessor.fit_transform(data[features])
+    if preprocessor is None:
+        preprocessor = ColumnTransformer(
+            transformers=[('scaler', MinMaxScaler(), numeric_features)]
+        )
+        # Apply the preprocessor to the data
+        scaled_data = preprocessor.fit_transform(data[features])
+    else:
+        # Apply the preprocessor to the data
+        scaled_data = preprocessor.transform(data[features])  # Use existing scaler
 
     label = data['target'].values[window_size:]
 
     feature = []
+    # Create window arrays of the data for historical processing
     for i in range(window_size, len(data)):
         feature.append(scaled_data[i - window_size:i])
 
@@ -289,40 +289,45 @@ def train_spike_predictor(data_path):
         'cumulative_change', 'keltner_breakout', 'elder_ray_index'
     ]
 
-    # Scale the data to values between 0 and 1
-    features, labels, scaler = prepare_sequences(data_of_csv, features_list, len(features_list))
+    # Define split index (80% train, 20% validation) to keep order
+    split_index = int(len(data_of_csv) * 0.8)
 
-    # Set options to display all columns and rows and debug the normalization
-    pd.set_option('display.max_columns', None)  # Display all columns
-    pd.set_option('display.max_rows', None)  # Display all rows
-    pd.set_option('display.width', None)  # Allow unlimited width for columns
-    pd.set_option('display.max_colwidth', None)  # Prevent truncation of column contents
-    print(features)
+    # Split data while maintaining chronological order
+    train_data = data_of_csv.iloc[:split_index]
+    val_data = data_of_csv.iloc[split_index:]
 
-    # Split the data to test_size X for testing and 1-X for training
-    features_train, features_test, labels_train, labels_test = train_test_split(features, labels, test_size=0.20)
+    # Verify size
+    print(f"Training Data: {train_data.shape}, Labels: {train_data['target'].values.shape}")
+    print(f"Validation Data: {val_data.shape}, Labels: {val_data['target'].values.shape}")
 
-    # Build and define the architecture of the Network for training
-    model = build_model((features_train.shape[1], features_train.shape[2]))
+    # Scale the data to values between 0 and 1 (train, validation separate)
+    features_train_scaled, labels_train_scaled, scaler = prepare_sequences(train_data, features_list, 30)
+    features_test_scaled, labels_test_scaled, _ = prepare_sequences(val_data, features_list, 30, preprocessor=scaler)
+
+    # Build and define the architecture of the Network for training (timeWindowSize, features)
+    model = build_model((features_train_scaled.shape[1], features_train_scaled.shape[2]))
 
     # Define callbacks
     early_stop = EarlyStopping(monitor='val_auc', patience=15, mode='max', restore_best_weights=True, min_delta=0.005)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.0001)
 
     # Reshape data for SMOTE
-    nsamples, window_size, n_features = features_train.shape
-    features_train_2d = features_train.reshape(nsamples, window_size * n_features)
+    n_samples, window_size, n_features = features_train_scaled.shape
+    features_train_2d = features_train_scaled.reshape(n_samples, window_size * n_features)
 
-    # Apply SMOTE to balance classes
-    smote = SMOTE(random_state=42)
-    features_train_res_2d, labels_train_res = smote.fit_resample(features_train_2d, labels_train)
+    # Apply SMOTE to balance classes: use dirty synthetic sample generation to trick
+    # the model into the belief that everything which doesn't go up directly, since my dataset is made by hand
+    # and only positive samples are selected, is bad. So by creating synthetic classes it believes that it has to
+    # spike as soon as something goes up. Too high smote will bias the model so 0.5 -0.7 works the best
+    smote = SMOTE(sampling_strategy=0.7, random_state=42)
+    features_train_smote_2d, labels_train_smote = smote.fit_resample(features_train_2d, labels_train_scaled)
 
     # Reshape back to 3D for model input
-    features_train_res = features_train_res_2d.reshape(-1, window_size, n_features)
+    features_train_smote = features_train_smote_2d.reshape(-1, window_size, n_features)
 
     # Update class weight calculation using resampled data
-    print("Resampled class distribution:", np.bincount(labels_train_res.flatten()))
-    print("Class distribution:", np.bincount(labels_train.flatten()))
+    print("Resampled class distribution:", np.bincount(labels_train_smote.flatten()))
+    print("Class distribution:", np.bincount(labels_train_scaled.flatten()))
 
     # training process of the model CPU has in my case better performance than GPU
     # Explanation: tasks are moved around from cpu to gpu vice versa. Sometimes tasks are split between both which
@@ -332,16 +337,16 @@ def train_spike_predictor(data_path):
     # hybrid models with assigning certain tasks forceful to EPs did improve the performance by 25% to 15 ms.
     with tf.device('/CPU:0'):
         model.fit(
-            features_train_res, labels_train_res,
+            features_train_smote, labels_train_smote,
             epochs=256,
             batch_size=128,
-            validation_data=(features_test, labels_test),
-            callbacks=[early_stop, reduce_lr],
+            validation_data=(features_test_scaled, labels_test_scaled),
+            callbacks=[early_stop, reduce_lr]
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
     model_proto, _ = tf2onnx.convert.from_keras(model, input_signature=[
-        tf.TensorSpec([None, *features_train.shape[1:]], tf.float32)])
+        tf.TensorSpec([None, *features_train_scaled.shape[1:]], tf.float32)])
     with open("spike_predictor.onnx", "wb") as f:
         f.write(model_proto.SerializeToString())
 
