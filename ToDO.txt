@@ -3,11 +3,12 @@ KEY
 - check if a premium API key works
 
 CODE
-1 do manual comparison of return data
-2 optimize weights and interference
+1. do manual comparison of return data
 
-3 update the normalizing process before feeding
-4 Compare different buffer logics for best performance
+2. update the normalizing process before feeding
+3. Compare different buffer logics for best performance
+4. implement smote to the validation dataset
+5. Fix overfitting
 
 TESTING
 - test out new trading simulation parameters

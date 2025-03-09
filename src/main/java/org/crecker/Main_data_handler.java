@@ -28,9 +28,27 @@ import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.logTextArea;
 import static org.crecker.RallyPredictor.predict;
-import static org.crecker.weightRangeMap.*;
 
 public class Main_data_handler {
+    public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
+        // Trend Following Indicators
+        put("SMA_CROSS", Map.of("min", -1.0, "max", 1.0));
+        put("TRIX", Map.of("min", -0.5, "max", 0.5));
+
+        // Momentum Indicators
+        put("ROC", Map.of("min", -5.0, "max", 5.0));
+
+        // Volatility & Breakouts Indicators
+        put("BOLLINGER", Map.of("min", 0.0, "max", 0.1));
+
+        // Statistical Indicators
+        put("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0));
+        put("CUMULATIVE_THRESHOLD", Map.of("min", -7.0, "max", 7.0));
+
+        // Advanced Indicators
+        put("KELTNER", Map.of("min", 0.0, "max", 1.0));
+        put("ELDER_RAY", Map.of("min", -3.0, "max", 3.0));
+    }};
     static final Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
@@ -552,7 +570,7 @@ public class Main_data_handler {
 
         // Statistical Indicators
         features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.35); // 4
-        features[featureIndex++] = cumulativePercentageChange(stocks, 8); // 5
+        features[featureIndex++] = cumulativePercentageChange(stocks); // 5
 
         // Advanced Indicators
         features[featureIndex++] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 6
@@ -585,49 +603,11 @@ public class Main_data_handler {
             return new ArrayList<>(); // Return empty list to skip notifications
         }
 
-        Map<String, Double> aggregatedWeights = new HashMap<>();
-
-        INDICATOR_RANGE_FULL.forEach((category, indicators) -> {
-            double categoryWeight = INDICATOR_WEIGHTS_FULL.getOrDefault(category, 0.0);
-            indicators.forEach((indicator, weight) -> {
-                double finalWeight = weight * categoryWeight;
-                aggregatedWeights.merge(indicator, finalWeight, Double::sum);
-            });
-        });
-
         //raw features
         double[] features = computeFeatures(stocks, symbol);
 
-        //normalized features
-        float[] normalized = normalizeFeatures(features);
-
-        //print normalized features
-        System.out.print("Features: " + stocks.get(stocks.size()-1).getDateDate() + " ");
-        for (double feature : normalized) {
-            System.out.printf("%.4f ", feature);  // Adjust the number of decimals as needed
-        }
-        System.out.println();  // Adds a newline after all features
-
-        //weighted list
-        double[] weightedFeatures = new double[normalized.length];
-
-        // Map indicators to feature index
-        Map<String, Integer> indicatorToIndex = new HashMap<>();
-        int idx = 0;
-        for (String indicator : INDICATOR_RANGE_MAP.keySet()) {
-            indicatorToIndex.put(indicator, idx++);
-        }
-
-        // Apply weights
-        aggregatedWeights.forEach((indicator, weight) -> {
-            Integer index = indicatorToIndex.get(indicator);
-            if (index != null && index < normalized.length) {
-                weightedFeatures[index] = normalized[index] * weight;
-            }
-        });
-
-        // feed normalized unweighted features
-        double prediction = predict(normalized);
+        // feed normalized features
+        double prediction = predict(normalizeFeatures(features));
 
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(
@@ -645,12 +625,12 @@ public class Main_data_handler {
             timeSeries.add(new Minute(stockUnit.getDateDate()), stockUnit.getClose());
         }
 
-        return evaluateResult(timeSeries, weightedFeatures, prediction, aggregatedWeights, stocks, symbol, features);
+        return evaluateResult(timeSeries, prediction, stocks, symbol, features);
     }
 
     // Method for evaluating results
-    private static List<Notification> evaluateResult(TimeSeries timeSeries, double[] weightedFeatures, double prediction,
-                                                     Map<String, Double> aggregatedWeights, List<StockUnit> stocks, String symbol,
+    private static List<Notification> evaluateResult(TimeSeries timeSeries, double prediction,
+                                                     List<StockUnit> stocks, String symbol,
                                                      double[] features) {
         List<Notification> alertsList = new ArrayList<>();
 
@@ -784,10 +764,10 @@ public class Main_data_handler {
     }
 
     // 6. Cumulative Percentage Change
-    private static double cumulativePercentageChange(List<StockUnit> stocks, int change) {
+    private static double cumulativePercentageChange(List<StockUnit> stocks) {
         int startIndex = 0;
         try {
-            startIndex = stocks.size() - change;
+            startIndex = stocks.size() - 8;
         } catch (Exception e) {
             e.printStackTrace();
         }
