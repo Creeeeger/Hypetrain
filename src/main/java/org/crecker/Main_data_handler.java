@@ -601,6 +601,13 @@ public class Main_data_handler {
         //normalized features
         float[] normalized = normalizeFeatures(features);
 
+        //print normalized features
+        System.out.print("Features: " + stocks.get(stocks.size()-1).getDateDate() + " ");
+        for (double feature : normalized) {
+            System.out.printf("%.4f ", feature);  // Adjust the number of decimals as needed
+        }
+        System.out.println();  // Adds a newline after all features
+
         //weighted list
         double[] weightedFeatures = new double[normalized.length];
 
@@ -785,7 +792,7 @@ public class Main_data_handler {
             e.printStackTrace();
         }
 
-        // Using parallelStream to process the list in parallel
+        // Using Stream to process the list
         return stocks.subList(startIndex, stocks.size())
                 .stream()
                 .mapToDouble(StockUnit::getPercentageChange)  // Convert to double

@@ -43,9 +43,9 @@ def create_features(data_of_csv):
     # Forward fill to maintain state between crossovers
     data_of_csv['sma_crossover'] = (
         data_of_csv['sma_crossover']
-        .replace(0, np.nan)  # Replace 0s with NaN for forward filling
-        .ffill()  # Propagate last known state forward
-        .fillna(0)  # Fill initial NaNs (pre-first crossover) with 0
+        .replace(0, np.nan)
+        .ffill()
+        .fillna(0)
         .astype(int)
     )
 
@@ -59,8 +59,7 @@ def create_features(data_of_csv):
 
     data_of_csv['cumulative_change'] = calculate_cumulative_change(data_of_csv, last_change_length=8)
 
-    data_of_csv['keltner_breakout'] = calculate_keltner_breakout(data_of_csv, ema_period=12, atr_period=10,
-                                                                 multiplier=0.3)
+    data_of_csv['keltner_breakout'] = calculate_keltner_breakout(data_of_csv, 12, 10, 0.3, 0.4)
 
     data_of_csv['elder_ray_index'] = calculate_elder_ray_index(data_of_csv, ema_period=12)
 
@@ -160,16 +159,27 @@ def calculate_cumulative_change(data, last_change_length):
     ).mul(100).fillna(0).astype(float)
 
 
-def calculate_keltner_breakout(data, ema_period, atr_period, multiplier):
+def calculate_keltner_breakout(data, ema_period, atr_period, multiplier, cumulative_limit):
     # Precompute EMA and ATR
     data['ema'] = data['close'].ewm(span=ema_period, adjust=False).mean()
     data['atr'] = calculate_atr(data, atr_period)
 
-    # Calculate upper band
+    # Upper band calculation
     upper_band = data['ema'] + (multiplier * data['atr'])
 
-    # Determine breakouts
-    breakouts = (data['close'] > upper_band).astype(int)
+    reference_close = data['close'].shift(8)
+    cumulative_change = ((data['close'] - reference_close) / reference_close.replace(0, 1)) * 100
+    cumulative_change = cumulative_change.fillna(0)  # Handle initial NaN values
+
+    # Combined conditions (boolean Series)
+    is_breakout = (data['close'] > upper_band)
+    has_significant_move = cumulative_change.abs() >= cumulative_limit
+
+    breakouts = (
+        (is_breakout & has_significant_move)
+        .where(data.index >= max(ema_period, 4) + 1, False)
+        .astype(int)
+    )
 
     # Cleanup temporary columns
     data.drop(columns=['ema', 'atr'], inplace=True)
@@ -183,12 +193,19 @@ def calculate_elder_ray_index(data, ema_period):
 
 
 def calculate_atr(data_of_csv, period):
+    # Calculate components of True Range (TR)
     high_low = data_of_csv['high'] - data_of_csv['low']
-    high_close = np.abs(data_of_csv['high'] - data_of_csv['close'].shift())
-    low_close = np.abs(data_of_csv['low'] - data_of_csv['close'].shift())
+    high_close = np.abs(data_of_csv['high'] - data_of_csv['close'].shift(1))
+    low_close = np.abs(data_of_csv['low'] - data_of_csv['close'].shift(1))
 
-    true_range = np.maximum(high_low, high_close, low_close)
-    atr = true_range.rolling(window=period).mean()
+    # True Range is the maximum of the three values
+    true_range = np.maximum(high_low, np.maximum(high_close, low_close))
+
+    atr = true_range.rolling(window=period + 1).apply(
+        lambda window: window[1:period + 1].sum() / period,
+        raw=True
+    )
+
     return atr
 
 
@@ -266,17 +283,21 @@ def train_spike_predictor(data_path):
     # Engineer the features
     data_of_csv = create_features(data_of_csv)
 
-    # feature categories from Java feature creator
+    # feature categories from Java
     features_list = [
-        'sma_crossover', 'trix',
-        'roc',
-        'bollinger_bands',
-        'cumulative_spike', 'cumulative_change',
-        'keltner_breakout', 'elder_ray_index'
+        'sma_crossover', 'trix', 'roc', 'bollinger_bands', 'cumulative_spike',
+        'cumulative_change', 'keltner_breakout', 'elder_ray_index'
     ]
 
     # Scale the data to values between 0 and 1
     features, labels, scaler = prepare_sequences(data_of_csv, features_list, len(features_list))
+
+    # Set options to display all columns and rows and debug the normalization
+    pd.set_option('display.max_columns', None)  # Display all columns
+    pd.set_option('display.max_rows', None)  # Display all rows
+    pd.set_option('display.width', None)  # Allow unlimited width for columns
+    pd.set_option('display.max_colwidth', None)  # Prevent truncation of column contents
+    print(features)
 
     # Split the data to test_size X for testing and 1-X for training
     features_train, features_test, labels_train, labels_test = train_test_split(features, labels, test_size=0.20)
