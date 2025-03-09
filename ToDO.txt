@@ -5,10 +5,8 @@ KEY
 CODE
 1. do manual comparison of return data
 
-2. update the normalizing process before feeding
-3. Compare different buffer logics for best performance
-4. implement smote to the validation dataset
-5. Fix overfitting
+2. Compare different buffer logics for best performance
+3. Fix overfitting
 
 TESTING
 - test out new trading simulation parameters

@@ -209,13 +209,31 @@ def calculate_atr(data_of_csv, period):
 
 
 # 2. Dataset preparation
-def prepare_sequences(data, features, window_size, preprocessor=None):
-    # Identify numeric features
+def prepare_sequences(data, features, window_size, preprocessor=None, outlier_window=60):
+    data = data.copy()
     numeric_features = data[features].select_dtypes(include=['float64', 'int64']).columns
 
     # Check for NaN values and drop rows with missing values
     if data[numeric_features].isna().any().any():
         data = data.dropna(subset=numeric_features)
+
+    # Outlier replacement for ALL features first
+    for feature in numeric_features:
+        rolling_median = (
+            data[feature]
+            .rolling(window=outlier_window, min_periods=1, closed='left')
+            .median()
+        )
+
+        Q1 = data[feature].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.25)
+        Q3 = data[feature].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.75)
+        IQR = Q3 - Q1
+
+        lower_bound = Q1 - 1.5 * IQR
+        upper_bound = Q3 + 1.5 * IQR
+
+        outlier_mask = (data[feature] < lower_bound) | (data[feature] > upper_bound)
+        data.loc[outlier_mask, feature] = rolling_median[outlier_mask]
 
     if preprocessor is None:
         preprocessor = ColumnTransformer(
@@ -308,7 +326,7 @@ def train_spike_predictor(data_path):
     model = build_model((features_train_scaled.shape[1], features_train_scaled.shape[2]))
 
     # Define callbacks
-    early_stop = EarlyStopping(monitor='val_auc', patience=15, mode='max', restore_best_weights=True, min_delta=0.005)
+    early_stop = EarlyStopping(monitor='val_auc', patience=7, mode='max', restore_best_weights=True, min_delta=0.005)
     reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.0001)
 
     # Reshape data for SMOTE
@@ -318,7 +336,7 @@ def train_spike_predictor(data_path):
     # Apply SMOTE to balance classes: use dirty synthetic sample generation to trick
     # the model into the belief that everything which doesn't go up directly, since my dataset is made by hand
     # and only positive samples are selected, is bad. So by creating synthetic classes it believes that it has to
-    # spike as soon as something goes up. Too high smote will bias the model so 0.5 -0.7 works the best
+    # spike as soon as something goes up. Too high smote will bias the model so 0.5 - 0.7 works the best
     smote = SMOTE(sampling_strategy=0.7, random_state=42)
     features_train_smote_2d, labels_train_smote = smote.fit_resample(features_train_2d, labels_train_scaled)
 
@@ -328,6 +346,8 @@ def train_spike_predictor(data_path):
     # Update class weight calculation using resampled data
     print("Resampled class distribution:", np.bincount(labels_train_smote.flatten()))
     print("Class distribution:", np.bincount(labels_train_scaled.flatten()))
+
+    class_weight = {0: 1, 1: 1.8}  # Approximate inverse ratio
 
     # training process of the model CPU has in my case better performance than GPU
     # Explanation: tasks are moved around from cpu to gpu vice versa. Sometimes tasks are split between both which
@@ -341,7 +361,8 @@ def train_spike_predictor(data_path):
             epochs=256,
             batch_size=128,
             validation_data=(features_test_scaled, labels_test_scaled),
-            callbacks=[early_stop, reduce_lr]
+            callbacks=[early_stop, reduce_lr],
+            class_weight=class_weight
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
