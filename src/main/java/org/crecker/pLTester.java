@@ -69,7 +69,7 @@ public class pLTester {
     }
 
     private static void updateStocks() {
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA")) {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "WOLF")) {
             getData(stock);
         }
     }

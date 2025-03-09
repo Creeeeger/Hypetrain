@@ -6,5 +6,9 @@ CODE
 1 do manual comparison of return data
 2 optimize weights and interference
 
+3 Modify rally detector input handling
+4 Reconstruct methods in trainer
+5 Fix some data leakage in training and random shuffling
+
 TESTING
 - test out new trading simulation parameters

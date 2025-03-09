@@ -24,134 +24,21 @@
 ## Indicators in use
 
 1. Simple Moving Average (SMA) Crossovers
-2. MACD (Moving Average Convergence Divergence)
-3. TRIX Indicator
-4. Relative Strength Index (RSI)
-5. Rate of Change (ROC)
-6. Momentum Oscillator
-7. Chande Momentum Oscillator (CMO)
-8. Bollinger Bands
-9. Consecutive Positive Closes
-10. Higher Highs Pattern
-11. Trend-line Analysis
-12. Cumulative Percentage Change
-13. Percentage Change Threshold
-14. Parabolic SAR Approximation
-15. Keltner Channels
-16. Elder-Ray Index Approximation
-17. ATR Calculator using Close Prices
+2. TRIX Indicator
+3. Rate of Change (ROC)
+4. Bollinger Bands
+5. Cumulative Percentage Change
+6. Percentage Change Threshold
+7. Keltner Channels
+8. Elder-Ray Index Approximation
 
 ## Python env. instructions
 
-- Open it in pycharm
+- Open project in pycharm
 - Install dependencies which throw errors
-- run main.py
+- Run main.py
 
 ---
-
-# Indicator Weight Optimization
-
-This document outlines the optimized weights assigned to different technical indicators based on their predictive power
-in price movement analysis.
-
-## 📌 **Category-Level Weights**
-
-The weight distribution among major categories has been adjusted to enhance accuracy in trend detection, momentum
-strength, volatility breakouts, and statistical significance.
-
-| **Category**             | **Weight (%)** |
-|--------------------------|----------------|
-| **Trend Following**      | 25%            |
-| **Momentum**             | 25%            |
-| **Volatility Breakouts** | 15%            |
-| **Advanced Indicators**  | 15%            |
-| **Patterns**             | 10%            |
-| **Statistical**          | 10%            |
-
----
-
-## 🔹 **Trend Following Indicators (25%)**
-
-Focused on key trend confirmation tools.
-
-| **Indicator** | **Weight (%)** |
-|---------------|----------------|
-| **MACD**      | 30%            |
-| **TRIX**      | 20%            |
-| **SMA Cross** | 50%            |
-
----
-
-## 🔹 **Momentum Indicators (25%)**
-
-Enhancing detection of overbought/oversold conditions and price velocity.
-
-| **Indicator** | **Weight (%)** |
-|---------------|----------------|
-| **RSI**       | 30%            |
-| **CMO**       | 30%            |
-| **Momentum**  | 25%            |
-| **ROC**       | 15%            |
-
----
-
-## 🔹 **Volatility Breakouts (15%)**
-
-Volatility-based trading signals remain a strong factor.
-
-| **Indicator**       | **Weight (%)** |
-|---------------------|----------------|
-| **Bollinger Bands** | 100%           |
-
----
-
-## 🔹 **Advanced Indicators (15%)**
-
-Better volatility-adjusted signals for dynamic market conditions.
-
-| **Indicator**        | **Weight (%)** |
-|----------------------|----------------|
-| **Keltner Channels** | 35%            |
-| **ATR**              | 30%            |
-| **Parabolic SAR**    | 20%            |
-| **Elder Ray**        | 15%            |
-
----
-
-## 🔹 **Patterns Indicators (10%)**
-
-Clearer pattern-based technical analysis.
-
-| **Indicator**                   | **Weight (%)** |
-|---------------------------------|----------------|
-| **Trendline**                   | 45%            |
-| **Higher Highs**                | 35%            |
-| **Consecutive Positive Closes** | 20%            |
-
----
-
-## 🔹 **Statistical Indicators (10%)**
-
-Maintaining balance in cumulative price movement analysis.
-
-| **Indicator**             | **Weight (%)** |
-|---------------------------|----------------|
-| **Cumulative Percentage** | 50%            |
-| **Cumulative Threshold**  | 50%            |
-
----
-
-### 📌 **Summary**
-
-This weight optimization provides a **balanced** and **data-driven** approach to technical analysis, focusing on trend
-reliability, momentum validation, volatility breakouts, and pattern recognition.
-
-🔹 **Key Changes:**
-
-- Increased weight for **MACD (30%)** for trend strength.
-- Boosted **RSI (30%)** and **CMO (30%)** for stronger momentum insights.
-- Strengthened **Keltner Channels (35%)** and **ATR (30%)** for better volatility measures.
-- Emphasized **Trendline (45%)** for clearer pattern confirmation.
 
 # Disclaimer
 
