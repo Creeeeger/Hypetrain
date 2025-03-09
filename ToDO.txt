@@ -6,9 +6,8 @@ CODE
 1 do manual comparison of return data
 2 optimize weights and interference
 
-3 Modify rally detector input handling
-4 Fix some data leakage in training and random shuffling
-5 update the normalizing process before feeding
+3 update the normalizing process before feeding
+4 Compare different buffer logics for best performance
 
 TESTING
 - test out new trading simulation parameters

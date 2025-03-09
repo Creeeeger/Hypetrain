@@ -54,17 +54,21 @@ public class RallyPredictor implements AutoCloseable {
     public synchronized Float updateAndPredict(float[] features) {
         bufferLock.lock();
         try {
-            buffer.clear();
-            buffer.add(features);
-            return predictSpike();
+            if (buffer.size() >= 30) {
+                buffer.remove(0); // Remove the oldest feature if the buffer is full
+            }
 
+            buffer.add(features); // Add the new feature to the buffer
+
+            if (buffer.size() >= 30) {
+                return predictSpike(); // Only predict once the buffer is full
+            }
         } catch (Exception e) {
             e.printStackTrace();
         } finally {
             bufferLock.unlock();
         }
-
-        return null;
+        return 0F;
     }
 
     /**
@@ -73,9 +77,9 @@ public class RallyPredictor implements AutoCloseable {
      * @return The spike probability, or null if the buffer is not yet full.
      */
     private Float predictSpike() throws OrtException {
-        float[][][] inputArray = new float[1][length][length];
+        float[][][] inputArray = new float[1][30][length];
 
-        for (int i = 0; i < Math.min(buffer.size(), length); i++) {
+        for (int i = 0; i < 30; i++) {
             float[] features = buffer.get(i);
             System.arraycopy(features, 0, inputArray[0][i], 0, Math.min(features.length, length));
         }
