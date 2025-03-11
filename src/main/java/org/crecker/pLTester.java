@@ -11,6 +11,7 @@ import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
+import org.jfree.chart.ui.Layer;
 import org.jfree.data.time.Minute;
 import org.jfree.data.time.RegularTimePeriod;
 import org.jfree.data.time.TimeSeries;
@@ -440,13 +441,20 @@ public class pLTester {
 
             // Prediction renderer (orange line without markers)
             XYLineAndShapeRenderer predictionRenderer = new XYLineAndShapeRenderer();
-            predictionRenderer.setSeriesPaint(0, new Color(255, 165, 0)); // Orange
+            predictionRenderer.setSeriesPaint(0, new Color(255, 165, 0, 100)); // Orange
             predictionRenderer.setSeriesStroke(0, new BasicStroke(1f));
             predictionRenderer.setSeriesShapesVisible(0, false);
 
             // Assign renderers to datasets
             plot.setRenderer(1, indicatorRenderer);
             plot.setRenderer(2, predictionRenderer);
+
+            // Create a marker for y = 0
+            ValueMarker zeroMarker = new ValueMarker(0);
+            zeroMarker.setPaint(Color.BLACK);
+            zeroMarker.setStroke(new BasicStroke(1f));
+
+            plot.addRangeMarker(1, zeroMarker, Layer.FOREGROUND);
 
             // Configure main series renderer (solid black line without markers)
             XYLineAndShapeRenderer priceRenderer = (XYLineAndShapeRenderer) plot.getRenderer();
