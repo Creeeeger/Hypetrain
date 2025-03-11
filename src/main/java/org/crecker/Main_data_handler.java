@@ -612,7 +612,7 @@ public class Main_data_handler {
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(
                     new Minute(stocks.get(stocks.size() - 1).getDateDate()),
-                    features[0]
+                    features[2]
             );
 
             predictionTimeSeries.addOrUpdate(
@@ -643,12 +643,16 @@ public class Main_data_handler {
         // 6. isKeltnerBreakout
         // 7. elderRayIndex
 
-        if (features[0] == 1 && features[1] > 0.12) {
-            if (features[6] == 1) {
-                createNotification(symbol, stocks.stream()
-                        .skip(stocks.size() - 4)
-                        .mapToDouble(StockUnit::getPercentageChange)
-                        .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+        if (features[0] == 1) {
+            if (features[1] > 0.12) { //maybe >0
+                if (features[2] > 0.2) {
+                    if (features[6] == 1) {
+                        createNotification(symbol, stocks.stream()
+                                .skip(stocks.size() - 4)
+                                .mapToDouble(StockUnit::getPercentageChange)
+                                .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+                    }
+                }
             }
         }
 

@@ -49,7 +49,7 @@ public class Main_UI extends JFrame {
     static String selected_stock = "Select a Stock"; //selected_stock is the Stock to show in the chart bar
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JTextField searchField;
-    static JButton oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
+    static JButton tenMinutesButton, thirtyMinutesButton, oneHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
     static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
@@ -71,6 +71,7 @@ public class Main_UI extends JFrame {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
+    private static Date startDate;
     private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     private String currentStockSymbol = null; // Track the currently displayed stock symbol
 
@@ -428,8 +429,11 @@ public class Main_UI extends JFrame {
                         }
                     });
 
-                    stocks = values;
-                    refreshChartData(1);
+                    // After processing, update on EDT
+                    SwingUtilities.invokeLater(() -> {
+                        stocks = values;
+                        refreshChartData(1);
+                    });
                 });
 
                 Main_data_handler.receive_News(selected_stock, values -> {
@@ -532,14 +536,25 @@ public class Main_UI extends JFrame {
                         if (value != null) {
                             SwingUtilities.invokeLater(() -> {
                                 try {
-                                    Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
-                                    // Get the latest closing price for the new data point
-                                    double latestClose = value.getClose();  // Assuming 'value' contains the stock data
+                                    if (!timeSeries.isEmpty()) {
+                                        Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
 
-                                    // Update the time series with the new timestamp and closing price
-                                    timeSeries.addOrUpdate(new Minute(date), latestClose);
+                                        // Update axis properly for live updates
+                                        XYPlot plot = chartDisplay.getChart().getXYPlot();
+                                        DateAxis axis = (DateAxis) plot.getDomainAxis();
+                                        axis.setRange(startDate, date);
+                                        updateYAxisRange(plot, startDate, date);
 
-                                    chartPanel.repaint();
+                                        // Get the latest closing price for the new data point
+                                        double latestClose = value.getClose();
+
+                                        // Update the time series with the new timestamp and closing price
+                                        timeSeries.addOrUpdate(new Minute(date), latestClose);
+
+                                        chartPanel.repaint();
+                                    } else {
+                                        System.out.println("TimeSeries is empty.");
+                                    }
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                     logTextArea.append("Error updating chart: " + e.getMessage() + "\n");
@@ -575,12 +590,18 @@ public class Main_UI extends JFrame {
 
         // Buttons for time range selection (Day, Week, Month)
         JPanel buttonPanel = new JPanel();
+        tenMinutesButton = new JButton("10 Minutes");
+        thirtyMinutesButton = new JButton("30 Minutes");
+        oneHourButton = new JButton("1 Hour");
         oneDayButton = new JButton("1 Day");
         threeDaysButton = new JButton("3 Days");
         oneWeekButton = new JButton("1 Week");
         twoWeeksButton = new JButton("2 Weeks");
         oneMonthButton = new JButton("1 Month");
 
+        tenMinutesButton.setEnabled(false);
+        thirtyMinutesButton.setEnabled(false);
+        oneHourButton.setEnabled(false);
         oneDayButton.setEnabled(false);
         threeDaysButton.setEnabled(false);
         oneWeekButton.setEnabled(false);
@@ -588,6 +609,9 @@ public class Main_UI extends JFrame {
         oneMonthButton.setEnabled(false);
 
         //add day buttons
+        buttonPanel.add(tenMinutesButton);
+        buttonPanel.add(thirtyMinutesButton);
+        buttonPanel.add(oneHourButton);
         buttonPanel.add(oneDayButton);
         buttonPanel.add(threeDaysButton);
         buttonPanel.add(oneWeekButton);
@@ -595,6 +619,9 @@ public class Main_UI extends JFrame {
         buttonPanel.add(oneMonthButton);
 
         // Adding Action Listeners with lambda expressions
+        tenMinutesButton.addActionListener(e -> refreshChartData(6));
+        thirtyMinutesButton.addActionListener(e -> refreshChartData(7));
+        oneHourButton.addActionListener(e -> refreshChartData(8));
         oneDayButton.addActionListener(e -> refreshChartData(1));
         threeDaysButton.addActionListener(e -> refreshChartData(2));
         oneWeekButton.addActionListener(e -> refreshChartData(3));
@@ -708,10 +735,20 @@ public class Main_UI extends JFrame {
 
             try {
                 if (stocks != null) {
-                    for (StockUnit stock : stocks) {
-                        Minute minute = new Minute(stock.getDateDate());
-                        timeSeries.add(minute, stock.getClose());
-                    }
+                    stocks.parallelStream().forEach(stock -> {
+                        Calendar cal = Calendar.getInstance();
+                        cal.setTime(stock.getDateDate());
+                        int year = cal.get(Calendar.YEAR);
+                        int month = cal.get(Calendar.MONTH) + 1; // Months are 0-based
+                        int day = cal.get(Calendar.DAY_OF_MONTH);
+                        int hour = cal.get(Calendar.HOUR_OF_DAY);
+                        int minuteValue = cal.get(Calendar.MINUTE);
+                        Minute minute = new Minute(minuteValue, hour, day, month, year);
+
+                        synchronized (timeSeries) { // Ensure thread safety when adding to timeSeries
+                            timeSeries.add(minute, stock.getClose());
+                        }
+                    });
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -724,7 +761,7 @@ public class Main_UI extends JFrame {
         Date endDate = timeSeries.getItemCount() > 0
                 ? timeSeries.getTimePeriod(timeSeries.getItemCount() - 1).getEnd()
                 : new Date();
-        Date startDate = new Date(endDate.getTime() - duration);
+        startDate = new Date(endDate.getTime() - duration);
 
         // Update chart axis
         XYPlot plot = chartDisplay.getChart().getXYPlot();
@@ -735,6 +772,9 @@ public class Main_UI extends JFrame {
         updateYAxisRange(plot, startDate, endDate);
 
         chartDisplay.repaint();
+        tenMinutesButton.setEnabled(true);
+        thirtyMinutesButton.setEnabled(true);
+        oneHourButton.setEnabled(true);
         oneDayButton.setEnabled(true);
         threeDaysButton.setEnabled(true);
         oneWeekButton.setEnabled(true);
@@ -760,7 +800,7 @@ public class Main_UI extends JFrame {
         // Set the new range for the Y-axis
         if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
             ValueAxis yAxis = plot.getRangeAxis();
-            yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1); // Add a little margin
+            yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1 + 0.1); // Add a little margin + offset to avoid errors
         }
     }
 
@@ -771,6 +811,9 @@ public class Main_UI extends JFrame {
             case 3 -> TimeUnit.DAYS.toMillis(7);    // 1 week
             case 4 -> TimeUnit.DAYS.toMillis(14);   // 2 weeks
             case 5 -> TimeUnit.DAYS.toMillis(30);   // ~1 month
+            case 6 -> TimeUnit.MINUTES.toMillis(10);   // 10 Min
+            case 7 -> TimeUnit.MINUTES.toMillis(30);   // 30 Min
+            case 8 -> TimeUnit.HOURS.toMillis(1);   // 1 Hour
             default -> throw new IllegalArgumentException("Invalid time range");
         };
     }
