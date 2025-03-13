@@ -389,7 +389,10 @@ public class Main_UI extends JFrame {
         // Add a ListSelectionListener to handle Stock selection events
         stockList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) { // Prevent duplicate executions during list update
-                selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected Stock symbol
+                try {
+                    selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected Stock symbol
+                } catch (Exception ignored) {
+                }
 
                 // Fetch Stock data asynchronously
                 Main_data_handler.get_Info_Array(selected_stock, values -> {

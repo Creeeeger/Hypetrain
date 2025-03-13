@@ -223,7 +223,7 @@ public class pLTester {
         });
 
         data_tester.calculateStockPercentageChange();
-        rallyDetector(frameSize, false);
+        Main_data_handler.calculateSpikesInRally(frameSize, false);
     }
 
     public static void processStockDataFromFile(String filePath, String symbol, int retainLast) throws IOException {
