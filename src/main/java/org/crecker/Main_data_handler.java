@@ -26,6 +26,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 
+import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.logTextArea;
 import static org.crecker.RallyPredictor.predict;
 
@@ -395,46 +396,10 @@ public class Main_data_handler {
             });
         }
 
-        calculateSpikesInRally();
+        calculateSpikesInRally(frameSize, true);
     }
 
-    public static void calculateSpikesInRally() {
-        rallyDetector(frameSize, true);
-        checkToClean();
-    }
-
-    public static void checkToClean() {
-        // Memory calculation remains the same
-        Runtime runtime = Runtime.getRuntime();
-        long usedMemory = runtime.totalMemory() - runtime.freeMemory();
-        long usedMemoryInMB = usedMemory / (1024 * 1024);
-        System.out.println("Used memory: " + usedMemoryInMB + " MB");
-
-        if (usedMemoryInMB > 500) {
-            synchronized (symbolTimelines) {
-                final int MAX_ENTRIES = 1000;  // Keep last 1000 entries per symbol
-                final int MIN_ENTRIES = 200;   // Minimum to maintain for analysis
-
-                symbolTimelines.replaceAll((symbol, timeline) -> {
-                    if (timeline.size() > MAX_ENTRIES) {
-                        int removeCount = timeline.size() - MIN_ENTRIES;
-                        return timeline.subList(removeCount, timeline.size());
-                    }
-                    return timeline;
-                });
-
-                // Optional: Remove empty entries
-                symbolTimelines.entrySet().removeIf(entry -> entry.getValue().isEmpty());
-            }
-
-            System.out.println("Cleaned symbol timelines. Current counts:");
-            symbolTimelines.forEach((sym, list) ->
-                    System.out.println(sym + ": " + list.size() + " entries")
-            );
-        }
-    }
-
-    public static void rallyDetector(int minutesPeriod, boolean realFrame) {
+    public static void calculateSpikesInRally(int minutesPeriod, boolean realFrame) {
         symbolTimelines.keySet()
                 .parallelStream()
                 .forEach(symbol -> {
@@ -462,6 +427,14 @@ public class Main_data_handler {
                     try {
                         List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
                         stockNotifications.addAll(notifications);
+
+                        // Add notifications to UI
+                        if (!notifications.isEmpty()) {
+                            for (Notification notification : notifications) {
+                                addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(),
+                                        notification.getLocalDateTime(), notification.getSymbol(), notification.getChange());
+                            }
+                        }
                     } catch (Exception e) {
                         e.printStackTrace();
                     }
@@ -647,10 +620,12 @@ public class Main_data_handler {
             if (features[1] > 0.12) { //maybe >0
                 if (features[2] > 0.2) {
                     if (features[6] == 1) {
-                        createNotification(symbol, stocks.stream()
-                                .skip(stocks.size() - 4)
-                                .mapToDouble(StockUnit::getPercentageChange)
-                                .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+                        if (features[7] > 0.18) {
+                            createNotification(symbol, stocks.stream()
+                                    .skip(stocks.size() - 4)
+                                    .mapToDouble(StockUnit::getPercentageChange)
+                                    .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+                        }
                     }
                 }
             }
