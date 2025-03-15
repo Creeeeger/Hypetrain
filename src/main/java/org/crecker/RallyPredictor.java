@@ -10,6 +10,8 @@ import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.LinkedList;
 import java.util.concurrent.locks.ReentrantLock;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 public class RallyPredictor implements AutoCloseable {
     private static RallyPredictor instance;
@@ -18,6 +20,7 @@ public class RallyPredictor implements AutoCloseable {
     private final LinkedList<float[]> buffer;
     private final ReentrantLock bufferLock = new ReentrantLock();
     private final int length = Main_data_handler.INDICATOR_RANGE_MAP.size();
+    private int dynamicBufferSize = 10; // Initial default value
 
     // Private constructor to prevent instantiation
     private RallyPredictor(String modelPath) throws OrtException {
@@ -40,7 +43,7 @@ public class RallyPredictor implements AutoCloseable {
         try {
             return RallyPredictor.getInstance(modelPath.toString()).updateAndPredict(features);
         } catch (Exception e) {
-            e.printStackTrace();
+            System.out.println("predict Function: " + e.getMessage());
             return 0;
         }
     }
@@ -54,13 +57,13 @@ public class RallyPredictor implements AutoCloseable {
     public synchronized Float updateAndPredict(float[] features) {
         bufferLock.lock();
         try {
-            if (buffer.size() >= 30) {
+            if (buffer.size() >= dynamicBufferSize) {
                 buffer.remove(0); // Remove the oldest feature if the buffer is full
             }
 
             buffer.add(features); // Add the new feature to the buffer
 
-            if (buffer.size() >= 30) {
+            if (buffer.size() >= dynamicBufferSize) {
                 return predictSpike(); // Only predict once the buffer is full
             }
         } catch (Exception e) {
@@ -77,19 +80,52 @@ public class RallyPredictor implements AutoCloseable {
      * @return The spike probability, or null if the buffer is not yet full.
      */
     private Float predictSpike() throws OrtException {
-        float[][][] inputArray = new float[1][30][length];
+        try {
+            float[][][] inputArray = prepareInputArray();
 
-        for (int i = 0; i < 30; i++) {
-            float[] features = buffer.get(i);
-            System.arraycopy(features, 0, inputArray[0][i], 0, Math.min(features.length, length));
-        }
-
-        try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
-            try (OrtSession.Result result = session.run(Collections.singletonMap("args_0", inputTensor))) {
-                float[][] output = (float[][]) result.get(0).getValue();
-                return output[0][0];
+            try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
+                try (OrtSession.Result result = session.run(Collections.singletonMap("args_0", inputTensor))) {
+                    float[][] output = (float[][]) result.get(0).getValue();
+                    return output[0][0];
+                }
+            }
+        } catch (OrtException e) {
+            Integer expectedSize = parseExpectedSizeFromError(e.getMessage());
+            if (expectedSize != null) {
+                System.out.println("Adapting buffer size from " + dynamicBufferSize + " to " + expectedSize);
+                dynamicBufferSize = expectedSize;
+            } else {
+                throw e;
             }
         }
+
+        return null;
+    }
+
+    private float[][][] prepareInputArray() {
+        float[][][] inputArray = new float[1][dynamicBufferSize][length];
+
+        for (int i = 0; i < dynamicBufferSize; i++) {
+
+            float[] features = buffer.get(buffer.size() - 1);
+
+            System.arraycopy(
+                    features, 0,
+                    inputArray[0][i], 0,
+                    Math.min(features.length, length)
+            );
+        }
+        return inputArray;
+    }
+
+    private Integer parseExpectedSizeFromError(String errorMessage) {
+        Pattern pattern = Pattern.compile("Expected: (\\d+)");
+        Matcher matcher = pattern.matcher(errorMessage);
+
+        if (matcher.find()) {
+            return Integer.parseInt(matcher.group(1));
+        }
+        return null;
     }
 
     @Override

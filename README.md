@@ -38,6 +38,33 @@
 - Install dependencies which throw errors
 - Run main.py
 
+## Model knowledge
+
+### Buffer size
+
+- Feed in a time period buffer: get less aggressive values and a more smoothened output
+- Feed in temp buffer of repeated values: get aggressive switches for the Time an event occurs
+- No matter what size single buffer is more efficient and accurate hence the one event buffer is used.
+
+### Window size for training
+
+- Short windows of 5 Minutes give clustered data without clear separation. This is because the LSTM architecture can't
+  detect patterns in that short time.
+- 10 Minutes are still to short to separate any events
+- 20 Minutes gives good data but yet not good enough to ensure that noise is classified as low outcome
+- 30 Minutes do the job well but still many BS events are captured and high ranked so 40 minutes is a better choice
+  since filtering works better there
+- 35-40 Minutes give a good frame with clear separation
+- Due to random IDKKKKK sometimes the range from 25-35 is the best: Maybe i get onto something and I can stabilize it, who knows...
+
+### Weighting of classes
+
+- the weights of classes added loads of noise to the result so it got removed
+
+### Batch size
+
+- 64 has just turned out to be the best with the least noise
+
 ---
 
 # Disclaimer
