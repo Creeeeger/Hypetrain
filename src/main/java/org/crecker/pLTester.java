@@ -46,7 +46,6 @@ public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
     private static final boolean debug = true; // Flag for printing PL
-    private static final boolean dynamic = false;
     static JLabel percentageChange;
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
     private static double point1X = Double.NaN;
@@ -59,30 +58,23 @@ public class pLTester {
 
     public static void main(String[] args) {
         //updateStocks();
-        long startTime = System.nanoTime(); // Record the start time
-
-        PLAnalysis(); // Call the method you want to monitor
-
-        long endTime = System.nanoTime(); // Record the end time
-        long durationInNanoseconds = endTime - startTime;
-
-        System.out.println("Execution time: " + (durationInNanoseconds / 1_000_000) + " milliseconds");
+        PLAnalysis();
     }
 
     private static void updateStocks() {
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "WOLF")) {
+        // Add / remove stock which should get added / updated
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "WOLF", "QBTS", "IREN")) {
             getData(stock);
         }
     }
 
     public static void PLAnalysis() {
-        //   final String[] SYMBOLS = {"MARA.txt", "IONQ.txt", "SMCI.txt", "WOLF.txt"};
-        final String[] SYMBOLS = {"MARA.txt"};
+        final String[] SYMBOLS = {"QBTS.txt"};
 
         double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
-        int cut = 2000;
+        int cut = 900;
         double DIP_LEVEL = -0.3; // Change value after testing
         double DIP_ADJUSTMENT_FACTOR = 0.7; // For dynamic dips (change value after testing)
 
@@ -161,26 +153,12 @@ public class pLTester {
             StockUnit unit = timeline.get(currentIndex);
             currentCapital *= (1 + (unit.getPercentageChange() / 100));
 
-            if (dynamic) {
-                // Calculate cumulative gain percentage
-                double cumulativeGainPercentage = ((currentCapital / capital) - 1) * 100;
-                double dynamicDipLevel = dipLevel - (cumulativeGainPercentage * dipAdjustmentFactor);
-
-                System.out.printf("Cumulative Gain: %.2f%%, Dynamic Dip Level: %.2f%%%n", cumulativeGainPercentage, dynamicDipLevel);
-
-                if (unit.getPercentageChange() < dynamicDipLevel) {
-                    break;
-                }
-            }
-
             if (debug) {
                 System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, currentCapital, unit.getPercentageChange(), unit.getDateDate());
             }
 
-            if (!dynamic) {
-                if (unit.getPercentageChange() < dipLevel) {
-                    break;
-                }
+            if (unit.getPercentageChange() < dipLevel) {
+                break;
             }
 
             currentIndex++;
@@ -435,13 +413,13 @@ public class pLTester {
             // Configure renderers
             // Indicator renderer (distinct blue line without markers)
             XYLineAndShapeRenderer indicatorRenderer = new XYLineAndShapeRenderer();
-            indicatorRenderer.setSeriesPaint(0, new Color(0, 0, 255)); // Blue
+            indicatorRenderer.setSeriesPaint(0, new Color(0, 0, 255, 150)); // Blue
             indicatorRenderer.setSeriesStroke(0, new BasicStroke(1f));
             indicatorRenderer.setSeriesShapesVisible(0, false);
 
             // Prediction renderer (orange line without markers)
             XYLineAndShapeRenderer predictionRenderer = new XYLineAndShapeRenderer();
-            predictionRenderer.setSeriesPaint(0, new Color(255, 165, 0, 100)); // Orange
+            predictionRenderer.setSeriesPaint(0, new Color(255, 165, 0, 200)); // Orange
             predictionRenderer.setSeriesStroke(0, new BasicStroke(1f));
             predictionRenderer.setSeriesShapesVisible(0, false);
 

@@ -42,11 +42,10 @@ import java.util.stream.IntStream;
 public class Main_UI extends JFrame {
     public static JTextArea logTextArea;
     public static Main_UI gui;
-    static int vol;
-    static float hyp;
+    static int volume;
     static boolean shouldSort, useRealtime;
-    static String sym, key;
-    static String selected_stock = "Select a Stock"; //selected_stock is the Stock to show in the chart bar
+    static String symbols, apiKey;
+    static String selected_stock = "-Select a Stock-"; //selected_stock is the Stock to show in the chart bar
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JTextField searchField;
     static JButton tenMinutesButton, thirtyMinutesButton, oneHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
@@ -96,12 +95,11 @@ public class Main_UI extends JFrame {
 
     public static void setValues() {
         String[][] setting_data = config_handler.load_config();
-        vol = Integer.parseInt(setting_data[0][1]);
-        hyp = Float.parseFloat(setting_data[1][1]);
-        sym = setting_data[2][1];
-        shouldSort = Boolean.parseBoolean(setting_data[3][1]);
-        key = setting_data[4][1];
-        useRealtime = Boolean.parseBoolean(setting_data[5][1]);
+        volume = Integer.parseInt(setting_data[0][1]);
+        symbols = setting_data[1][1];
+        shouldSort = Boolean.parseBoolean(setting_data[2][1]);
+        apiKey = setting_data[3][1];
+        useRealtime = Boolean.parseBoolean(setting_data[4][1]);
     }
 
     public static void main(String[] args) {
@@ -119,15 +117,15 @@ public class Main_UI extends JFrame {
         if (!config.exists()) {
             config_handler.create_config();
             setValues();
-            load_table(sym);
+            load_table(symbols);
 
-            if (!key.isEmpty()) {
-                Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
+            if (!apiKey.isEmpty()) {
+                Main_data_handler.InitAPi(apiKey);
             } else {
-                throw new RuntimeException("You need to add a key in the settings menu!!");
+                throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            Settings_handler gui_Setting = new Settings_handler(vol, hyp, sym = create_sym_array(), shouldSort, key, useRealtime);
+            Settings_handler gui_Setting = new Settings_handler(volume, symbols = create_sym_array(), shouldSort, apiKey, useRealtime);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
@@ -140,13 +138,13 @@ public class Main_UI extends JFrame {
 
             setValues();
 
-            if (!key.isEmpty()) {
-                Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
+            if (!apiKey.isEmpty()) {
+                Main_data_handler.InitAPi(apiKey);
             } else {
-                throw new RuntimeException("You need to add a key in the settings menu!!");
+                throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            load_table(sym);
+            load_table(symbols);
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
@@ -247,11 +245,10 @@ public class Main_UI extends JFrame {
 
     public static String[][] getValues() {
         return new String[][]{
-                {"volume", String.valueOf(vol)},
-                {"hype_strength", String.valueOf(hyp)},
-                {"symbols", sym = create_sym_array()},
+                {"volume", String.valueOf(volume)},
+                {"symbols", symbols = create_sym_array()},
                 {"sort", String.valueOf(shouldSort)},
-                {"key", key},
+                {"key", apiKey},
                 {"realtime", String.valueOf(useRealtime)},
         };
     }
@@ -314,9 +311,9 @@ public class Main_UI extends JFrame {
     public static void load_config() {
         setValues();
 
-        load_table(sym);
+        load_table(symbols);
         Main_UI.refreshAllComponents(gui.getContentPane());
-        Main_data_handler.InitAPi(key); //comment out when not testing api to save tokens
+        Main_data_handler.InitAPi(apiKey); //comment out when not testing api to save tokens
 
         logTextArea.append("Config reloaded\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
@@ -333,7 +330,7 @@ public class Main_UI extends JFrame {
                 stockColors.remove(selectedValue);
                 stockListModel.removeElement(selectedValue);
 
-                sym = create_sym_array(); //Create the symbol array
+                symbols = create_sym_array(); //Create the symbol array
             }
         });
         return removeButton;
@@ -473,7 +470,7 @@ public class Main_UI extends JFrame {
                 // Add the selected symbol to the Stock list
                 stockListModel.addElement(selectedSymbol);
                 stockColors.put(selectedSymbol, generateRandomColor()); // Assign a random color or use another logic
-                sym = create_sym_array();
+                symbols = create_sym_array();
             }
         });
 
@@ -1102,7 +1099,7 @@ public class Main_UI extends JFrame {
             // Run the Hype Mode in a dedicated background thread
             executorService.submit(() -> {
                 try {
-                    Main_data_handler.start_Hype_Mode(vol, hyp);
+                    Main_data_handler.start_Hype_Mode(volume);
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
@@ -1114,7 +1111,7 @@ public class Main_UI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(vol, hyp, sym, shouldSort, key, useRealtime);
+            Settings_handler gui = new Settings_handler(volume, symbols, shouldSort, apiKey, useRealtime);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");

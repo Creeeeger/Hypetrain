@@ -164,7 +164,7 @@ public class Main_data_handler {
                 .fetch();
     }
 
-    public static void start_Hype_Mode(int tradeVolume, float hypeStrength) {
+    public static void start_Hype_Mode(int tradeVolume) {
         String[] stockSymbols = {
                 "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
                 , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
@@ -189,7 +189,7 @@ public class Main_data_handler {
                 , "ZIM", "ZTO", "ZTS", "ВТВТ"
         };
 
-        logTextArea.append(String.format("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Hype, %s Stocks to scan\n", tradeVolume, hypeStrength, stockSymbols.length));
+        logTextArea.append(String.format("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Stocks to scan\n", tradeVolume, stockSymbols.length));
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
         List<String> possibleSymbols = new ArrayList<>(); //get the symbols based on the config
