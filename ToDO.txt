@@ -1,7 +1,6 @@
 TODO
 CODE
 1. do manual comparison of return data
-1.5 Train the perfect "overfitted/aggressive" interference
 
 TESTING
-- test out new trading simulation parameters
+- test out new trading simulation parameters (dip level & wait a minute)

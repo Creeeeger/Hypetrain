@@ -70,13 +70,11 @@ public class pLTester {
 
     public static void PLAnalysis() {
         final String[] SYMBOLS = {"QBTS.txt"};
-
         double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
         int cut = 900;
         double DIP_LEVEL = -0.3; // Change value after testing
-        double DIP_ADJUSTMENT_FACTOR = 0.7; // For dynamic dips (change value after testing)
 
         prepData(SYMBOLS, cut);
 
@@ -109,7 +107,7 @@ public class pLTester {
             StockUnit nextUnit = timeline.get(index + 1);
 
             if (shouldProcessDip(nextUnit, DIP_LEVEL, lastTradeTime)) {
-                TradeResult result = processTradeSequence(timeline, index + 1, DIP_LEVEL, capital, notification.getSymbol(), DIP_ADJUSTMENT_FACTOR);
+                TradeResult result = processTradeSequence(timeline, index + 1, DIP_LEVEL, capital, notification.getSymbol());
                 capital = result.newCapital() - FEE;
                 successfulCalls++;
                 lastTradeTime = result.lastTradeTime();
@@ -144,7 +142,7 @@ public class pLTester {
         );
     }
 
-    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol, double dipAdjustmentFactor) {
+    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol) {
         double currentCapital = capital;
         int currentIndex = startIndex;
         final int maxSteps = Math.min(timeline.size(), startIndex + 100); // Safety limit
