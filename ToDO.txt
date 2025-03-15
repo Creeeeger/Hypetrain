@@ -1,12 +1,7 @@
 TODO
-KEY
-- check if a premium API key works
-
 CODE
 1. do manual comparison of return data
-
-2. Compare different buffer logics for best performance
-3. Fix overfitting
+1.5 Train the perfect "overfitted/aggressive" interference
 
 TESTING
 - test out new trading simulation parameters

@@ -55,7 +55,6 @@ public class Main_data_handler {
     static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
     static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
-    public static boolean test = true; // If True use demo url for real Time Updates
     static int frameSize = 30; // Frame size for analysis
 
     public static void InitAPi(String token) {
@@ -609,8 +608,8 @@ public class Main_data_handler {
 
         // 0. isSMACrossover
         // 1. calculateTRIX
-        // 2. calculateROC
-        // 3. calculateBollingerBands
+        // 2. calculateROC              GD
+        // 3. calculateBollingerBands //BS remove //represents other indicators
         // 4. isCumulativeSpike
         // 5. cumulativePercentageChange
         // 6. isKeltnerBreakout
@@ -618,13 +617,13 @@ public class Main_data_handler {
 
         if (features[0] == 1) {
             if (features[1] > 0.12) { //maybe >0
-                if (features[2] > 0.2) {
+                if (features[2] > 0.2) { // > 0.2 +-
                     if (features[6] == 1) {
                         if (features[7] > 0.18) {
-                            createNotification(symbol, stocks.stream()
-                                    .skip(stocks.size() - 4)
-                                    .mapToDouble(StockUnit::getPercentageChange)
-                                    .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+                                createNotification(symbol, stocks.stream()
+                                        .skip(stocks.size() - 4)
+                                        .mapToDouble(StockUnit::getPercentageChange)
+                                        .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
                         }
                     }
                 }

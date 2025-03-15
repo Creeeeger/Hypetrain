@@ -12,6 +12,7 @@ from keras.src.metrics import Precision, Recall, AUC
 from keras.src.regularizers import regularizers
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import MinMaxScaler
+from tensorflow.python.keras import backend
 
 
 # 1. Feature Engineering
@@ -225,12 +226,12 @@ def prepare_sequences(data, features, window_size, preprocessor=None, outlier_wi
             .median()
         )
 
-        Q1 = data[feature].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.25)
-        Q3 = data[feature].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.75)
-        IQR = Q3 - Q1
+        q1 = data[feature].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.25)
+        q3 = data[feature].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.75)
+        iqr = q3 - q1
 
-        lower_bound = Q1 - 1.5 * IQR
-        upper_bound = Q3 + 1.5 * IQR
+        lower_bound = q1 - 1.5 * iqr
+        upper_bound = q3 + 1.5 * iqr
 
         outlier_mask = (data[feature] < lower_bound) | (data[feature] > upper_bound)
         data.loc[outlier_mask, feature] = rolling_median[outlier_mask]
@@ -257,7 +258,7 @@ def prepare_sequences(data, features, window_size, preprocessor=None, outlier_wi
 
 # 3. Model architecture construction
 def build_model(input_shape):
-    l2s = regularizers.L2(0.001)
+    l2s = regularizers.L2(0.0001)
     inputs = Input(shape=input_shape)
 
     # ========== CNN Layers ==========
@@ -319,15 +320,15 @@ def train_spike_predictor(data_path):
     print(f"Validation Data: {val_data.shape}, Labels: {val_data['target'].values.shape}")
 
     # Scale the data to values between 0 and 1 (train, validation separate)
-    features_train_scaled, labels_train_scaled, scaler = prepare_sequences(train_data, features_list, 30)
-    features_test_scaled, labels_test_scaled, _ = prepare_sequences(val_data, features_list, 30, preprocessor=scaler)
+    features_train_scaled, labels_train_scaled, scaler = prepare_sequences(train_data, features_list, 28)
+    features_test_scaled, labels_test_scaled, _ = prepare_sequences(val_data, features_list, 28, preprocessor=scaler)
 
     # Build and define the architecture of the Network for training (timeWindowSize, features)
     model = build_model((features_train_scaled.shape[1], features_train_scaled.shape[2]))
 
     # Define callbacks
-    early_stop = EarlyStopping(monitor='val_auc', patience=7, mode='max', restore_best_weights=True, min_delta=0.005)
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.0001)
+    early_stop = EarlyStopping(monitor='val_auc', patience=20, mode='max', restore_best_weights=True, min_delta=0.005)
+    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=5, min_lr=0.00001)
 
     # Reshape data for SMOTE
     n_samples, window_size, n_features = features_train_scaled.shape
@@ -347,8 +348,6 @@ def train_spike_predictor(data_path):
     print("Resampled class distribution:", np.bincount(labels_train_smote.flatten()))
     print("Class distribution:", np.bincount(labels_train_scaled.flatten()))
 
-    class_weight = {0: 1, 1: 1.8}  # Approximate inverse ratio
-
     # training process of the model CPU has in my case better performance than GPU
     # Explanation: tasks are moved around from cpu to gpu vice versa. Sometimes tasks are split between both which
     # introduces the constant of latency between communication which is 20ms per step vs 10 ms
@@ -358,11 +357,10 @@ def train_spike_predictor(data_path):
     with tf.device('/CPU:0'):
         model.fit(
             features_train_smote, labels_train_smote,
-            epochs=256,
-            batch_size=128,
+            epochs=50,
+            batch_size=64,
             validation_data=(features_test_scaled, labels_test_scaled),
-            callbacks=[early_stop, reduce_lr],
-            class_weight=class_weight
+            callbacks=[early_stop, reduce_lr]
         )
 
     # Convert and save the ONNX model directly & define the input signature dynamically based on training data shape
@@ -373,6 +371,13 @@ def train_spike_predictor(data_path):
 
 
 if __name__ == "__main__":
+    # Reproducibility settings
+    SEED = 42
+    os.environ['PYTHONHASHSEED'] = str(SEED)
+    os.environ['TF_DETERMINISTIC_OPS'] = '1'
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
+
     # Disable GPU to get 50% faster training (see explanation before training)
     os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
     tf.config.set_visible_devices([], 'GPU')
