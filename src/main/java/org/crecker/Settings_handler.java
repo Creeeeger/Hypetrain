@@ -10,18 +10,16 @@ import static org.crecker.Main_UI.logTextArea;
 
 public class Settings_handler extends JFrame {
     public static JPanel settingsPanel;
-    static JLabel volume, hype, infos, sort_label, keyLabel, realtimeLabel;
-    static JTextField volume_text, hype_text, key_text;
+    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel;
+    static JTextField volumeText, keyText;
     static JCheckBox sort_checkBox, realtimeBox;
     int vol;
-    float hyp;
     String sym, key;
     boolean sort, realtime;
 
-    public Settings_handler(int vol, float hyp, String sym, boolean sort, String key, boolean realtime) {
+    public Settings_handler(int vol, String sym, boolean sort, String key, boolean realtime) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
-        this.hyp = hyp;
         this.sym = sym;
         this.sort = sort;
         this.key = key;
@@ -44,24 +42,19 @@ public class Settings_handler extends JFrame {
 
         volume = new JLabel("Volume:"); // Adding a label for clarity
         volume.setAlignmentX(Component.LEFT_ALIGNMENT);
-        volume_text = new JTextField(String.valueOf(vol), 15);
-        volume_text.setAlignmentX(Component.LEFT_ALIGNMENT);
+        volumeText = new JTextField(String.valueOf(vol), 15);
+        volumeText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        hype = new JLabel("Hype:"); // Adding a label for clarity
-        hype.setAlignmentX(Component.LEFT_ALIGNMENT);
-        hype_text = new JTextField(String.valueOf(hyp), 5);
-        hype_text.setAlignmentX(Component.LEFT_ALIGNMENT);
-
-        sort_label = new JLabel("Sort hype entries");
-        sort_label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        sortLabel = new JLabel("Sort hype entries");
+        sortLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         sort_checkBox = new JCheckBox();
         sort_checkBox.setSelected(sort);
         sort_checkBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         keyLabel = new JLabel("API key:");
         keyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        key_text = new JTextField(key);
-        key_text.setAlignmentX(Component.LEFT_ALIGNMENT);
+        keyText = new JTextField(key);
+        keyText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         realtimeLabel = new JLabel("Chart realtime");
         realtimeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -72,19 +65,15 @@ public class Settings_handler extends JFrame {
         // Add components to the settings panel with spacing
         settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between description and input field
-        settingsPanel.add(volume_text);
+        settingsPanel.add(volumeText);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between fields
-        settingsPanel.add(hype);
-        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(hype_text);
-        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(sort_label);
+        settingsPanel.add(sortLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(sort_checkBox);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(keyLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(key_text);
+        settingsPanel.add(keyText);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(realtimeLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -111,11 +100,10 @@ public class Settings_handler extends JFrame {
         public void actionPerformed(ActionEvent e) {
             try {
                 String[][] values = {
-                        {"volume", volume_text.getText()},
-                        {"hype_strength", hype_text.getText()},
+                        {"volume", volumeText.getText()},
                         {"symbols", sym},
                         {"sort", String.valueOf(sort_checkBox.isSelected())},
-                        {"key", key_text.getText()},
+                        {"key", keyText.getText()},
                         {"realtime", String.valueOf(realtimeBox.isSelected())}
                 };
 
