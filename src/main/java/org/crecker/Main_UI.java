@@ -31,12 +31,14 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
+import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 public class Main_UI extends JFrame {
@@ -735,20 +737,48 @@ public class Main_UI extends JFrame {
 
             try {
                 if (stocks != null) {
-                    stocks.parallelStream().forEach(stock -> {
-                        Calendar cal = Calendar.getInstance();
-                        cal.setTime(stock.getDateDate());
-                        int year = cal.get(Calendar.YEAR);
-                        int month = cal.get(Calendar.MONTH) + 1; // Months are 0-based
-                        int day = cal.get(Calendar.DAY_OF_MONTH);
-                        int hour = cal.get(Calendar.HOUR_OF_DAY);
-                        int minuteValue = cal.get(Calendar.MINUTE);
-                        Minute minute = new Minute(minuteValue, hour, day, month, year);
+                    // Precompute the time zone to avoid repeated lookups
+                    final ZoneId zone = ZoneId.systemDefault();
 
-                        synchronized (timeSeries) { // Ensure thread safety when adding to timeSeries
-                            timeSeries.add(minute, stock.getClose());
+                    // Process and filter data in parallel
+                    List<Map.Entry<Minute, Double>> dataPoints = stocks.stream().map(stock -> {
+                                LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
+                                return new AbstractMap.SimpleEntry<>(
+                                        new Minute(ldt.getMinute(), ldt.getHour(), ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()),
+                                        stock.getClose()
+                                );
+                            })
+                            .collect(Collectors.toList());
+
+                    // Sort by time to ensure chronological processing
+                    dataPoints.sort(Map.Entry.comparingByKey());
+
+                    // Apply 10% variance filter
+                    List<Map.Entry<Minute, Double>> filteredPoints = new ArrayList<>(dataPoints.size());
+                    Double previousClose = null;
+
+                    for (Map.Entry<Minute, Double> entry : dataPoints) {
+                        double currentClose = entry.getValue();
+
+                        if (previousClose != null) {
+                            double variance = Math.abs((currentClose - previousClose) / previousClose);
+                            if (variance > 0.1) {
+                                currentClose = previousClose; // Use previous value if variance >10%
+                            }
                         }
-                    });
+                        previousClose = currentClose;
+                        filteredPoints.add(new AbstractMap.SimpleEntry<>(entry.getKey(), currentClose));
+                    }
+
+                    // Create new series with filtered data
+                    timeSeries = new TimeSeries(currentStockSymbol);
+                    filteredPoints.forEach(entry -> timeSeries.add(entry.getKey(), entry.getValue()));
+
+                    // Update dataset
+                    XYPlot plot = chartDisplay.getChart().getXYPlot();
+                    TimeSeriesCollection dataset = (TimeSeriesCollection) plot.getDataset();
+                    dataset.removeAllSeries();
+                    dataset.addSeries(timeSeries);
                 }
             } catch (Exception e) {
                 e.printStackTrace();

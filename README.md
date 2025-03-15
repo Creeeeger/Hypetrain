@@ -55,7 +55,7 @@
 - 30 Minutes do the job well but still many BS events are captured and high ranked so 40 minutes is a better choice
   since filtering works better there
 - 35-40 Minutes give a good frame with clear separation
-- Due to random IDKKKKK sometimes the range from 25-35 is the best: Maybe i get onto something and I can stabilize it, who knows...
+- Due to random IDKKKKK sometimes the range from 25-35 is the best: Maybe I get onto something and I can stabilize it, who knows...
 
 ### Weighting of classes
 
