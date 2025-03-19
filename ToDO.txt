@@ -1,7 +1,7 @@
 TODO
 CODE
 1. optimize comparison parameters for indicator and inference
-2. Change program to second data
+2. Change program to second data (indicators and inference)
 
 TESTING
 - test out new trading simulation parameters (dip level & wait a minute)

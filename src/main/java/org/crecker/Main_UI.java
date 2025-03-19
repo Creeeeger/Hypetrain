@@ -264,9 +264,11 @@ public class Main_UI extends JFrame {
                                        LocalDateTime localDateTime, String symbol, double change) {
         SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, localDateTime, symbol, change)));
 
-        if (System.getProperty("os.name").toLowerCase().contains("mac")) {
-            String notificationContent = String.format("%s\nSymbol: %s\nChange: %.2f%%",
-                    content, symbol, change);
+        String osName = System.getProperty("os.name").toLowerCase();
+        String notificationContent = String.format("%s\nSymbol: %s\nChange: %.2f%%", content, symbol, change);
+
+        if (osName.contains("mac")) {
+
 
             try {
                 String[] terminalNotifierCommand = {
@@ -282,6 +284,28 @@ public class Main_UI extends JFrame {
             } catch (IOException e) {
                 System.err.println("Failed to send macOS notification: " + e.getMessage());
             }
+        } else if (osName.contains("win")) {
+            if (SystemTray.isSupported()) {
+                displayWindowsNotification(title, notificationContent);
+            }
+        } else {
+            System.out.println("Can't create notification.");
+        }
+    }
+
+    private static void displayWindowsNotification(String title, String message) {
+        if (!SystemTray.isSupported()) return;
+
+        try {
+            SystemTray tray = SystemTray.getSystemTray();
+            Image image = Toolkit.getDefaultToolkit().createImage("train.png");
+            TrayIcon trayIcon = new TrayIcon(image, "Notification");
+            trayIcon.setImageAutoSize(true);
+            tray.add(trayIcon);
+
+            trayIcon.displayMessage(title, message, TrayIcon.MessageType.INFO);
+        } catch (Exception e) {
+            e.printStackTrace();
         }
     }
 
