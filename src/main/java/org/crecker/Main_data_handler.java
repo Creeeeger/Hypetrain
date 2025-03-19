@@ -13,7 +13,7 @@ import com.crazzyghost.alphavantage.stock.response.StockResponse;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
-import org.jfree.data.time.Minute;
+import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 
 import java.io.*;
@@ -583,18 +583,22 @@ public class Main_data_handler {
 
         synchronized (indicatorTimeSeries) {
             indicatorTimeSeries.addOrUpdate(
-                    new Minute(stocks.get(stocks.size() - 1).getDateDate()),
-                    features[2]
+                    new Second(stocks.get(stocks.size() - 1).getDateDate()),
+                    features[6]
             );
 
             predictionTimeSeries.addOrUpdate(
-                    new Minute(stocks.get(stocks.size() - 1).getDateDate()),
+                    new Second(stocks.get(stocks.size() - 1).getDateDate()),
                     prediction
             );
         }
 
-        for (StockUnit stockUnit : stocks) {
-            timeSeries.add(new Minute(stockUnit.getDateDate()), stockUnit.getClose());
+        try {
+            for (StockUnit stockUnit : stocks) {
+                timeSeries.add(new Second(stockUnit.getDateDate()), stockUnit.getClose());
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
         }
 
         return evaluateResult(timeSeries, prediction, stocks, symbol, features);
@@ -606,26 +610,36 @@ public class Main_data_handler {
                                                      double[] features) {
         List<Notification> alertsList = new ArrayList<>();
 
-        // 0. isSMACrossover
         // 1. calculateTRIX
         // 2. calculateROC              GD
-        // 3. calculateBollingerBands //BS remove //represents other indicators
-        // 4. isCumulativeSpike
         // 5. cumulativePercentageChange
-        // 6. isKeltnerBreakout
+        // 6. isKeltnerBreakout -- should be 1 but can lead to delay
         // 7. elderRayIndex
 
-        if (features[0] == 1) {
-            if (features[1] > 0.12) { //maybe >0
-                if (features[2] > 0.2) { // > 0.2 +-
-                    if (features[6] == 1) {
-                        if (features[7] > 0.18) {
-                                createNotification(symbol, stocks.stream()
-                                        .skip(stocks.size() - 4)
-                                        .mapToDouble(StockUnit::getPercentageChange)
-                                        .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
-                        }
-                    }
+        if (features[0] == 1) { //Save
+            if (features[4] == 1) { //Save -| prediction
+
+                //    if (features[5] > 0.6) {
+                if (prediction > 0.95) {
+                    createNotification(symbol, stocks.stream()
+                            .skip(stocks.size() - 4)
+                            .mapToDouble(StockUnit::getPercentageChange)
+                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+                    //       }
+
+//                    if (features[1] > 0.12) { //maybe >0
+//                        if (features[2] > 0.2) { // > 0.2 +-
+//                            if (features[6] == 1) {
+//                                if (features[7] > 0.18) {
+//                                    createNotification(symbol, stocks.stream()
+//                                            .skip(stocks.size() - 4)
+//                                            .mapToDouble(StockUnit::getPercentageChange)
+//                                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
+//                                }
+//                            }
+//                        }
+//                    }
+
                 }
             }
         }
@@ -895,7 +909,7 @@ public class Main_data_handler {
      * @param date        The date of the event.
      */
     private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction) {
-        alertsList.add(new Notification(String.format("%.3f%% %s ↑ %s", totalChange, symbol, prediction),
+        alertsList.add(new Notification(String.format("%.3f%% %s ↑ %.3f", totalChange, symbol, prediction),
                 String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                 timeSeries, date, symbol, totalChange));
     }

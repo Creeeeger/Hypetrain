@@ -10,7 +10,7 @@ import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
-import org.jfree.data.time.Minute;
+import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -80,6 +80,11 @@ public class Main_UI extends JFrame {
         // Setting layout for the frame (1 row, 4 columns)
         setLayout(new BorderLayout());
         BorderFactory.createTitledBorder("Stock monitor");
+
+        if (Taskbar.isTaskbarSupported()) {
+            final Taskbar taskbar = Taskbar.getTaskbar();
+            taskbar.setIconImage(new ImageIcon(Paths.get(System.getProperty("user.dir"), "train.png").toString()).getImage());
+        }
 
         // Menu bar
         setJMenuBar(createMenuBar());
@@ -258,6 +263,26 @@ public class Main_UI extends JFrame {
     public static void addNotification(String title, String content, TimeSeries timeSeries,
                                        LocalDateTime localDateTime, String symbol, double change) {
         SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, localDateTime, symbol, change)));
+
+        if (System.getProperty("os.name").toLowerCase().contains("mac")) {
+            String notificationContent = String.format("%s\nSymbol: %s\nChange: %.2f%%",
+                    content, symbol, change);
+
+            try {
+                String[] terminalNotifierCommand = {
+                        "terminal-notifier",
+                        "-title", title,
+                        "-message", notificationContent,
+                        "-contentImage", Paths.get(System.getProperty("user.dir"), "train.png").toString(),
+                        "-sound", "default",
+                        "-timeout", "5"
+                };
+
+                new ProcessBuilder(terminalNotifierCommand).start();
+            } catch (IOException e) {
+                System.err.println("Failed to send macOS notification: " + e.getMessage());
+            }
+        }
     }
 
     private static void addFirstMarker(XYPlot plot, double xPosition) {
@@ -551,7 +576,7 @@ public class Main_UI extends JFrame {
                                         double latestClose = value.getClose();
 
                                         // Update the time series with the new timestamp and closing price
-                                        timeSeries.addOrUpdate(new Minute(date), latestClose);
+                                        timeSeries.addOrUpdate(new Second(date), latestClose);
 
                                         chartPanel.repaint();
                                     } else {
@@ -741,23 +766,22 @@ public class Main_UI extends JFrame {
                     final ZoneId zone = ZoneId.systemDefault();
 
                     // Process and filter data in parallel
-                    List<Map.Entry<Minute, Double>> dataPoints = stocks.stream().map(stock -> {
-                                LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
-                                return new AbstractMap.SimpleEntry<>(
-                                        new Minute(ldt.getMinute(), ldt.getHour(), ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()),
-                                        stock.getClose()
-                                );
-                            })
-                            .collect(Collectors.toList());
+                    List<Map.Entry<Second, Double>> dataPoints = stocks.stream().map(stock -> {
+                        LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
+                        return new AbstractMap.SimpleEntry<>(
+                                new Second(ldt.getSecond(), ldt.getMinute(), ldt.getHour(), ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()),
+                                stock.getClose()
+                        );
+                    }).collect(Collectors.toList());
 
                     // Sort by time to ensure chronological processing
                     dataPoints.sort(Map.Entry.comparingByKey());
 
                     // Apply 10% variance filter
-                    List<Map.Entry<Minute, Double>> filteredPoints = new ArrayList<>(dataPoints.size());
+                    List<Map.Entry<Second, Double>> filteredPoints = new ArrayList<>(dataPoints.size());
                     Double previousClose = null;
 
-                    for (Map.Entry<Minute, Double> entry : dataPoints) {
+                    for (Map.Entry<Second, Double> entry : dataPoints) {
                         double currentClose = entry.getValue();
 
                         if (previousClose != null) {

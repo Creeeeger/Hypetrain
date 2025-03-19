@@ -12,10 +12,7 @@ import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.chart.ui.Layer;
-import org.jfree.data.time.Minute;
-import org.jfree.data.time.RegularTimePeriod;
-import org.jfree.data.time.TimeSeries;
-import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.time.*;
 
 import javax.swing.*;
 import java.awt.*;
@@ -63,13 +60,13 @@ public class pLTester {
 
     private static void updateStocks() {
         // Add / remove stock which should get added / updated
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "WOLF", "QBTS", "IREN")) {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "IREN", "PLTR")) {
             getData(stock);
         }
     }
 
     public static void PLAnalysis() {
-        final String[] SYMBOLS = {"QBTS.txt"};
+        final String[] SYMBOLS = {"PLTR.txt"};
         double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
         final int stock = 0;
@@ -138,7 +135,7 @@ public class pLTester {
 
     private static boolean shouldProcessDip(StockUnit nextUnit, double dipLevel, LocalDateTime lastTradeTime) {
         return (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime)
-                && nextUnit.getPercentageChange() >= dipLevel // Try later if beneficial
+                && nextUnit.getPercentageChange() >= 0 // Try later if beneficial
         );
     }
 
@@ -208,11 +205,75 @@ public class pLTester {
 
         fileUnits.forEach(unit -> unit.setTarget(0));
 
+        List<StockUnit> syntheticUnits = new ArrayList<>();
+        for (StockUnit unit : fileUnits) {
+            unit.setTarget(0);
+            syntheticUnits.addAll(generateSyntheticData(unit));
+        }
+
         List<StockUnit> existing = symbolTimelines.getOrDefault(symbol, new ArrayList<>());
         existing.addAll(fileUnits);
+     //   existing.addAll(syntheticUnits);
         symbolTimelines.put(symbol, existing);
+    }
 
-        System.out.println("Loaded " + fileUnits.size() + " entries for " + symbol);
+    private static List<StockUnit> generateSyntheticData(StockUnit original) {
+        List<StockUnit> synthetic = new ArrayList<>();
+        int steps = 12; // 12 intervals of 5 seconds in a minute
+        double volatility = 0.0005; // Adjust for desired fluctuation level
+
+        double open = original.getOpen();
+        double close = original.getClose();
+        double delta = close - open;
+
+        for (int i = 0; i < steps; i++) {
+            String timestamp = original.getLocalDateTimeDate().plusSeconds(5 * i).toString();
+            if (timestamp.substring(timestamp.indexOf('T') + 1).matches("^[0-9][0-9]:[0-9][0-9]$")) {
+                timestamp = original.getLocalDateTimeDate().plusSeconds(5 * i) + ":00";
+            }
+
+            timestamp = timestamp.replace("T", " ");
+            double t = i / (double) (steps - 1);
+
+            // Base price with linear interpolation
+            double basePrice = open + (delta * t);
+            // Add random noise (positive or negative)
+            double noise = basePrice * volatility * (Math.random() - 0.5) * 2;
+            double syntheticClose = basePrice + noise;
+
+            // For first and last steps, clamp to original open/close
+            if (i == 0) syntheticClose = open + (noise * 0.1); // Small noise for first step
+            if (i == steps - 1) syntheticClose = close;
+
+            double syntheticOpen = (i == 0) ? open : synthetic.get(i - 1).getClose();
+
+            // Calculate high/low with some variation
+            double randomFactor = Math.abs(syntheticClose - syntheticOpen) + (volatility * syntheticOpen);
+            double syntheticHigh = Math.max(syntheticOpen, syntheticClose) + (randomFactor * Math.random());
+            double syntheticLow = Math.min(syntheticOpen, syntheticClose) - (randomFactor * Math.random());
+
+            StockUnit syntheticUnit = new StockUnit.Builder()
+                    .time(timestamp)
+                    .open(syntheticOpen)
+                    .high(syntheticHigh)
+                    .low(syntheticLow)
+                    .close(syntheticClose)
+                    .adjustedClose(syntheticClose) // Mirror close unless adjusted
+                    .volume(original.getVolume() / steps) // Distribute volume evenly
+                    .dividendAmount(original.getDividendAmount())
+                    .splitCoefficient(original.getSplitCoefficient())
+                    .symbol(original.getSymbol())
+                    .percentageChange(calculatePercentageChange(syntheticOpen, syntheticClose))
+                    .target(original.getTarget())
+                    .build();
+
+            synthetic.add(syntheticUnit);
+        }
+        return synthetic;
+    }
+
+    private static double calculatePercentageChange(double open, double close) {
+        return ((close - open) / open) * 100;
     }
 
     public static void exportToCSV(List<StockUnit> stocks) {
@@ -354,7 +415,7 @@ public class pLTester {
             // Create main price series
             TimeSeries priceSeries = new TimeSeries(processedSymbol + " Price Timeline");
             for (StockUnit unit : timeline) {
-                priceSeries.add(new Minute(unit.getDateDate()), unit.getClose());
+                priceSeries.add(new Second(unit.getDateDate()), unit.getClose());
             }
 
             // Create datasets
@@ -718,8 +779,7 @@ public class pLTester {
                     })
                     .forEach(unit -> {
                         unit.setTarget(value);
-                        Minute m = new Minute(unit.getDateDate());
-                        indicatorTimeSeries.addOrUpdate(m, value);
+                        indicatorTimeSeries.addOrUpdate(new Second(unit.getDateDate()), value);
                     });
         }
     }
