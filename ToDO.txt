@@ -1,7 +1,12 @@
 TODO
 CODE
-1. optimize comparison parameters for indicator and inference
-2. Change program to second data (indicators and inference)
+- [ ] Optimise pl tester for more realistic training
+- [ ] Finish the data linking and comparison for minutes
+
+- [ ] Update indicators for second data (maybe add time frequency variable)
+- [ ] Update inference for second data
+- [ ] Update linking for second data
+- [ ] Update frame sizes for second based processing
 
 TESTING
 - test out new trading simulation parameters (dip level & wait a minute)

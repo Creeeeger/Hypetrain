@@ -32,6 +32,7 @@ import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ExecutorService;
@@ -51,7 +52,7 @@ public class Main_UI extends JFrame {
     static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
     static JTextField searchField;
     static JButton tenMinutesButton, thirtyMinutesButton, oneHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
-    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel;
+    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel, percentageChange;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
     static ChartPanel chartDisplay; // This will hold the chart
@@ -75,8 +76,11 @@ public class Main_UI extends JFrame {
     private static Date startDate;
     private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     private String currentStockSymbol = null; // Track the currently displayed stock symbol
+    private static Main_UI instance;
 
     public Main_UI() {
+        instance = this;
+
         // Setting layout for the frame (1 row, 4 columns)
         setLayout(new BorderLayout());
         BorderFactory.createTitledBorder("Stock monitor");
@@ -98,6 +102,10 @@ public class Main_UI extends JFrame {
         add(symbol_panel, BorderLayout.WEST);
         add(chart_tool_panel, BorderLayout.CENTER);
         add(hype_panel, BorderLayout.EAST);
+    }
+
+    public static Main_UI getInstance() {
+        return instance;
     }
 
     public static void setValues() {
@@ -260,16 +268,30 @@ public class Main_UI extends JFrame {
         };
     }
 
-    public static void addNotification(String title, String content, TimeSeries timeSeries,
-                                       LocalDateTime localDateTime, String symbol, double change) {
-        SwingUtilities.invokeLater(() -> notificationListModel.addElement(new Notification(title, content, timeSeries, localDateTime, symbol, change)));
+    public static void addNotification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, boolean dip) {
+        SwingUtilities.invokeLater(() -> {
+            // Get current time
+            LocalDateTime now = LocalDateTime.now();
+
+            // Remove old notifications (reverse iteration to prevent index shifting)
+            for (int i = notificationListModel.size() - 1; i >= 0; i--) {
+                Notification existing = notificationListModel.getElementAt(i);
+                long minutesOld = ChronoUnit.MINUTES.between(existing.getLocalDateTime(), now);
+
+                if (minutesOld > 20) {
+                    notificationListModel.remove(i);
+                }
+            }
+
+            // Add new notification
+            notificationListModel.addElement(new Notification(title, content, timeSeries,
+                    localDateTime, symbol, change, dip));
+        });
 
         String osName = System.getProperty("os.name").toLowerCase();
         String notificationContent = String.format("%s\nSymbol: %s\nChange: %.2f%%", content, symbol, change);
 
         if (osName.contains("mac")) {
-
-
             try {
                 String[] terminalNotifierCommand = {
                         "terminal-notifier",
@@ -355,8 +377,7 @@ public class Main_UI extends JFrame {
         shadedRegion.setPaint(shadeColor);  // Translucent green or red shade
         plot.addDomainMarker(shadedRegion);
 
-        logTextArea.append(String.format("Percentage Change: %.3f%%\n", percentageDiff));
-        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        percentageChange.setText(String.format("Percentage Change: %.3f%%", percentageDiff));
     }
 
     public static void load_config() {
@@ -385,6 +406,38 @@ public class Main_UI extends JFrame {
             }
         });
         return removeButton;
+    }
+
+    public void handleStockSelection(String symbol) {
+        try {
+            selected_stock = symbol.toUpperCase().trim();
+            Main_data_handler.get_timeline(selected_stock, values -> {
+                // Extract original close values to avoid interference from concurrent modifications
+                List<Double> originalCloses = new ArrayList<>(values.size());
+                for (StockUnit stock : values) {
+                    originalCloses.add(stock.getClose());
+                }
+
+                // Process each element in parallel based on original data
+                IntStream.range(1, values.size()).parallel().forEach(i -> {
+                    double currentOriginalClose = originalCloses.get(i);
+                    double previousOriginalClose = originalCloses.get(i - 1);
+                    if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
+                        values.get(i).setClose(previousOriginalClose);
+                    }
+                });
+
+                // After processing, update on EDT
+                SwingUtilities.invokeLater(() -> {
+                    stocks = values;
+                    refreshChartData(1);
+                });
+            });
+
+            SwingUtilities.invokeLater(this::startRealTimeUpdates);
+        } catch (Exception ex) {
+            ex.printStackTrace();
+        }
     }
 
     public JPanel create_symbol_panel() {
@@ -703,6 +756,39 @@ public class Main_UI extends JFrame {
         // Add a titled border to the news section
         newsScrollPane.setBorder(BorderFactory.createTitledBorder("Company News"));
 
+        // Get the JList from the scroll pane (assuming getNewsScrollPane() creates it)
+        JList<News> newsList = (JList<News>) newsScrollPane.getViewport().getView();
+
+        // Custom cell renderer for two-line display
+        newsList.setCellRenderer(new DefaultListCellRenderer() {
+            @Override
+            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
+                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
+
+                if (value instanceof News news) {
+                    // Use HTML to create two-line format
+                    String htmlText = "<html><b>" + news.getTitle() + "</b><br/>"
+                            + shortenContent(news.getContent()) + "</html>";
+                    setText(htmlText);
+                }
+
+                return this;
+            }
+
+            private String shortenContent(String content) {
+                if (content.length() > 30) {
+                    return content.substring(0, 30) + "...";
+                }
+                return content;
+            }
+        });
+
+        // Calculate optimal row height for two lines
+        JLabel dummyLabel = new JLabel("<html>Line1<br>Line2</html>");
+        dummyLabel.setFont(newsList.getFont());
+        int rowHeight = dummyLabel.getPreferredSize().height + 5; // Add padding
+        newsList.setFixedCellHeight(rowHeight);
+
         // Add chartPanel (80%) and newsScrollPane (20%) to the firstRowPanel
         firstRowPanel.add(chartPanel, BorderLayout.CENTER);
         firstRowPanel.add(newsScrollPane, BorderLayout.EAST);
@@ -740,10 +826,15 @@ public class Main_UI extends JFrame {
         rangeAndAvgVolPanel.add(fiftyTwoWkLowLabel);
         rangeAndAvgVolPanel.add(mktCapLabel);
 
+        JPanel percentagePanel = new JPanel(new GridLayout(3, 1));
+        percentageChange = new JLabel("Percentage Change");
+        percentagePanel.add(percentageChange);
+
         // Add all columns to the secondRowPanel
         secondRowPanel.add(openHighLowPanel);
         secondRowPanel.add(volumePEMktCapPanel);
         secondRowPanel.add(rangeAndAvgVolPanel);
+        secondRowPanel.add(percentagePanel);
 
         // Add a titled border to the Stock info section
         secondRowPanel.setBorder(BorderFactory.createTitledBorder("Stock Information"));
@@ -991,7 +1082,7 @@ public class Main_UI extends JFrame {
 
             // Set the notification color as background
             label.setOpaque(true);
-            label.setBackground(new Color(33, 255, 13));
+            label.setBackground(value.getColor());
 
             // Set border and text color based on selection
             label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2, true));
@@ -1171,6 +1262,7 @@ public class Main_UI extends JFrame {
 
     public static class event_activate_hype_mode implements ActionListener {
         private static final ExecutorService executorService = Executors.newSingleThreadExecutor();
+        private static final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(1);
 
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -1182,6 +1274,64 @@ public class Main_UI extends JFrame {
                     ex.printStackTrace();
                 }
             });
+
+            scheduledExecutor.scheduleAtFixedRate(() -> {
+                try {
+                    if (!notificationListModel.isEmpty()) {
+                        for (int i = 0; i < notificationListModel.size(); i++) {
+                            Notification notification = notificationListModel.getElementAt(i);
+                            Main_data_handler.getRealTimeUpdate(notification.getSymbol(), value -> {
+                                if (value != null) {
+                                    try {
+                                        Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+
+                                        double latestClose = value.getClose();
+                                        TimeSeries series = notification.getTimeSeries();
+                                        Date start = series.getDataItem(0).getPeriod().getStart();
+
+
+                                        SwingUtilities.invokeLater(() -> {
+                                            // Update series data
+                                            series.addOrUpdate(new Second(newDate), latestClose);
+
+                                            // Only adjust UI if chart is visible
+                                            ChartPanel chartPanel = notification.getChartPanel();
+                                            if (chartPanel != null) {
+                                                XYPlot plot = chartPanel.getChart().getXYPlot();
+                                                DateAxis axis = (DateAxis) plot.getDomainAxis();
+                                                axis.setRange(start, newDate);
+
+                                                // Calculate Y-axis range
+                                                double minY = Double.MAX_VALUE;
+                                                double maxY = -Double.MAX_VALUE;
+                                                for (int j = 0; j < series.getItemCount(); j++) {
+                                                    Date date = series.getTimePeriod(j).getEnd();
+                                                    if (!date.before(start) && !date.after(newDate)) {
+                                                        double closeValue = series.getValue(j).doubleValue();
+                                                        minY = Math.min(minY, closeValue);
+                                                        maxY = Math.max(maxY, closeValue);
+                                                    }
+                                                }
+
+                                                if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
+                                                    ValueAxis yAxis = plot.getRangeAxis();
+                                                    yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1 + 0.1);
+                                                }
+
+                                                chartPanel.repaint();
+                                            }
+                                        });
+                                    } catch (Exception ex) {
+                                        ex.printStackTrace();
+                                    }
+                                }
+                            });
+                        }
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            }, 0, 1, TimeUnit.SECONDS);
         }
     }
 

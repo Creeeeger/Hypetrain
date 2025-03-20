@@ -26,11 +26,10 @@
 1. Simple Moving Average (SMA) Crossovers
 2. TRIX Indicator
 3. Rate of Change (ROC)
-4. Bollinger Bands
-5. Cumulative Percentage Change
-6. Percentage Change Threshold
-7. Keltner Channels
-8. Elder-Ray Index Approximation
+4. Cumulative Percentage Change
+5. Percentage Change Threshold
+6. Keltner Channels
+7. Elder-Ray Index Approximation
 
 ## Python env. instructions
 

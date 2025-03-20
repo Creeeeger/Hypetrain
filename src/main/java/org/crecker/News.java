@@ -85,4 +85,12 @@ public class News {
     public String toString() {
         return title; // Display the title in the list
     }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getContent() {
+        return content;
+    }
 }

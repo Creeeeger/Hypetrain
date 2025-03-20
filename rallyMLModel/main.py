@@ -12,7 +12,6 @@ from keras.src.metrics import Precision, Recall, AUC
 from keras.src.regularizers import regularizers
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import MinMaxScaler
-from tensorflow.python.keras import backend
 
 
 # 1. Feature Engineering
@@ -53,8 +52,6 @@ def create_features(data_of_csv):
 
     data_of_csv['roc'] = calculate_roc(data_of_csv, period=20)
 
-    data_of_csv['bollinger_bands'] = calculate_bollinger_bands(data_of_csv, period=20)
-
     data_of_csv['cumulative_spike'] = calculate_cumulative_spike(data_of_csv, period=10, threshold=0.35)
 
     data_of_csv['cumulative_change'] = calculate_cumulative_change(data_of_csv, last_change_length=8)
@@ -91,28 +88,6 @@ def calculate_trix(data_of_csv, period):
     # TRIX: Percentage rate of change
     trix = (ema3 - ema3.shift(1)) / ema3.shift(1) * 100
     return trix
-
-
-def calculate_bollinger_bands(data_of_csv, period):
-    if len(data_of_csv) < period:
-        return np.full((len(data_of_csv), 4), np.nan)
-
-    # Precompute rolling metrics in one pass
-    close = data_of_csv['close'].values
-    rolling_mean = np.empty(len(close))
-    rolling_std = np.empty(len(close))
-
-    for i in range(len(close)):
-        start = max(0, i - period + 1)
-        window = close[start:i + 1]
-        rolling_mean[i] = window.mean()
-        rolling_std[i] = window.std(ddof=0) if len(window) > 1 else 0
-
-    upper = rolling_mean + 2 * rolling_std
-    lower = rolling_mean - 2 * rolling_std
-    bandwidth = (upper - lower) / np.where(rolling_mean != 0, rolling_mean, np.nan)
-
-    return bandwidth
 
 
 def calculate_cumulative_spike(data, period, threshold):
@@ -304,7 +279,7 @@ def train_spike_predictor(data_path):
 
     # feature categories from Java
     features_list = [
-        'sma_crossover', 'trix', 'roc', 'bollinger_bands', 'cumulative_spike',
+        'sma_crossover', 'trix', 'roc', 'cumulative_spike',
         'cumulative_change', 'keltner_breakout', 'elder_ray_index'
     ]
 
