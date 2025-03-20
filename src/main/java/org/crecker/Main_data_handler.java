@@ -21,9 +21,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
 import static org.crecker.Main_UI.addNotification;
@@ -39,9 +37,6 @@ public class Main_data_handler {
         // Momentum Indicators
         put("ROC", Map.of("min", -5.0, "max", 5.0));
 
-        // Volatility & Breakouts Indicators
-        put("BOLLINGER", Map.of("min", 0.0, "max", 0.1));
-
         // Statistical Indicators
         put("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0));
         put("CUMULATIVE_THRESHOLD", Map.of("min", -7.0, "max", 7.0));
@@ -56,6 +51,11 @@ public class Main_data_handler {
     static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
     static int frameSize = 30; // Frame size for analysis
+    private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+
+    public static void main(String[] args) {
+        realTimeDataCollector("MARA");
+    }
 
     public static void InitAPi(String token) {
         // Configure the API client
@@ -135,15 +135,10 @@ public class Main_data_handler {
                 .setKeywords(searchText)
                 .onSuccess(e -> {
                     List<String> allSymbols = e.getMatches()
-                            .parallelStream()
+                            .stream()
                             .map(StockResponse.StockMatch::getSymbol)
                             .toList();
-
-                    // Perform parallel filtering and pass result to callback
-                    List<String> filteredSymbols = allSymbols.parallelStream()
-                            .filter(symbol -> symbol.toUpperCase().startsWith(searchText.toUpperCase()))
-                            .collect(Collectors.toList());
-                    callback.onSuccess(filteredSymbols);
+                    callback.onSuccess(allSymbols);
                 })
                 .onFailure(failure -> {
                     // Handle failure and invoke the failure callback
@@ -431,7 +426,7 @@ public class Main_data_handler {
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
                                 addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(),
-                                        notification.getLocalDateTime(), notification.getSymbol(), notification.getChange());
+                                        notification.getLocalDateTime(), notification.getSymbol(), notification.getChange(), notification.isDip());
                             }
                         }
                     } catch (Exception e) {
@@ -518,7 +513,7 @@ public class Main_data_handler {
             case "SMA_CROSS", "KELTNER", "CUMULATIVE_PERCENTAGE" -> rawValue >= 0.5 ? 1.0 : 0.0;
 
             // Standard continuous indicators with linear normalization
-            case "TRIX", "ROC", "BOLLINGER", "ELDER_RAY", "CUMULATIVE_THRESHOLD" -> {
+            case "TRIX", "ROC", "ELDER_RAY", "CUMULATIVE_THRESHOLD" -> {
                 double normalized = (rawValue - min) / (max - min);
                 yield Math.max(0.0, Math.min(1.0, normalized));
             }
@@ -537,16 +532,13 @@ public class Main_data_handler {
         // Momentum Indicators
         features[featureIndex++] = calculateROC(stocks, 20); // 2
 
-        // Volatility & Breakouts Indicators
-        features[featureIndex++] = calculateBollingerBands(stocks, 20); // 3
-
         // Statistical Indicators
-        features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.35); // 4
-        features[featureIndex++] = cumulativePercentageChange(stocks); // 5
+        features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.35); // 3
+        features[featureIndex++] = cumulativePercentageChange(stocks); // 4
 
         // Advanced Indicators
-        features[featureIndex++] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 6
-        features[featureIndex++] = elderRayIndex(stocks, 12); // 7
+        features[featureIndex++] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 5
+        features[featureIndex++] = elderRayIndex(stocks, 12); // 6
 
         return features;
     }
@@ -595,7 +587,7 @@ public class Main_data_handler {
 
         try {
             for (StockUnit stockUnit : stocks) {
-                timeSeries.add(new Second(stockUnit.getDateDate()), stockUnit.getClose());
+                timeSeries.addOrUpdate(new Second(stockUnit.getDateDate()), stockUnit.getClose());
             }
         } catch (Exception e) {
             e.printStackTrace();
@@ -610,35 +602,55 @@ public class Main_data_handler {
                                                      double[] features) {
         List<Notification> alertsList = new ArrayList<>();
 
+        double changeUp = stocks.stream()
+                .skip(stocks.size() - 4)
+                .mapToDouble(StockUnit::getPercentageChange)
+                .sum();
+
+        double changeDown = stocks.stream()
+                .skip(stocks.size() - 8)
+                .mapToDouble(StockUnit::getPercentageChange)
+                .sum();
+
         // 1. calculateTRIX
         // 2. calculateROC              GD
-        // 5. cumulativePercentageChange
-        // 6. isKeltnerBreakout -- should be 1 but can lead to delay
-        // 7. elderRayIndex
+        // 4. cumulativePercentageChange
+        // 5. isKeltnerBreakout -- should be 1 but can lead to delay
+        // 6. elderRayIndex
+
+        if (changeDown < -2) {
+            createNotification(symbol, changeDown, alertsList, timeSeries,
+                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                    prediction, true);
+        }
 
         if (features[0] == 1) { //Save
-            if (features[4] == 1) { //Save -| prediction
+            if (features[3] == 1) { //Save -| prediction
 
-                //    if (features[5] > 0.6) {
-                if (prediction > 0.95) {
+                //    if (features[4] > 0.6) {
+                if (prediction > 0.90) {
+                    createNotification(symbol, changeUp, alertsList, timeSeries,
+                            stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                            prediction, false);
+                    //       }
+
                     createNotification(symbol, stocks.stream()
                             .skip(stocks.size() - 4)
                             .mapToDouble(StockUnit::getPercentageChange)
-                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
-                    //       }
+                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction, false);
 
-//                    if (features[1] > 0.12) { //maybe >0
-//                        if (features[2] > 0.2) { // > 0.2 +-
-//                            if (features[6] == 1) {
-//                                if (features[7] > 0.18) {
-//                                    createNotification(symbol, stocks.stream()
-//                                            .skip(stocks.size() - 4)
-//                                            .mapToDouble(StockUnit::getPercentageChange)
-//                                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction);
-//                                }
-//                            }
-//                        }
-//                    }
+                    if (features[1] > 0.12) { //maybe >0
+                        if (features[2] > 0.2) { // > 0.2 +-
+                            if (features[5] == 1) {
+                                if (features[6] > 0.18) {
+                                    createNotification(symbol, stocks.stream()
+                                            .skip(stocks.size() - 4)
+                                            .mapToDouble(StockUnit::getPercentageChange)
+                                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction, false);
+                                }
+                            }
+                        }
+                    }
 
                 }
             }
@@ -724,25 +736,7 @@ public class Main_data_handler {
         return ((current - past) / past) * 100;
     }
 
-    // 4. Bollinger Bands with Bandwidth Expansion
-    public static Double calculateBollingerBands(List<StockUnit> window, int period) {
-        if (window.size() < period) return 0.0;
-
-        DoubleSummaryStatistics stats = window.stream()
-                .skip(window.size() - period)
-                .mapToDouble(StockUnit::getClose)
-                .summaryStatistics();
-
-        double sma = stats.getAverage();
-        double stdDev = Math.sqrt(window.stream()
-                .skip(window.size() - period)
-                .mapToDouble(su -> Math.pow(su.getClose() - sma, 2))
-                .sum() / period);
-
-        return ((sma + 2 * stdDev) - (sma - 2 * stdDev)) / sma;
-    }
-
-    // 5. Cumulative Percentage Change with threshold check
+    // 4. Cumulative Percentage Change with threshold check
     public static int isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
         if (window.size() < period) return 0;
 
@@ -755,7 +749,7 @@ public class Main_data_handler {
         return sum >= threshold ? 1 : 0;
     }
 
-    // 6. Cumulative Percentage Change
+    // 5. Cumulative Percentage Change
     private static double cumulativePercentageChange(List<StockUnit> stocks) {
         int startIndex = 0;
         try {
@@ -771,7 +765,7 @@ public class Main_data_handler {
                 .sum();  // Sum all the results
     }
 
-    // 7. Keltner Channels Breakout
+    // 6. Keltner Channels Breakout
     public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier, double cumulative_Limit) {
         // Check if we have enough data for calculations
         if (window.size() < Math.max(emaPeriod, 4) + 1) {
@@ -799,7 +793,7 @@ public class Main_data_handler {
         return (isBreakout && hasSignificantMove) ? 1 : 0;
     }
 
-    // 8. Elder-Ray Index Approximation
+    // 7. Elder-Ray Index Approximation
     public static double elderRayIndex(List<StockUnit> window, int emaPeriod) {
         double ema = calculateEMA(window, emaPeriod);
         return window.get(window.size() - 1).getClose() - ema;
@@ -908,16 +902,64 @@ public class Main_data_handler {
      * @param timeSeries  The time series for graphical representation.
      * @param date        The date of the event.
      */
-    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction) {
-        alertsList.add(new Notification(String.format("%.3f%% %s ↑ %.3f", totalChange, symbol, prediction),
-                String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                timeSeries, date, symbol, totalChange));
+    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction, boolean dip) {
+        if (dip) {
+            alertsList.add(new Notification(String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Decreased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    timeSeries, date, symbol, totalChange, true));
+        } else {
+            alertsList.add(new Notification(String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    timeSeries, date, symbol, totalChange, false));
+        }
     }
 
     public static List<StockUnit> getSymbolTimeline(String symbol) {
         return Collections.unmodifiableList(
                 symbolTimelines.getOrDefault(symbol.toUpperCase(), new ArrayList<>())
         );
+    }
+
+    public static void realTimeDataCollector(String symbol) {
+        InitAPi("0988PSIKXZ50IP2T");
+        executorService.scheduleAtFixedRate(() -> getRealTimeUpdate(symbol, response -> {
+            try {
+                File data = new File("realtime.txt");
+                if (!data.exists()) {
+                    data.createNewFile();
+                }
+
+                // Use try-with-resources for automatic resource management
+                try (BufferedWriter writer = new BufferedWriter(new FileWriter(data, true))) { // true for append mode
+
+                    String formatted = String.format(
+                            "StockUnit{open=%.4f, high=%.4f, low=%.4f, close=%.4f, " +
+                                    "adjustedClose=%.1f, volume=%.1f, dividendAmount=%.1f, " +
+                                    "splitCoefficient=%.1f, date=%s, symbol=%s, " +
+                                    "percentageChange=%.1f, target=%d},",
+                            response.getOpen(),
+                            response.getHigh(),
+                            response.getLow(),
+                            response.getClose(),
+                            0.0,
+                            response.getVolume(),
+                            0.0,
+                            0.0,
+                            response.getTimestamp(),
+                            response.getSymbol(),
+                            0.0,
+                            0
+                    );
+
+                    writer.write(formatted);
+                    writer.newLine();
+
+                }  // BufferedWriter auto-closes here
+
+            } catch (IOException e) {
+                System.err.println("Error writing to file: " + e.getMessage());
+            }
+        }), 0, 1, TimeUnit.SECONDS);
     }
 
     //Interfaces

@@ -219,17 +219,17 @@ public class pLTester {
 
     private static List<StockUnit> generateSyntheticData(StockUnit original) {
         List<StockUnit> synthetic = new ArrayList<>();
-        int steps = 12; // 12 intervals of 5 seconds in a minute
-        double volatility = 0.0005; // Adjust for desired fluctuation level
+        int steps = 2;
+        double volatility = 0.00001; // Adjust for desired fluctuation level
 
         double open = original.getOpen();
         double close = original.getClose();
         double delta = close - open;
 
         for (int i = 0; i < steps; i++) {
-            String timestamp = original.getLocalDateTimeDate().plusSeconds(5 * i).toString();
+            String timestamp = original.getLocalDateTimeDate().plusSeconds(30 * i).toString();
             if (timestamp.substring(timestamp.indexOf('T') + 1).matches("^[0-9][0-9]:[0-9][0-9]$")) {
-                timestamp = original.getLocalDateTimeDate().plusSeconds(5 * i) + ":00";
+                timestamp = original.getLocalDateTimeDate().plusSeconds(30 * i) + ":00";
             }
 
             timestamp = timestamp.replace("T", " ");
@@ -245,7 +245,7 @@ public class pLTester {
             if (i == 0) syntheticClose = open + (noise * 0.1); // Small noise for first step
             if (i == steps - 1) syntheticClose = close;
 
-            double syntheticOpen = (i == 0) ? open : synthetic.get(i - 1).getClose();
+            double syntheticOpen = (i == 0) ? open : synthetic.get(0).getClose();
 
             // Calculate high/low with some variation
             double randomFactor = Math.abs(syntheticClose - syntheticOpen) + (volatility * syntheticOpen);
@@ -396,7 +396,7 @@ public class pLTester {
         try {
             addNotification(currentEvent.getTitle(), currentEvent.getContent(),
                     currentEvent.getTimeSeries(), currentEvent.getLocalDateTime(),
-                    currentEvent.getSymbol(), currentEvent.getChange());
+                    currentEvent.getSymbol(), currentEvent.getChange(), currentEvent.isDip());
         } catch (Exception e) {
             e.printStackTrace();
         }

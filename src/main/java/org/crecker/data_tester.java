@@ -54,7 +54,7 @@ public class data_tester {
     }
 
     private static BufferedWriter getBufferedWriter(TimeSeriesResponse response) throws IOException {
-        File data = new File(response.getMetaData().getSymbol().toUpperCase() + ".txt"); // Create a File object for the output file named "NVDA.txt"
+        File data = new File(response.getMetaData().getSymbol().toUpperCase() + ".txt"); // Create output file
 
         // Check if the file already exists
         if (!data.exists()) {
