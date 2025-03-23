@@ -509,11 +509,7 @@ public class Main_data_handler {
 
     public static void sortNotifications(List<Notification> notifications) {
         // Sort notifications by their time series end date
-        notifications.sort((n1, n2) -> {
-            LocalDateTime date1 = n1.getLocalDateTime();
-            LocalDateTime date2 = n2.getLocalDateTime();
-            return date1.compareTo(date2); // Sort from old to new
-        });
+        notifications.sort(Comparator.comparing(Notification::getLocalDateTime));
     }
 
     public static double normalizeScore(String indicator, double rawValue) {
@@ -655,12 +651,7 @@ public class Main_data_handler {
                     createNotification(symbol, changeUp, alertsList, timeSeries,
                             stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                             prediction, false);
-                    //       }
-
-                    createNotification(symbol, stocks.stream()
-                            .skip(stocks.size() - 4)
-                            .mapToDouble(StockUnit::getPercentageChange)
-                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction, false);
+                    // }
 
                     if (features[1] > 0.12) { //maybe >0
                         if (features[2] > 0.2) { // > 0.2 +-

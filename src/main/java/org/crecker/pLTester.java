@@ -45,7 +45,6 @@ import static org.crecker.data_tester.parseStockUnit;
 public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
-    private static final boolean debug = true; // Flag for printing PL
     static JLabel percentageChange;
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
     private static double point1X = Double.NaN;
@@ -55,6 +54,7 @@ public class pLTester {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
+    static boolean tradeView = false;
 
     public static void main(String[] args) {
         //updateStocks();
@@ -72,10 +72,7 @@ public class pLTester {
         final String[] SYMBOLS = {"PLTR.txt"};
         double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
-        final int stock = 0;
         int cut = 900;
-        double DIP_LEVEL = -0.3; // Change value after testing
-
         prepData(SYMBOLS, cut);
 
         // Preprocess indices during data loading
@@ -84,44 +81,152 @@ public class pLTester {
 
         double capital = INITIAL_CAPITAL;
         int successfulCalls = 0;
-        LocalDateTime lastTradeTime = null;
 
-        // Cache timelines per notification
-        Map<String, List<StockUnit>> timelineCache = new HashMap<>();
+        // Trade state tracking
+        boolean inTrade;
+        boolean earlyStop = false;
+        LocalDateTime tradeEntryTime;
+        double tradeEntryCapital;
+        String tradedSymbol = "";
+        int tradeEntryIndex;
+
+        Scanner scanner = new Scanner(System.in);
+        LocalDateTime lastProcessedEndTime = null;
+
+        if (tradeView) {
+            createTimeline(SYMBOLS[0]);
+        }
 
         for (Notification notification : notificationsForPLAnalysis) {
-            if (gui != null) {
-                createNotification(notification);
-            }
+            LocalDateTime notifyTime = notification.getLocalDateTime();
 
-            String symbol = notification.getSymbol();
-            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, Main_data_handler::getSymbolTimeline);
-
-            Integer index = getIndexForTime(symbol, notification.getLocalDateTime());
-
-            if (index == null || index >= timeline.size() - 1) {
-                System.out.println("Invalid time index for " + symbol);
+            if (lastProcessedEndTime != null && !notifyTime.isAfter(lastProcessedEndTime)) {
                 continue;
             }
 
-            StockUnit nextUnit = timeline.get(index + 1);
+            if (gui != null) createNotification(notification);
 
-            if (shouldProcessDip(nextUnit, DIP_LEVEL, lastTradeTime)) {
-                TradeResult result = processTradeSequence(timeline, index + 1, DIP_LEVEL, capital, notification.getSymbol());
-                capital = result.newCapital() - FEE;
-                successfulCalls++;
-                lastTradeTime = result.lastTradeTime();
-                if (debug) {
-                    logTradeResult(symbol, result);
-                    getNext5Minutes(capital, lastTradeTime, notification.getSymbol());
+            String symbol = notification.getSymbol();
+            List<StockUnit> timeline = getSymbolTimeline(symbol);
+
+            System.out.println("\n=== NEW TRADE OPPORTUNITY ===");
+            System.out.printf("Notification Time: %s%n", notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+
+            if (!tradeView) {
+                notification.showNotification();
+            }
+
+            Integer baseIndex = getIndexForTime(symbol, notifyTime);
+
+            if (baseIndex == null || baseIndex >= timeline.size() - 5) {
+                System.out.println("Invalid index for trading - insufficient data");
+                continue;
+            }
+
+            LocalDateTime windowEndTime = timeline.get(baseIndex + 5).getLocalDateTimeDate();
+            lastProcessedEndTime = windowEndTime;
+
+            StockUnit stockUnit = null;
+            boolean entered = false;
+            for (int offset = 1; offset <= 5; offset++) {
+                int currentIndex = baseIndex + offset;
+                StockUnit unit = timeline.get(currentIndex);
+                stockUnit = unit;
+
+                System.out.printf("\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n",
+                        offset, 5,
+                        unit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
+                        unit.getClose(),
+                        unit.getPercentageChange(),
+                        symbol);
+
+                System.out.print("Enter trade? (y/n/exit): ");
+                String input = scanner.nextLine().trim().toLowerCase();
+
+                if (input.equals("y")) {
+                    // ENTER TRADE
+                    tradeEntryCapital = capital;
+                    tradeEntryTime = unit.getLocalDateTimeDate();
+                    tradedSymbol = symbol;
+                    tradeEntryIndex = currentIndex;
+                    inTrade = true;
+                    entered = true;
+                    double totalChange = 0.0;
+                    successfulCalls++;
+                    System.out.printf("\nENTERED TRADE AT %s WITH €%.2f%n",
+                            tradeEntryTime.format(DateTimeFormatter.ISO_LOCAL_TIME),
+                            tradeEntryCapital);
+
+                    // PROCESS MINUTES UNTIL EXIT
+                    List<StockUnit> tradedTimeline = getSymbolTimeline(tradedSymbol);
+                    for (int i = tradeEntryIndex + 1; i < tradedTimeline.size(); i++) {
+                        StockUnit minuteUnit = tradedTimeline.get(i);
+                        totalChange += minuteUnit.getPercentageChange();
+                        System.out.printf("\n[TRADE UPDATE] %s | Price: %.3f | Change: %.3f%% | Total Change %.3f%%%n",
+                                minuteUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
+                                minuteUnit.getClose(),
+                                minuteUnit.getPercentageChange(),
+                                totalChange);
+
+                        System.out.print("Exit trade now? (y/n): ");
+                        String exitChoice = scanner.nextLine().trim().toLowerCase();
+
+                        if (exitChoice.equals("y")) {
+                            capital = calculateTradeValue(tradedTimeline, tradeEntryIndex, i, tradeEntryCapital);
+                            capital -= FEE;
+                            inTrade = false;
+                            System.out.printf("\nEXITED TRADE AT %s | NEW CAPITAL: €%.2f%n",
+                                    minuteUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
+                                    capital);
+
+                            lastProcessedEndTime = minuteUnit.getLocalDateTimeDate();
+
+                            getNext5Minutes(capital, minuteUnit.getLocalDateTimeDate(), symbol);
+                            break;
+                        }
+                    }
+
+                    // AUTO-CLOSE IF STILL IN TRADE
+                    if (inTrade) {
+                        int finalIndex = tradedTimeline.size() - 1;
+                        capital = calculateTradeValue(tradedTimeline, tradeEntryIndex, finalIndex, tradeEntryCapital);
+                        capital -= FEE;
+                        System.out.printf("\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n", capital);
+                    }
+
+                    break;
+                }
+
+                if (input.equalsIgnoreCase("exit")) {
+                    earlyStop = true;
+                    break;
                 }
             }
+
+            if (earlyStop) {
+                break;
+            }
+
+            if (!entered) {
+                getNext5Minutes(capital, stockUnit.getLocalDateTimeDate(), tradedSymbol);
+                System.out.println("\nSkipped all entry opportunities. Next notification after " + windowEndTime + " Good Luck!");
+            }
+
+            notification.closeNotification();
         }
 
-        if (debug) {
-            createTimeline(SYMBOLS[stock]);
-            logFinalResults(DIP_LEVEL, capital, INITIAL_CAPITAL, successfulCalls);
+        logFinalResults(capital, INITIAL_CAPITAL, successfulCalls);
+
+        scanner.close();
+    }
+
+    private static double calculateTradeValue(List<StockUnit> timeline, int entryIndex, int exitIndex, double capital) {
+        double cumulative = 1.0;
+        for (int i = entryIndex; i <= exitIndex; i++) {
+            cumulative *= (1 + timeline.get(i).getPercentageChange() / 100);
         }
+
+        return capital * cumulative;
     }
 
     private static void buildTimeIndex(String symbol, List<StockUnit> timeline) {
@@ -136,52 +241,10 @@ public class pLTester {
         return symbolTimeIndex.getOrDefault(symbol, Collections.emptyMap()).get(time);
     }
 
-    private static boolean shouldProcessDip(StockUnit nextUnit, double dipLevel, LocalDateTime lastTradeTime) {
-        return (lastTradeTime == null || nextUnit.getLocalDateTimeDate().isAfter(lastTradeTime)
-                && nextUnit.getPercentageChange() >= 0 // Try later if beneficial
-        );
-    }
-
-    private static TradeResult processTradeSequence(List<StockUnit> timeline, int startIndex, double dipLevel, double capital, String symbol) {
-        double currentCapital = capital;
-        int currentIndex = startIndex;
-        final int maxSteps = Math.min(timeline.size(), startIndex + 100); // Safety limit
-
-        while (currentIndex < maxSteps) {
-            StockUnit unit = timeline.get(currentIndex);
-            currentCapital *= (1 + (unit.getPercentageChange() / 100));
-
-            if (debug) {
-                System.out.printf("%s trade: capital %.2f change %.2f Date: %s%n", symbol, currentCapital, unit.getPercentageChange(), unit.getDateDate());
-            }
-
-            if (unit.getPercentageChange() < dipLevel) {
-                break;
-            }
-
-            currentIndex++;
-        }
-
-        // catch errors in case not enough data points are available
-        try {
-            return new TradeResult(currentCapital, timeline.get(currentIndex).getLocalDateTimeDate());
-        } catch (Exception e) {
-            return new TradeResult(currentCapital, timeline.get(currentIndex - 1).getLocalDateTimeDate());
-        }
-    }
-
-    private static void logTradeResult(String symbol, TradeResult result) {
-        System.out.printf("%s trade: Final capital %.2f at %s%n",
-                symbol,
-                result.newCapital(),
-                result.lastTradeTime().format(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
-        );
-    }
-
-    private static void logFinalResults(double dipLevel, double capital, double initial, int calls) {
+    private static void logFinalResults(double capital, double initial, int calls) {
         double revenue = (capital - initial) * 0.75;
+
         if (calls > 0) {
-            System.out.printf("Dip Level: %.2f%n", dipLevel);
             System.out.printf("Total Revenue: €%.2f%n", revenue);
             System.out.printf("Successful Calls: %d%n", calls);
             System.out.printf("Revenue/Call: €%.2f%n%n", revenue / calls);
@@ -199,7 +262,7 @@ public class pLTester {
         });
 
         data_tester.calculateStockPercentageChange();
-        Main_data_handler.calculateSpikesInRally(frameSize, false);
+        calculateSpikesInRally(frameSize, false);
     }
 
     public static void processStockDataFromFile(String filePath, String symbol, int retainLast) throws IOException {
@@ -216,7 +279,7 @@ public class pLTester {
 
         List<StockUnit> existing = symbolTimelines.getOrDefault(symbol, new ArrayList<>());
         existing.addAll(fileUnits);
-     //   existing.addAll(syntheticUnits);
+        //   existing.addAll(syntheticUnits);
         symbolTimelines.put(symbol, existing);
     }
 
@@ -798,7 +861,7 @@ public class pLTester {
                 StockUnit unit = timeline.get(index);
                 ValueMarker marker = new ValueMarker(unit.getDateDate().getTime());
                 marker.setPaint(new Color(220, 20, 60, 150));
-                marker.setStroke(new BasicStroke(0.5f));
+                marker.setStroke(new BasicStroke(1.0f));
                 plot.addDomainMarker(marker);
             }
         }
@@ -906,8 +969,5 @@ public class pLTester {
     }
 
     private record TimeInterval(double startTime, double endTime) {
-    }
-
-    private record TradeResult(double newCapital, LocalDateTime lastTradeTime) {
     }
 }
