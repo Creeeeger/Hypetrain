@@ -12,7 +12,10 @@ import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.chart.ui.Layer;
-import org.jfree.data.time.*;
+import org.jfree.data.time.RegularTimePeriod;
+import org.jfree.data.time.Second;
+import org.jfree.data.time.TimeSeries;
+import org.jfree.data.time.TimeSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
@@ -60,7 +63,7 @@ public class pLTester {
 
     private static void updateStocks() {
         // Add / remove stock which should get added / updated
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "IREN", "PLTR")) {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "IREN", "PLTR", "MSTR", "ARM")) {
             getData(stock);
         }
     }
