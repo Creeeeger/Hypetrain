@@ -1,8 +1,7 @@
 TODO
-CODE
 Version 1.0:
-- [ ] Optimise pl tester for more realistic training
-- [ ] Finish the data linking and comparison for minutes
+- [ ] pl tester optimize speed
+- [ ] Finish data comparison for minute data
 
 Version 1.5:
 - [ ] Update frame sizes for second based processing
@@ -11,6 +10,3 @@ Version 1.5:
 Version 2.0:
 - [ ] Update inference for second data
 - [ ] Update linking for second data
-
-TESTING
-- test out new trading simulation parameters (dip level & wait a minute)
