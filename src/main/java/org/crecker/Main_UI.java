@@ -85,9 +85,13 @@ public class Main_UI extends JFrame {
         setLayout(new BorderLayout());
         BorderFactory.createTitledBorder("Stock monitor");
 
-        if (Taskbar.isTaskbarSupported()) {
-            final Taskbar taskbar = Taskbar.getTaskbar();
-            taskbar.setIconImage(new ImageIcon(Paths.get(System.getProperty("user.dir"), "train.png").toString()).getImage());
+        // Not supported on windows hence throws an exception
+        try {
+            if (Taskbar.isTaskbarSupported()) {
+                final Taskbar taskbar = Taskbar.getTaskbar();
+                taskbar.setIconImage(new ImageIcon(Paths.get(System.getProperty("user.dir"), "train.png").toString()).getImage());
+            }
+        } catch (Exception ignored) {
         }
 
         // Menu bar
@@ -751,7 +755,6 @@ public class Main_UI extends JFrame {
         // Initialize the News list model
         NewsListModel = new DefaultListModel<>();
         JScrollPane newsScrollPane = getNewsScrollPane();
-        newsScrollPane.setPreferredSize(new Dimension(200, 400));
 
         // Add a titled border to the news section
         newsScrollPane.setBorder(BorderFactory.createTitledBorder("Company News"));
@@ -789,9 +792,23 @@ public class Main_UI extends JFrame {
         int rowHeight = dummyLabel.getPreferredSize().height + 5; // Add padding
         newsList.setFixedCellHeight(rowHeight);
 
-        // Add chartPanel (80%) and newsScrollPane (20%) to the firstRowPanel
+        // Create container panel for news and button
+        JPanel newsContainerPanel = new JPanel(new BorderLayout());
+        newsContainerPanel.setPreferredSize(new Dimension(200, 400));
+
+        // Adjust news scroll pane size to accommodate button
+        newsScrollPane.setPreferredSize(new Dimension(200, 380));
+
+        // Create and configure overview button
+        JButton overviewButton = getOverviewButton();
+
+        // Add components to news container
+        newsContainerPanel.add(newsScrollPane, BorderLayout.CENTER);
+        newsContainerPanel.add(overviewButton, BorderLayout.SOUTH);
+
+        // Add container panel instead of scroll pane to first row
         firstRowPanel.add(chartPanel, BorderLayout.CENTER);
-        firstRowPanel.add(newsScrollPane, BorderLayout.EAST);
+        firstRowPanel.add(newsContainerPanel, BorderLayout.EAST);
 
         // Second Row - Lists of Stock information
         JPanel secondRowPanel = new JPanel(new GridLayout(1, 4));
@@ -844,6 +861,54 @@ public class Main_UI extends JFrame {
         mainPanel.add(secondRowPanel, BorderLayout.SOUTH);
 
         return mainPanel;
+    }
+
+    @NotNull
+    private static JButton getOverviewButton() {
+        JButton overviewButton = new JButton("Look at Company Overview");
+        overviewButton.addActionListener(e -> {
+            if ("-Select a Stock-".equals(selected_stock)) {
+                JOptionPane.showMessageDialog(null, "Please select a valid stock.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            JDialog dialog = new JDialog();
+            dialog.setTitle(selected_stock + " - Company Overview");
+            dialog.setSize(500, 400);
+            dialog.setLayout(new BorderLayout());
+            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+            JLabel titleLabel = new JLabel(selected_stock + " Overview", SwingConstants.CENTER);
+
+            JTextArea overviewText = new JTextArea("Fetching company overview...");
+            overviewText.setWrapStyleWord(true);
+            overviewText.setLineWrap(true);
+            overviewText.setEditable(false);
+
+            JScrollPane scrollPane = new JScrollPane(overviewText);
+            scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+            scrollPane.setPreferredSize(new Dimension(480, 300));
+
+            panel.add(titleLabel, BorderLayout.NORTH);
+            panel.add(scrollPane, BorderLayout.CENTER);
+
+            dialog.add(panel);
+            dialog.setLocationRelativeTo(null);
+            dialog.setVisible(true);
+
+            // Fetching the company overview asynchronously
+            Main_data_handler.getCompanyOverview(selected_stock, value -> SwingUtilities.invokeLater(() -> {
+                if (value != null && value.getOverview() != null) {
+                    overviewText.setText(value.getOverview().getDescription());
+                } else {
+                    overviewText.setText("No overview available.");
+                }
+            }));
+        });
+        return overviewButton;
     }
 
     @NotNull

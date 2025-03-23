@@ -27,6 +27,7 @@ import java.util.stream.Collectors;
 import static org.crecker.Main_UI.addNotification;
 import static org.crecker.Main_UI.logTextArea;
 import static org.crecker.RallyPredictor.predict;
+import static org.crecker.pLTester.PLAnalysis;
 
 public class Main_data_handler {
     public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
@@ -36,6 +37,8 @@ public class Main_data_handler {
 
         // Momentum Indicators
         put("ROC", Map.of("min", -5.0, "max", 5.0));
+
+        put("PLACEHOLDER", Map.of("min", -3.0, "max", 3.0));
 
         // Statistical Indicators
         put("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0));
@@ -54,7 +57,8 @@ public class Main_data_handler {
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
 
     public static void main(String[] args) {
-        realTimeDataCollector("MARA");
+        PLAnalysis();
+        //realTimeDataCollector("MARA");
     }
 
     public static void InitAPi(String token) {
@@ -345,6 +349,19 @@ public class Main_data_handler {
                 .fetch();
     }
 
+    public static void getCompanyOverview(String symbol, OverviewCallback callback) {
+        AlphaVantage.api()
+                .fundamentalData()
+                .companyOverview()
+                .forSymbol(symbol)
+                .onSuccess(response -> {
+                    CompanyOverviewResponse overview = (CompanyOverviewResponse) response;
+                    callback.onOverviewReceived(overview);
+                })
+                .onFailure(Main_data_handler::handleFailure)
+                .fetch();
+    }
+
     public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
         Map<String, StockUnit> currentBatch = new HashMap<>();
 
@@ -517,7 +534,11 @@ public class Main_data_handler {
                 double normalized = (rawValue - min) / (max - min);
                 yield Math.max(0.0, Math.min(1.0, normalized));
             }
-            default -> throw new IllegalStateException("Unexpected value: " + indicator);
+
+            default -> {
+                double normalized = (rawValue - min) / (max - min);
+                yield Math.max(0.0, Math.min(1.0, normalized));
+            }
         };
     }
 
@@ -532,13 +553,15 @@ public class Main_data_handler {
         // Momentum Indicators
         features[featureIndex++] = calculateROC(stocks, 20); // 2
 
+        features[featureIndex++] = 0.2; // 3
+
         // Statistical Indicators
-        features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.35); // 3
-        features[featureIndex++] = cumulativePercentageChange(stocks); // 4
+        features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.35); // 4
+        features[featureIndex++] = cumulativePercentageChange(stocks); // 5
 
         // Advanced Indicators
-        features[featureIndex++] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 5
-        features[featureIndex++] = elderRayIndex(stocks, 12); // 6
+        features[featureIndex++] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 6
+        features[featureIndex++] = elderRayIndex(stocks, 12); // 7
 
         return features;
     }
@@ -614,20 +637,20 @@ public class Main_data_handler {
 
         // 1. calculateTRIX
         // 2. calculateROC              GD
-        // 4. cumulativePercentageChange
-        // 5. isKeltnerBreakout -- should be 1 but can lead to delay
-        // 6. elderRayIndex
+        // 5. cumulativePercentageChange
+        // 6. isKeltnerBreakout -- should be 1 but can lead to delay
+        // 7. elderRayIndex
 
-        if (changeDown < -2) {
+        if (changeDown < -5) {
             createNotification(symbol, changeDown, alertsList, timeSeries,
                     stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                     prediction, true);
         }
 
         if (features[0] == 1) { //Save
-            if (features[3] == 1) { //Save -| prediction
+            if (features[4] == 1) { //Save -| prediction
 
-                //    if (features[4] > 0.6) {
+                //    if (features[5] > 0.6) {
                 if (prediction > 0.90) {
                     createNotification(symbol, changeUp, alertsList, timeSeries,
                             stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
@@ -641,8 +664,8 @@ public class Main_data_handler {
 
                     if (features[1] > 0.12) { //maybe >0
                         if (features[2] > 0.2) { // > 0.2 +-
-                            if (features[5] == 1) {
-                                if (features[6] > 0.18) {
+                            if (features[6] == 1) {
+                                if (features[7] > 0.18) {
                                     createNotification(symbol, stocks.stream()
                                             .skip(stocks.size() - 4)
                                             .mapToDouble(StockUnit::getPercentageChange)
@@ -651,11 +674,9 @@ public class Main_data_handler {
                             }
                         }
                     }
-
                 }
             }
         }
-
         return alertsList;
     }
 
@@ -987,5 +1008,9 @@ public class Main_data_handler {
 
     public interface RealTimeCallback {
         void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
+    }
+
+    public interface OverviewCallback {
+        void onOverviewReceived(CompanyOverviewResponse value);
     }
 }
