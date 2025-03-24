@@ -12,6 +12,7 @@ import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.chart.ui.Layer;
+import org.jfree.data.Range;
 import org.jfree.data.time.RegularTimePeriod;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
@@ -54,7 +55,9 @@ public class pLTester {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
-    static boolean tradeView = false;
+    private static boolean isAdjusting = false;
+    static boolean tradeView = true;
+    static int feature = 0;
 
     public static void main(String[] args) {
         //updateStocks();
@@ -95,6 +98,7 @@ public class pLTester {
 
         if (tradeView) {
             createTimeline(SYMBOLS[0]);
+            createSuperChart(SYMBOLS[0]);
         }
 
         // Cache timelines per notification
@@ -481,6 +485,189 @@ public class pLTester {
             }
 
             // Create main price series
+            TimeSeries priceSeries = new TimeSeries(processedSymbol + " Price");
+            for (StockUnit unit : timeline) {
+                priceSeries.add(new Second(unit.getDateDate()), unit.getClose());
+            }
+            TimeSeriesCollection priceDataset = new TimeSeriesCollection();
+            priceDataset.addSeries(priceSeries);
+
+            // Create prediction dataset
+            TimeSeriesCollection predictionDataset = new TimeSeriesCollection();
+            synchronized (predictionTimeSeries) {
+                TimeSeries predictionSeries = new TimeSeries("Prediction");
+                predictionTimeSeries.getTimePeriods().forEach(period -> {
+                    Number value = predictionTimeSeries.getValue((RegularTimePeriod) period);
+                    if (value != null) {
+                        predictionSeries.add((RegularTimePeriod) period, value.doubleValue());
+                    }
+                });
+                predictionDataset.addSeries(predictionSeries);
+            }
+
+            // Prepare frame for multiple charts
+            JFrame frame = new JFrame("Multi-Feature Analysis");
+            frame.setLayout(new GridLayout(4, 2)); // 4 rows, 2 columns (7 charts)
+            List<ChartPanel> chartPanels = new ArrayList<>();
+
+            // Create a chart for each feature (0,1,2,4,5,6,7)
+            int[] featureIndices = {0, 1, 2, 4, 5, 6, 7};
+            for (int i : featureIndices) {
+                TimeSeries featureSeries = featureTimeSeriesArray[i];
+                TimeSeriesCollection featureDataset = new TimeSeriesCollection();
+                featureDataset.addSeries(featureSeries);
+
+                // Create chart
+                JFreeChart chart = createFeatureChart(
+                        processedSymbol, priceDataset, predictionDataset, featureDataset, i, timeline
+                );
+                ChartPanel chartPanel = new ChartPanel(chart);
+                createPercentageMarkers(chart, chartPanel);
+
+                chartPanels.add(chartPanel);
+                frame.add(chartPanel);
+            }
+
+            JPanel chartContainer = new JPanel(new BorderLayout());
+
+            // Create percentage label with proper positioning
+            percentageChange = new JLabel("Percentage Change");
+
+            // Add label below title but above chart
+            chartContainer.add(percentageChange, BorderLayout.NORTH);
+            frame.add(chartContainer);
+
+            // Link domain axes for synchronized zooming
+            linkDomainAxes(chartPanels);
+
+            // Configure frame
+            frame.pack();
+            frame.setSize(1700, 1000);
+            frame.setLocation(60, 20);
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            frame.setVisible(true);
+
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static JFreeChart createFeatureChart(String symbol, TimeSeriesCollection priceDataset, TimeSeriesCollection predictionDataset,
+                                                 TimeSeriesCollection featureDataset, int featureIndex, List<StockUnit> timeline) {
+        JFreeChart chart = ChartFactory.createTimeSeriesChart(
+                symbol + " - Feature " + featureIndex,
+                "Time",
+                "Value",
+                priceDataset,
+                true,
+                true,
+                false
+        );
+
+        XYPlot plot = chart.getXYPlot();
+
+        // Clear existing axes
+        plot.clearRangeAxes();
+
+        // Create and configure axes
+        // 1. Price axis (primary - left)
+        NumberAxis priceAxis = new NumberAxis("Price");
+        priceAxis.setAutoRangeIncludesZero(false);
+        plot.setRangeAxis(0, priceAxis);
+
+        // 2. Feature axis (secondary - left)
+        NumberAxis featureAxis = new NumberAxis("Feature " + featureIndex);
+        featureAxis.setAutoRangeIncludesZero(false);
+        plot.setRangeAxis(1, featureAxis);
+
+        // 3. Prediction axis (tertiary - right)
+        NumberAxis predictionAxis = new NumberAxis("Prediction");
+        predictionAxis.setAutoRangeIncludesZero(false);
+        plot.setRangeAxis(2, predictionAxis);
+
+        // Add datasets with proper axis mapping
+        plot.setDataset(0, priceDataset);  // Primary (axis 0)
+        plot.setDataset(1, featureDataset); // Secondary (axis 1)
+        plot.setDataset(2, predictionDataset); // Tertiary (axis 2)
+
+        plot.mapDatasetToRangeAxis(0, 0);  // Price -> axis 0
+        plot.mapDatasetToRangeAxis(1, 1);  // Feature -> axis 1
+        plot.mapDatasetToRangeAxis(2, 2);  // Prediction -> axis 2
+
+        // Configure auto-scaling
+        priceAxis.setAutoRange(true);
+        featureAxis.setAutoRange(true);
+        predictionAxis.setAutoRange(true);
+
+        // PRESERVE YOUR MARKERS
+        // Zero line marker (primary axis)
+        ValueMarker zeroMarker = new ValueMarker(0);
+        zeroMarker.setPaint(Color.BLACK);
+        zeroMarker.setStroke(new BasicStroke(1f));
+        plot.addRangeMarker(0, zeroMarker, Layer.FOREGROUND);
+
+        // Notification markers
+        addNotificationMarkers(plot, symbol, timeline);
+
+        // Configure renderers
+        XYLineAndShapeRenderer priceRenderer = new XYLineAndShapeRenderer();
+        priceRenderer.setSeriesPaint(0, Color.BLACK);
+        priceRenderer.setSeriesStroke(0, new BasicStroke(1.5f));
+        priceRenderer.setSeriesShapesVisible(0, false);
+
+        XYLineAndShapeRenderer featureRenderer = new XYLineAndShapeRenderer();
+        featureRenderer.setSeriesPaint(0, new Color(0, 0, 255, 150)); // Blue
+        featureRenderer.setSeriesStroke(0, new BasicStroke(1.0f));
+        featureRenderer.setSeriesShapesVisible(0, false);
+
+        XYLineAndShapeRenderer predictionRenderer = new XYLineAndShapeRenderer();
+        predictionRenderer.setSeriesPaint(0, new Color(255, 165, 0, 200)); // Orange
+        predictionRenderer.setSeriesStroke(0, new BasicStroke(1.0f));
+        predictionRenderer.setSeriesShapesVisible(0, false);
+
+        plot.setRenderer(0, priceRenderer);
+        plot.setRenderer(1, featureRenderer);
+        plot.setRenderer(2, predictionRenderer);
+
+        // Styling
+        chart.setBackgroundPaint(Color.WHITE);
+        plot.setBackgroundPaint(Color.WHITE);
+        plot.setDomainGridlinePaint(Color.LIGHT_GRAY);
+        plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
+
+        return chart;
+    }
+
+    private static void linkDomainAxes(List<ChartPanel> chartPanels) {
+        for (ChartPanel panel : chartPanels) {
+            ValueAxis domainAxis = panel.getChart().getXYPlot().getDomainAxis();
+            domainAxis.addChangeListener(event -> {
+                if (!isAdjusting) {
+                    isAdjusting = true;
+                    Range newRange = domainAxis.getRange();
+                    // Update all other panels with the new range
+                    for (ChartPanel otherPanel : chartPanels) {
+                        if (otherPanel != panel) {
+                            otherPanel.getChart().getXYPlot().getDomainAxis().setRange(newRange);
+                        }
+                    }
+                    isAdjusting = false;
+                }
+            });
+        }
+    }
+
+    private static void createSuperChart(String symbol) {
+        try {
+            String processedSymbol = symbol.toUpperCase().replace(".TXT", "");
+            List<StockUnit> timeline = getSymbolTimeline(processedSymbol);
+
+            if (timeline.isEmpty()) {
+                System.out.println("No data available for " + processedSymbol);
+                return;
+            }
+
+            // Create main price series
             TimeSeries priceSeries = new TimeSeries(processedSymbol + " Price Timeline");
             for (StockUnit unit : timeline) {
                 priceSeries.add(new Second(unit.getDateDate()), unit.getClose());
@@ -492,10 +679,10 @@ public class pLTester {
 
             // Create indicator series with synchronization
             TimeSeriesCollection indicatorDataset = new TimeSeriesCollection();
-            synchronized (indicatorTimeSeries) {
+            synchronized (featureTimeSeriesArray) {
                 TimeSeries indicatorSeries = new TimeSeries("Indicator");
-                indicatorTimeSeries.getTimePeriods().forEach(period -> {
-                    Number value = indicatorTimeSeries.getValue((RegularTimePeriod) period);
+                featureTimeSeriesArray[feature].getTimePeriods().forEach(period -> {
+                    Number value = featureTimeSeriesArray[feature].getValue((RegularTimePeriod) period);
                     if (value != null) {
                         indicatorSeries.add((RegularTimePeriod) period, value.doubleValue());
                     }
@@ -839,7 +1026,7 @@ public class pLTester {
         List<StockUnit> timeline = symbolTimelines.get(symbol);
         if (timeline == null) return;
 
-        synchronized (indicatorTimeSeries) {
+        synchronized (featureTimeSeriesArray) {
             timeline.stream()
                     .filter(unit -> {
                         long unitTime = unit.getDateDate().getTime();
@@ -847,7 +1034,7 @@ public class pLTester {
                     })
                     .forEach(unit -> {
                         unit.setTarget(value);
-                        indicatorTimeSeries.addOrUpdate(new Second(unit.getDateDate()), value);
+                        featureTimeSeriesArray[feature].addOrUpdate(new Second(unit.getDateDate()), value);
                     });
         }
     }

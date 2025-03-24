@@ -50,11 +50,24 @@ public class Main_data_handler {
     }};
     static final Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
-    static final TimeSeries indicatorTimeSeries = new TimeSeries("Indicator levels");
     static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
-    static int frameSize = 30; // Frame size for analysis
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+    static int frameSize = 30; // Frame size for analysis
+    public static final TimeSeries[] featureTimeSeriesArray = new TimeSeries[8];
+
+    static {
+        // Initialize feature TimeSeries, excluding index 3
+        for (int i = 0; i < featureTimeSeriesArray.length; i++) {
+            if (i != 3) {
+                featureTimeSeriesArray[i] = new TimeSeries("Feature " + i);
+            }
+        }
+    }
+
+    // Base value of 1 for minute data. If you half the time of 1 minute to 30 seconds change value to 2.
+    // If you double to 2 minute periods then change value to 0.5 and so on
+    static double frequency = 1.0;
 
     public static void main(String[] args) {
         PLAnalysis();
@@ -592,12 +605,17 @@ public class Main_data_handler {
         // feed normalized features
         double prediction = predict(normalizeFeatures(features));
 
-        synchronized (indicatorTimeSeries) {
-            indicatorTimeSeries.addOrUpdate(
-                    new Second(stocks.get(stocks.size() - 1).getDateDate()),
-                    features[6]
-            );
+        synchronized (featureTimeSeriesArray) {
+            for (int i = 0; i < features.length; i++) {
+                if (i == 3) continue;
+                featureTimeSeriesArray[i].addOrUpdate(
+                        new Second(stocks.get(stocks.size() - 1).getDateDate()),
+                        features[i]
+                );
+            }
+        }
 
+        synchronized (predictionTimeSeries) {
             predictionTimeSeries.addOrUpdate(
                     new Second(stocks.get(stocks.size() - 1).getDateDate()),
                     prediction
