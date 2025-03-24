@@ -1,6 +1,5 @@
 TODO
 Version 1.0:
-- [ ] pl tester optimize speed
 - [ ] Finish data comparison for minute data
 
 Version 1.5:
