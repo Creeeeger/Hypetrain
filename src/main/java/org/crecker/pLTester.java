@@ -97,6 +97,9 @@ public class pLTester {
             createTimeline(SYMBOLS[0]);
         }
 
+        // Cache timelines per notification
+        Map<String, List<StockUnit>> timelineCache = new HashMap<>();
+
         for (Notification notification : notificationsForPLAnalysis) {
             LocalDateTime notifyTime = notification.getLocalDateTime();
 
@@ -107,7 +110,7 @@ public class pLTester {
             if (gui != null) createNotification(notification);
 
             String symbol = notification.getSymbol();
-            List<StockUnit> timeline = getSymbolTimeline(symbol);
+            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, Main_data_handler::getSymbolTimeline);
 
             System.out.println("\n=== NEW TRADE OPPORTUNITY ===");
             System.out.printf("Notification Time: %s%n", notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -158,9 +161,8 @@ public class pLTester {
                             tradeEntryCapital);
 
                     // PROCESS MINUTES UNTIL EXIT
-                    List<StockUnit> tradedTimeline = getSymbolTimeline(tradedSymbol);
-                    for (int i = tradeEntryIndex + 1; i < tradedTimeline.size(); i++) {
-                        StockUnit minuteUnit = tradedTimeline.get(i);
+                    for (int i = tradeEntryIndex + 1; i < timeline.size(); i++) {
+                        StockUnit minuteUnit = timeline.get(i);
                         totalChange += minuteUnit.getPercentageChange();
                         System.out.printf("\n[TRADE UPDATE] %s | Price: %.3f | Change: %.3f%% | Total Change %.3f%%%n",
                                 minuteUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
@@ -172,7 +174,7 @@ public class pLTester {
                         String exitChoice = scanner.nextLine().trim().toLowerCase();
 
                         if (exitChoice.equals("y")) {
-                            capital = calculateTradeValue(tradedTimeline, tradeEntryIndex, i, tradeEntryCapital);
+                            capital = calculateTradeValue(timeline, tradeEntryIndex, i, tradeEntryCapital);
                             capital -= FEE;
                             inTrade = false;
                             System.out.printf("\nEXITED TRADE AT %s | NEW CAPITAL: €%.2f%n",
@@ -188,8 +190,8 @@ public class pLTester {
 
                     // AUTO-CLOSE IF STILL IN TRADE
                     if (inTrade) {
-                        int finalIndex = tradedTimeline.size() - 1;
-                        capital = calculateTradeValue(tradedTimeline, tradeEntryIndex, finalIndex, tradeEntryCapital);
+                        int finalIndex = timeline.size() - 1;
+                        capital = calculateTradeValue(timeline, tradeEntryIndex, finalIndex, tradeEntryCapital);
                         capital -= FEE;
                         System.out.printf("\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n", capital);
                     }
