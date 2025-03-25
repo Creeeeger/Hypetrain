@@ -13,9 +13,9 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
 
-import static org.crecker.Main_data_handler.symbolTimelines;
+import static org.crecker.mainDataHandler.symbolTimelines;
 
-public class data_tester {
+public class dataTester {
     //method for pulling new data from server for tests and training
     public static void getData(String symbol) {
         String apiKey = "2NN1RGFV3V34ORCZ";
@@ -43,7 +43,7 @@ public class data_tester {
                         throw new RuntimeException(ex);
                     }
                 })
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
     }
 

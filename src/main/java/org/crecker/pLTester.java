@@ -37,9 +37,9 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import static org.crecker.Main_data_handler.*;
-import static org.crecker.data_tester.getData;
-import static org.crecker.data_tester.parseStockUnit;
+import static org.crecker.dataTester.getData;
+import static org.crecker.dataTester.parseStockUnit;
+import static org.crecker.mainDataHandler.*;
 import static org.crecker.mainUI.addNotification;
 import static org.crecker.mainUI.gui;
 
@@ -114,7 +114,7 @@ public class pLTester {
             if (gui != null) createNotification(notification);
 
             String symbol = notification.getSymbol();
-            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, Main_data_handler::getSymbolTimeline);
+            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, mainDataHandler::getSymbolTimeline);
 
             System.out.println("\n=== NEW TRADE OPPORTUNITY ===");
             System.out.printf("Notification Time: %s%n", notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
@@ -271,7 +271,7 @@ public class pLTester {
             }
         });
 
-        data_tester.calculateStockPercentageChange();
+        dataTester.calculateStockPercentageChange();
         calculateSpikesInRally(frameSize, false);
     }
 

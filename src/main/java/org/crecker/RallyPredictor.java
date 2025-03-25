@@ -19,7 +19,7 @@ public class RallyPredictor implements AutoCloseable {
     private final OrtSession session;
     private final LinkedList<float[]> buffer;
     private final ReentrantLock bufferLock = new ReentrantLock();
-    private final int length = Main_data_handler.INDICATOR_RANGE_MAP.size();
+    private final int length = mainDataHandler.INDICATOR_RANGE_MAP.size();
     private int dynamicBufferSize = 28; // Initial default value
 
     // Private constructor to prevent instantiation

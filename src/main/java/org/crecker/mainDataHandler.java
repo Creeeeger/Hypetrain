@@ -29,7 +29,7 @@ import static org.crecker.mainUI.addNotification;
 import static org.crecker.mainUI.logTextArea;
 import static org.crecker.pLTester.PLAnalysis;
 
-public class Main_data_handler {
+public class mainDataHandler {
     public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
         // Trend Following Indicators
         put("SMA_CROSS", Map.of("min", -1.0, "max", 1.0));
@@ -85,13 +85,13 @@ public class Main_data_handler {
         AlphaVantage.api().init(cfg);
     }
 
-    public static void getTimeline(String symbol_name, TimelineCallback callback) {
+    public static void getTimeline(String symbolName, TimelineCallback callback) {
         List<StockUnit> stocks = new ArrayList<>(); // Directly use a List<StockUnit>
 
         AlphaVantage.api()
                 .timeSeries()
                 .intraday()
-                .forSymbol(symbol_name)
+                .forSymbol(symbolName)
                 .interval(Interval.ONE_MIN)
                 .outputSize(OutputSize.FULL)
                 .onSuccess(e -> {
@@ -99,21 +99,21 @@ public class Main_data_handler {
                     stocks.addAll(response.getStockUnits()); // Populate the list
                     callback.onTimeLineFetched(stocks); // Call the callback with the Stock list
                 })
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
     }
 
-    public static void getInfoArray(String symbol_name, DataCallback callback) {
+    public static void getInfoArray(String symbolName, DataCallback callback) {
         Double[] data = new Double[9];
 
         // Fetch fundamental data
         AlphaVantage.api()
                 .fundamentalData()
                 .companyOverview()
-                .forSymbol(symbol_name)
+                .forSymbol(symbolName)
                 .onSuccess(e -> {
-                    CompanyOverviewResponse overview_response = (CompanyOverviewResponse) e;
-                    CompanyOverview response = overview_response.getOverview();
+                    CompanyOverviewResponse companyOverviewResponse = (CompanyOverviewResponse) e;
+                    CompanyOverview response = companyOverviewResponse.getOverview();
                     data[4] = response.getPERatio();
                     data[5] = response.getPEGRatio();
                     data[6] = response.getFiftyTwoWeekHigh();
@@ -121,13 +121,13 @@ public class Main_data_handler {
                     data[8] = Double.valueOf(response.getMarketCapitalization());
 
                 })
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
 
         AlphaVantage.api()
                 .timeSeries()
                 .quote()
-                .forSymbol(symbol_name)
+                .forSymbol(symbolName)
                 .onSuccess(e -> {
                     QuoteResponse response = (QuoteResponse) e;
                     data[0] = response.getOpen();
@@ -138,7 +138,7 @@ public class Main_data_handler {
                     // Call the callback with the fetched data
                     callback.onDataFetched(data);
                 })
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
     }
 
@@ -159,7 +159,7 @@ public class Main_data_handler {
                 })
                 .onFailure(failure -> {
                     // Handle failure and invoke the failure callback
-                    Main_data_handler.handleFailure(failure);
+                    mainDataHandler.handleFailure(failure);
                     callback.onFailure(new RuntimeException("API call failed"));
                 })
                 .fetch();
@@ -172,7 +172,7 @@ public class Main_data_handler {
                 .setSort("LATEST")
                 .setLimit(12)
                 .onSuccess(e -> callback.onNewsReceived(e.getNewsItems()))
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
     }
 
@@ -267,8 +267,8 @@ public class Main_data_handler {
                     .companyOverview()
                     .forSymbol(possibleSymbols[i])
                     .onSuccess(e -> {
-                        long market_cap = ((CompanyOverviewResponse) e).getOverview().getMarketCapitalization();
-                        long outstanding_Shares = ((CompanyOverviewResponse) e).getOverview().getSharesOutstanding();
+                        long marketCapitalization = ((CompanyOverviewResponse) e).getOverview().getMarketCapitalization();
+                        long sharesOutstanding = ((CompanyOverviewResponse) e).getOverview().getSharesOutstanding();
 
                         AlphaVantage.api()
                                 .timeSeries()
@@ -280,9 +280,9 @@ public class Main_data_handler {
                                     double volume = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getVolume();
 
                                     // Check conditions and add to actual symbols
-                                    if (tradeVolume < market_cap) {
+                                    if (tradeVolume < marketCapitalization) {
                                         if (((double) tradeVolume / close) < volume) {
-                                            if (((long) tradeVolume / close) < outstanding_Shares) {
+                                            if (((long) tradeVolume / close) < sharesOutstanding) {
                                                 actualSymbols.add(possibleSymbols[finalI]);
                                             }
                                         }
@@ -293,10 +293,10 @@ public class Main_data_handler {
                                         callback.onSymbolsAvailable(actualSymbols); // Call the callback when all are done
                                     }
                                 })
-                                .onFailure(Main_data_handler::handleFailure)
+                                .onFailure(mainDataHandler::handleFailure)
                                 .fetch();
                     })
-                    .onFailure(Main_data_handler::handleFailure)
+                    .onFailure(mainDataHandler::handleFailure)
                     .fetch();
         }
     }
@@ -358,7 +358,7 @@ public class Main_data_handler {
                 .Realtime()
                 .setSymbols(symbol)
                 .onSuccess(response -> callback.onRealTimeReceived(response.getMatches().get(0)))
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
     }
 
@@ -371,7 +371,7 @@ public class Main_data_handler {
                     CompanyOverviewResponse overview = (CompanyOverviewResponse) response;
                     callback.onOverviewReceived(overview);
                 })
-                .onFailure(Main_data_handler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)
                 .fetch();
     }
 
@@ -796,7 +796,7 @@ public class Main_data_handler {
     }
 
     // 6. Keltner Channels Breakout
-    public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier, double cumulative_Limit) {
+    public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier, double cumulativeLimit) {
         // Check if we have enough data for calculations
         if (window.size() < Math.max(emaPeriod, 4) + 1) {
             return 0; // Not enough data points
@@ -818,7 +818,7 @@ public class Main_data_handler {
 
         // Combined condition check
         boolean isBreakout = currentClose > upperBand;
-        boolean hasSignificantMove = Math.abs(cumulativeChange) >= cumulative_Limit;
+        boolean hasSignificantMove = Math.abs(cumulativeChange) >= cumulativeLimit;
 
         return (isBreakout && hasSignificantMove) ? 1 : 0;
     }

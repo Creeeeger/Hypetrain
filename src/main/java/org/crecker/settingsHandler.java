@@ -8,16 +8,16 @@ import java.awt.event.ActionListener;
 import static org.crecker.mainUI.gui;
 import static org.crecker.mainUI.logTextArea;
 
-public class Settings_handler extends JFrame {
+public class settingsHandler extends JFrame {
     public static JPanel settingsPanel;
     static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel;
     static JTextField volumeText, keyText;
-    static JCheckBox sort_checkBox, realtimeBox;
+    static JCheckBox sortCheckBox, realtimeBox;
     int vol;
     String sym, key;
     boolean sort, realtime;
 
-    public Settings_handler(int vol, String sym, boolean sort, String key, boolean realtime) {
+    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
         this.sym = sym;
@@ -47,9 +47,9 @@ public class Settings_handler extends JFrame {
 
         sortLabel = new JLabel("Sort hype entries");
         sortLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        sort_checkBox = new JCheckBox();
-        sort_checkBox.setSelected(sort);
-        sort_checkBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        sortCheckBox = new JCheckBox();
+        sortCheckBox.setSelected(sort);
+        sortCheckBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         keyLabel = new JLabel("API key:");
         keyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -69,7 +69,7 @@ public class Settings_handler extends JFrame {
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between fields
         settingsPanel.add(sortLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(sort_checkBox);
+        settingsPanel.add(sortCheckBox);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(keyLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -90,11 +90,11 @@ public class Settings_handler extends JFrame {
         add(settingsPanel, BorderLayout.CENTER);
 
         // Add action listener to the apply button, linking it to the event handling class
-        apply.addActionListener(new apply_event());
+        apply.addActionListener(new applyEvent());
     }
 
     // Inner class for handling the action of applying settings
-    public class apply_event implements ActionListener {
+    public class applyEvent implements ActionListener {
         // Override the actionPerformed method to define the behavior when the event occurs
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -102,12 +102,12 @@ public class Settings_handler extends JFrame {
                 String[][] values = {
                         {"volume", volumeText.getText()},
                         {"symbols", sym},
-                        {"sort", String.valueOf(sort_checkBox.isSelected())},
+                        {"sort", String.valueOf(sortCheckBox.isSelected())},
                         {"key", keyText.getText()},
                         {"realtime", String.valueOf(realtimeBox.isSelected())}
                 };
 
-                config_handler.save_config(values);
+                configHandler.saveConfig(values);
 
                 logTextArea.append("Data saved successfully to config\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
