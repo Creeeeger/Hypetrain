@@ -1,5 +1,6 @@
 package org.crecker;
 
+import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
@@ -7,6 +8,7 @@ import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
 
@@ -18,18 +20,6 @@ import java.awt.geom.Point2D;
 import java.time.LocalDateTime;
 
 public class Notification {
-    private final String title;
-    private final String content;
-    private final TimeSeries timeSeries;
-    private final LocalDateTime localDateTime;
-    private final String symbol;
-    private final double change;
-    private JFrame notificationFrame; // Frame for the notification
-    private final boolean dip;
-    private final Color color;
-    JLabel percentageChange;
-    private ChartPanel chartPanel;
-
     private static double point1X = Double.NaN;
     private static double point1Y = Double.NaN;
     private static double point2X = Double.NaN;
@@ -37,6 +27,17 @@ public class Notification {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
+    private final String title;
+    private final String content;
+    private final TimeSeries timeSeries;
+    private final LocalDateTime localDateTime;
+    private final String symbol;
+    private final double change;
+    private final boolean dip;
+    private final Color color;
+    JLabel percentageChange;
+    private JFrame notificationFrame; // Frame for the notification
+    private ChartPanel chartPanel;
 
     public Notification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, boolean dip) {
         this.title = title;
@@ -52,6 +53,25 @@ public class Notification {
         } else {
             this.color = new Color(33, 215, 13);
         }
+    }
+
+    private static void addFirstMarker(XYPlot plot, double xPosition) {
+        // Clear previous markers if any
+        if (marker1 != null) {
+            plot.removeDomainMarker(marker1);
+        }
+        if (marker2 != null) {
+            plot.removeDomainMarker(marker2);
+        }
+        if (shadedRegion != null) {
+            plot.removeDomainMarker(shadedRegion);
+        }
+
+        // Create and add the first marker
+        marker1 = new ValueMarker(xPosition);
+        marker1.setPaint(Color.GREEN);  // First marker in green
+        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
+        plot.addDomainMarker(marker1);
     }
 
     public Color getColor() {
@@ -86,6 +106,24 @@ public class Notification {
         return dip;
     }
 
+    public void addDataPoint(StockUnit unit) {
+        if (unit.getLocalDateTimeDate().isAfter(this.localDateTime)) {
+            addDataPointToTimeSeries(unit);
+            updateUI();
+        }
+    }
+
+    private void addDataPointToTimeSeries(StockUnit unit) {
+        Second date = new Second(unit.getDateDate());
+        timeSeries.addOrUpdate(date, unit.getClose());
+    }
+
+    private void updateUI() {
+        SwingUtilities.invokeLater(() -> {
+            chartPanel.repaint();
+        });
+    }
+
     public void showNotification() {
         // Create the notification window
         notificationFrame = new JFrame(title);
@@ -116,7 +154,7 @@ public class Notification {
         percentageChange = new JLabel("Percentage Change");
         JButton openRealTime = new JButton("Open in Realtime SuperChart");
 
-        openRealTime.addActionListener(e -> Main_UI.getInstance().handleStockSelection(this.symbol));
+        openRealTime.addActionListener(e -> mainUI.getInstance().handleStockSelection(this.symbol));
 
         bottomPanel.add(percentageChange);
         bottomPanel.add(openRealTime);
@@ -190,25 +228,6 @@ public class Notification {
         });
 
         return chartPanel;
-    }
-
-    private static void addFirstMarker(XYPlot plot, double xPosition) {
-        // Clear previous markers if any
-        if (marker1 != null) {
-            plot.removeDomainMarker(marker1);
-        }
-        if (marker2 != null) {
-            plot.removeDomainMarker(marker2);
-        }
-        if (shadedRegion != null) {
-            plot.removeDomainMarker(shadedRegion);
-        }
-
-        // Create and add the first marker
-        marker1 = new ValueMarker(xPosition);
-        marker1.setPaint(Color.GREEN);  // First marker in green
-        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
-        plot.addDomainMarker(marker1);
     }
 
     private void addSecondMarkerAndShade(XYPlot plot) {

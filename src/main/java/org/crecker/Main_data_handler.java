@@ -24,9 +24,9 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 
-import static org.crecker.Main_UI.addNotification;
-import static org.crecker.Main_UI.logTextArea;
 import static org.crecker.RallyPredictor.predict;
+import static org.crecker.mainUI.addNotification;
+import static org.crecker.mainUI.logTextArea;
 import static org.crecker.pLTester.PLAnalysis;
 
 public class Main_data_handler {
@@ -85,7 +85,7 @@ public class Main_data_handler {
         AlphaVantage.api().init(cfg);
     }
 
-    public static void get_timeline(String symbol_name, TimelineCallback callback) {
+    public static void getTimeline(String symbol_name, TimelineCallback callback) {
         List<StockUnit> stocks = new ArrayList<>(); // Directly use a List<StockUnit>
 
         AlphaVantage.api()
@@ -103,7 +103,7 @@ public class Main_data_handler {
                 .fetch();
     }
 
-    public static void get_Info_Array(String symbol_name, DataCallback callback) {
+    public static void getInfoArray(String symbol_name, DataCallback callback) {
         Double[] data = new Double[9];
 
         // Fetch fundamental data
@@ -165,7 +165,7 @@ public class Main_data_handler {
                 .fetch();
     }
 
-    public static void receive_News(String Symbol, ReceiveNewsCallback callback) {
+    public static void receiveNews(String Symbol, ReceiveNewsCallback callback) {
         AlphaVantage.api()
                 .News()
                 .setTickers(Symbol)
@@ -176,7 +176,7 @@ public class Main_data_handler {
                 .fetch();
     }
 
-    public static void start_Hype_Mode(int tradeVolume) {
+    public static void startHypeMode(int tradeVolume) {
         String[] stockSymbols = {
                 "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
                 , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
@@ -229,7 +229,7 @@ public class Main_data_handler {
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
                 // If file does not exist, call API and write symbols to file
-                get_available_symbols(tradeVolume, stockSymbols, result -> {
+                getAvailableSymbols(tradeVolume, stockSymbols, result -> {
                     try (FileWriter writer = new FileWriter(file)) {
                         for (String s : result) {
                             String symbol = s.toUpperCase();
@@ -257,7 +257,7 @@ public class Main_data_handler {
         }
     }
 
-    public static void get_available_symbols(int tradeVolume, String[] possibleSymbols, SymbolCallback callback) {
+    public static void getAvailableSymbols(int tradeVolume, String[] possibleSymbols, SymbolCallback callback) {
         List<String> actualSymbols = new ArrayList<>();
 
         for (int i = 0; i < possibleSymbols.length; i++) {
