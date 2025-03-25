@@ -51,7 +51,7 @@ public class mainUI extends JFrame {
     static boolean shouldSort, useRealtime;
     static boolean globalByChange = false;
     static String symbols, apiKey;
-    static String selected_stock = "-Select a Stock-"; //selected_stock is the Stock to show in the chart bar
+    static String selectedStock = "-Select a Stock-"; //selectedStock is the Stock to show in the chart bar
     static JPanel symbolPanel, chartToolPanel, hypePanel, chartPanel;
     static JTextField searchField;
     static JButton tenMinutesButton, thirtyMinutesButton, oneHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
@@ -77,9 +77,9 @@ public class mainUI extends JFrame {
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
     private static Date startDate;
+    private static mainUI instance;
     private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     private String currentStockSymbol = null; // Track the currently displayed stock symbol
-    private static mainUI instance;
 
     public mainUI() {
         instance = this;
@@ -116,12 +116,12 @@ public class mainUI extends JFrame {
     }
 
     public static void setValues() {
-        String[][] setting_data = config_handler.load_config();
-        volume = Integer.parseInt(setting_data[0][1]);
-        symbols = setting_data[1][1];
-        shouldSort = Boolean.parseBoolean(setting_data[2][1]);
-        apiKey = setting_data[3][1];
-        useRealtime = Boolean.parseBoolean(setting_data[4][1]);
+        String[][] settingData = configHandler.loadConfig();
+        volume = Integer.parseInt(settingData[0][1]);
+        symbols = settingData[1][1];
+        shouldSort = Boolean.parseBoolean(settingData[2][1]);
+        apiKey = settingData[3][1];
+        useRealtime = Boolean.parseBoolean(settingData[4][1]);
     }
 
     public static void main(String[] args) {
@@ -137,20 +137,20 @@ public class mainUI extends JFrame {
         Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
         File config = configPath.toFile();
         if (!config.exists()) {
-            config_handler.create_config();
+            configHandler.createConfig();
             setValues();
             loadTable(symbols);
 
             if (!apiKey.isEmpty()) {
-                Main_data_handler.InitAPi(apiKey);
+                mainDataHandler.InitAPi(apiKey);
             } else {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            Settings_handler gui_Setting = new Settings_handler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime);
-            gui_Setting.setVisible(true);
-            gui_Setting.setSize(500, 500);
-            gui_Setting.setAlwaysOnTop(true);
+            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime);
+            guiSetting.setVisible(true);
+            guiSetting.setSize(500, 500);
+            guiSetting.setAlwaysOnTop(true);
 
             logTextArea.append("New config created\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
@@ -161,7 +161,7 @@ public class mainUI extends JFrame {
             setValues();
 
             if (!apiKey.isEmpty()) {
-                Main_data_handler.InitAPi(apiKey);
+                mainDataHandler.InitAPi(apiKey);
             } else {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
@@ -187,7 +187,7 @@ public class mainUI extends JFrame {
     }
 
     public static void saveConfig(String[][] data) {
-        config_handler.save_config(data);
+        configHandler.saveConfig(data);
         logTextArea.append("Config saved successfully\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
@@ -393,7 +393,7 @@ public class mainUI extends JFrame {
 
         loadTable(symbols);
         mainUI.refreshAllComponents(gui.getContentPane());
-        Main_data_handler.InitAPi(apiKey); //comment out when not testing api to save tokens
+        mainDataHandler.InitAPi(apiKey); //comment out when not testing api to save tokens
 
         logTextArea.append("Config reloaded\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
@@ -416,10 +416,58 @@ public class mainUI extends JFrame {
         return removeButton;
     }
 
+    @NotNull
+    private static JButton getOverviewButton() {
+        JButton overviewButton = new JButton("Look at Company Overview");
+        overviewButton.addActionListener(e -> {
+            if ("-Select a Stock-".equals(selectedStock)) {
+                JOptionPane.showMessageDialog(null, "Please select a valid stock.", "Error", JOptionPane.ERROR_MESSAGE);
+                return;
+            }
+
+            JDialog dialog = new JDialog();
+            dialog.setTitle(selectedStock + " - Company Overview");
+            dialog.setSize(500, 400);
+            dialog.setLayout(new BorderLayout());
+            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
+
+            JPanel panel = new JPanel(new BorderLayout());
+            panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+            JLabel titleLabel = new JLabel(selectedStock + " Overview", SwingConstants.CENTER);
+
+            JTextArea overviewText = new JTextArea("Fetching company overview...");
+            overviewText.setWrapStyleWord(true);
+            overviewText.setLineWrap(true);
+            overviewText.setEditable(false);
+
+            JScrollPane scrollPane = new JScrollPane(overviewText);
+            scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+            scrollPane.setPreferredSize(new Dimension(480, 300));
+
+            panel.add(titleLabel, BorderLayout.NORTH);
+            panel.add(scrollPane, BorderLayout.CENTER);
+
+            dialog.add(panel);
+            dialog.setLocationRelativeTo(null);
+            dialog.setVisible(true);
+
+            // Fetching the company overview asynchronously
+            mainDataHandler.getCompanyOverview(selectedStock, value -> SwingUtilities.invokeLater(() -> {
+                if (value != null && value.getOverview() != null) {
+                    overviewText.setText(value.getOverview().getDescription());
+                } else {
+                    overviewText.setText("No overview available.");
+                }
+            }));
+        });
+        return overviewButton;
+    }
+
     public void handleStockSelection(String symbol) {
         try {
-            selected_stock = symbol.toUpperCase().trim();
-            Main_data_handler.getTimeline(selected_stock, values -> {
+            selectedStock = symbol.toUpperCase().trim();
+            mainDataHandler.getTimeline(selectedStock, values -> {
                 // Extract original close values to avoid interference from concurrent modifications
                 List<Double> originalCloses = new ArrayList<>(values.size());
                 for (StockUnit stock : values) {
@@ -499,12 +547,12 @@ public class mainUI extends JFrame {
         stockList.addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) { // Prevent duplicate executions during list update
                 try {
-                    selected_stock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected Stock symbol
+                    selectedStock = stockList.getSelectedValue().toUpperCase().trim(); // Get selected Stock symbol
                 } catch (Exception ignored) {
                 }
 
                 // Fetch Stock data asynchronously
-                Main_data_handler.getInfoArray(selected_stock, values -> {
+                mainDataHandler.getInfoArray(selectedStock, values -> {
                     if (values != null && values.length >= 9) {
                         // Handle null values by assigning default value using parallel processing
                         Arrays.setAll(values, i -> values[i] == null ? 0.00 : values[i]);
@@ -525,7 +573,7 @@ public class mainUI extends JFrame {
                     }
                 });
 
-                Main_data_handler.getTimeline(selected_stock, values -> {
+                mainDataHandler.getTimeline(selectedStock, values -> {
                     // Extract original close values to avoid interference from concurrent modifications
                     List<Double> originalCloses = new ArrayList<>(values.size());
                     for (StockUnit stock : values) {
@@ -548,7 +596,7 @@ public class mainUI extends JFrame {
                     });
                 });
 
-                Main_data_handler.receiveNews(selected_stock, values -> {
+                mainDataHandler.receiveNews(selectedStock, values -> {
                     // Clear the news list and update UI in the Event Dispatch Thread
                     SwingUtilities.invokeLater(() -> {
                         NewsListModel.clear();
@@ -620,7 +668,7 @@ public class mainUI extends JFrame {
 
                 if (!searchText.isEmpty()) {
                     // Use the async findMatchingSymbols method with a callback
-                    Main_data_handler.findMatchingSymbols(searchText, new Main_data_handler.SymbolSearchCallback() {
+                    mainDataHandler.findMatchingSymbols(searchText, new mainDataHandler.SymbolSearchCallback() {
                         @Override
                         public void onSuccess(List<String> matchedSymbols) {
                             // Ensure the UI update happens on the Event Dispatch Thread (EDT)
@@ -644,7 +692,7 @@ public class mainUI extends JFrame {
             executorService.scheduleAtFixedRate(() -> {
                 if (useRealtime) {
                     // Asynchronous fetching of real-time stock data
-                    Main_data_handler.getRealTimeUpdate(selected_stock, value -> {
+                    mainDataHandler.getRealTimeUpdate(selectedStock, value -> {
                         if (value != null) {
                             SwingUtilities.invokeLater(() -> {
                                 try {
@@ -746,8 +794,8 @@ public class mainUI extends JFrame {
         chartPlaceholder.setPreferredSize(new Dimension(600, 400));
 
         // Initialize the chart
-        timeSeries = new TimeSeries(selected_stock + " price");
-        chartDisplay = createChart(timeSeries, selected_stock + " price Chart");
+        timeSeries = new TimeSeries(selectedStock + " price");
+        chartDisplay = createChart(timeSeries, selectedStock + " price Chart");
 
         // Add a titled border to the chart panel
         chartPanel.setBorder(BorderFactory.createTitledBorder("Stock price Chart"));
@@ -868,54 +916,6 @@ public class mainUI extends JFrame {
     }
 
     @NotNull
-    private static JButton getOverviewButton() {
-        JButton overviewButton = new JButton("Look at Company Overview");
-        overviewButton.addActionListener(e -> {
-            if ("-Select a Stock-".equals(selected_stock)) {
-                JOptionPane.showMessageDialog(null, "Please select a valid stock.", "Error", JOptionPane.ERROR_MESSAGE);
-                return;
-            }
-
-            JDialog dialog = new JDialog();
-            dialog.setTitle(selected_stock + " - Company Overview");
-            dialog.setSize(500, 400);
-            dialog.setLayout(new BorderLayout());
-            dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE);
-
-            JPanel panel = new JPanel(new BorderLayout());
-            panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-
-            JLabel titleLabel = new JLabel(selected_stock + " Overview", SwingConstants.CENTER);
-
-            JTextArea overviewText = new JTextArea("Fetching company overview...");
-            overviewText.setWrapStyleWord(true);
-            overviewText.setLineWrap(true);
-            overviewText.setEditable(false);
-
-            JScrollPane scrollPane = new JScrollPane(overviewText);
-            scrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-            scrollPane.setPreferredSize(new Dimension(480, 300));
-
-            panel.add(titleLabel, BorderLayout.NORTH);
-            panel.add(scrollPane, BorderLayout.CENTER);
-
-            dialog.add(panel);
-            dialog.setLocationRelativeTo(null);
-            dialog.setVisible(true);
-
-            // Fetching the company overview asynchronously
-            Main_data_handler.getCompanyOverview(selected_stock, value -> SwingUtilities.invokeLater(() -> {
-                if (value != null && value.getOverview() != null) {
-                    overviewText.setText(value.getOverview().getDescription());
-                } else {
-                    overviewText.setText("No overview available.");
-                }
-            }));
-        });
-        return overviewButton;
-    }
-
-    @NotNull
     private JScrollPane getNewsScrollPane() {
         JList<News> NewsList = new JList<>(NewsListModel);
         NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
@@ -939,10 +939,10 @@ public class mainUI extends JFrame {
 
     public void refreshChartData(int choice) {
         // Handle stock symbol change
-        if (!selected_stock.equals(currentStockSymbol)) {
-            currentStockSymbol = selected_stock;
+        if (!selectedStock.equals(currentStockSymbol)) {
+            currentStockSymbol = selectedStock;
             timeSeries.clear();
-            chartDisplay.getChart().setTitle(selected_stock + " price Chart"); // Update chart title
+            chartDisplay.getChart().setTitle(selectedStock + " price Chart"); // Update chart title
 
             try {
                 if (stocks != null) {
@@ -1225,21 +1225,21 @@ public class mainUI extends JFrame {
         // Create menus
         JMenu file = new JMenu("File");
         JMenu settings = new JMenu("Settings");
-        JMenu hype_mode_menu = new JMenu("Hype mode");
+        JMenu hypeModeMenu = new JMenu("Hype mode");
         JMenu Notifications = new JMenu("Notifications");
 
         //JMenuItems File
         JMenuItem load = new JMenuItem("Load the config (manually again)");
-        JMenuItem import_c = new JMenuItem("Import config");
-        JMenuItem export_c = new JMenuItem("Export config");
+        JMenuItem importC = new JMenuItem("Import config");
+        JMenuItem exportC = new JMenuItem("Export config");
         JMenuItem save = new JMenuItem("Save the config");
         JMenuItem exit = new JMenuItem("Exit (saves)");
 
         //Settings
-        JMenuItem setting_handler = new JMenuItem("Open settings");
+        JMenuItem settingHandler = new JMenuItem("Open settings");
 
         //Hype mode
-        JMenuItem activate_hype_mode = new JMenuItem("Activate hype mode");
+        JMenuItem activateHypeMode = new JMenuItem("Activate hype mode");
 
         //Notifications
         JMenuItem clear = new JMenuItem("Clear Notifications");
@@ -1248,16 +1248,16 @@ public class mainUI extends JFrame {
 
         //add it to the menus File
         file.add(load);
-        file.add(import_c);
-        file.add(export_c);
+        file.add(importC);
+        file.add(exportC);
         file.add(save);
         file.add(exit);
 
         //Settings
-        settings.add(setting_handler);
+        settings.add(settingHandler);
 
         //HypeMode
-        hype_mode_menu.add(activate_hype_mode);
+        hypeModeMenu.add(activateHypeMode);
 
         //Notifications
         Notifications.add(clear);
@@ -1267,16 +1267,16 @@ public class mainUI extends JFrame {
         // Add menus to the menu bar
         menuBar.add(file);
         menuBar.add(settings);
-        menuBar.add(hype_mode_menu);
+        menuBar.add(hypeModeMenu);
         menuBar.add(Notifications);
 
         load.addActionListener(new eventLoad());
         save.addActionListener(new eventSave());
         exit.addActionListener(new eventExit());
-        import_c.addActionListener(new eventImport());
-        export_c.addActionListener(new eventExport());
-        setting_handler.addActionListener(new eventSettings());
-        activate_hype_mode.addActionListener(new eventActivateHypeMode());
+        importC.addActionListener(new eventImport());
+        exportC.addActionListener(new eventExport());
+        settingHandler.addActionListener(new eventSettings());
+        activateHypeMode.addActionListener(new eventActivateHypeMode());
         clear.addActionListener(e -> notificationListModel.clear());
         sortChange.addActionListener(new eventSortNotifications(true));
         sortDate.addActionListener(new eventSortNotifications(false));
@@ -1349,7 +1349,7 @@ public class mainUI extends JFrame {
             // Run the Hype Mode in a dedicated background thread
             executorService.submit(() -> {
                 try {
-                    Main_data_handler.startHypeMode(volume);
+                    mainDataHandler.startHypeMode(volume);
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
@@ -1360,7 +1360,7 @@ public class mainUI extends JFrame {
                     if (!notificationListModel.isEmpty()) {
                         for (int i = 0; i < notificationListModel.size(); i++) {
                             Notification notification = notificationListModel.getElementAt(i);
-                            Main_data_handler.getRealTimeUpdate(notification.getSymbol(), value -> {
+                            mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
                                 if (value != null) {
                                     try {
                                         Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
@@ -1418,7 +1418,7 @@ public class mainUI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            Settings_handler gui = new Settings_handler(volume, symbols, shouldSort, apiKey, useRealtime);
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");

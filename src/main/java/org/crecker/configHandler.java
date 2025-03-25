@@ -16,8 +16,8 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
-public class config_handler {
-    public static String[][] load_config() {
+public class configHandler {
+    public static String[][] loadConfig() {
         // Method for loading the configuration data from the config.xml file
         // It returns a 2D array where [index][0] is the key and [index][1] is the value
         try {
@@ -70,15 +70,15 @@ public class config_handler {
             e.printStackTrace();
 
             // If an error occurs, it's because the config file does not exist or is corrupted.
-            // Call create_config() to generate a new default configuration file
-            create_config();
+            // Call createConfig() to generate a new default configuration file
+            createConfig();
 
             // Reload the configuration using the newly created config file
-            return load_config();
+            return loadConfig();
         }
     }
 
-    public static void save_config(String[][] values) {
+    public static void saveConfig(String[][] values) {
         try {
             // Create an instance of DocumentBuilderFactory, which provides a way to obtain a DocumentBuilder
             // This factory enables the creation of XML documents
@@ -138,7 +138,7 @@ public class config_handler {
         }
     }
 
-    public static void create_config() { //method for creating a new config file
+    public static void createConfig() { //method for creating a new config file
         try {
             // Create a DocumentBuilderFactory instance to produce a DocumentBuilder
             // The DocumentBuilderFactory provides a way to obtain a DocumentBuilder instance
