@@ -90,7 +90,6 @@ public class pLTester {
         boolean earlyStop = false;
         LocalDateTime tradeEntryTime;
         double tradeEntryCapital;
-        String tradedSymbol = "";
         int tradeEntryIndex;
 
         Scanner scanner = new Scanner(System.in);
@@ -130,18 +129,14 @@ public class pLTester {
                 continue;
             }
 
-            LocalDateTime windowEndTime = timeline.get(baseIndex + 5).getLocalDateTimeDate();
-            lastProcessedEndTime = windowEndTime;
+            lastProcessedEndTime = timeline.get(baseIndex + 5).getLocalDateTimeDate();
 
-            StockUnit stockUnit = null;
-            boolean entered = false;
             for (int offset = 0; offset <= 4; offset++) {
                 int currentIndex = baseIndex + offset;
                 StockUnit unit = timeline.get(currentIndex);
-                stockUnit = unit;
 
                 System.out.printf("\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n",
-                        offset, 5,
+                        offset + 1, 5,
                         unit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                         unit.getClose(),
                         unit.getPercentageChange(),
@@ -156,10 +151,8 @@ public class pLTester {
                     // ENTER TRADE
                     tradeEntryCapital = capital;
                     tradeEntryTime = unit.getLocalDateTimeDate();
-                    tradedSymbol = symbol;
                     tradeEntryIndex = currentIndex;
                     inTrade = true;
-                    entered = true;
                     double totalChange = 0.0;
                     successfulCalls++;
                     System.out.printf("\nENTERED TRADE AT %s WITH €%.2f%n",
@@ -190,8 +183,6 @@ public class pLTester {
                                     capital);
 
                             lastProcessedEndTime = minuteUnit.getLocalDateTimeDate();
-
-                            getNext5Minutes(capital, minuteUnit.getLocalDateTimeDate(), symbol);
                             break;
                         }
                     }
@@ -203,7 +194,6 @@ public class pLTester {
                         capital -= FEE;
                         System.out.printf("\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n", capital);
                     }
-
                     break;
                 }
 
@@ -215,11 +205,6 @@ public class pLTester {
 
             if (earlyStop) {
                 break;
-            }
-
-            if (!entered) {
-                getNext5Minutes(capital, stockUnit.getLocalDateTimeDate(), tradedSymbol);
-                System.out.println("\nSkipped all entry opportunities. Next notification after " + windowEndTime + " Good Luck!");
             }
 
             notification.closeNotification();
@@ -1113,52 +1098,6 @@ public class pLTester {
         point1Y = Double.NaN;
         point2X = Double.NaN;
         point2Y = Double.NaN;
-    }
-
-    private static void getNext5Minutes(double capital, LocalDateTime startTime, String symbol) {
-        symbol = symbol.toUpperCase();
-        List<StockUnit> timeline = symbolTimelines.getOrDefault(symbol, Collections.emptyList());
-
-        if (timeline.isEmpty()) {
-            System.out.println("No data available for " + symbol);
-            return;
-        }
-
-        Integer startIndex = symbolTimeIndex.getOrDefault(symbol, Collections.emptyMap()).get(startTime);
-
-        if (startIndex == null || startIndex < 0 || startIndex >= timeline.size()) {
-            System.out.println("Start time not found in data: " + startTime);
-            return;
-        }
-
-        System.out.printf("\u001B[34mSimulating %s from %s with $%.2f\u001B[0m%n",
-                symbol, startTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME), capital);
-
-        double simulatedCapital = capital;
-        int predictionsMade = 0;
-        final int maxSteps = Math.min(5, timeline.size() - startIndex - 1);
-
-        for (int i = 1; i <= maxSteps; i++) {
-            StockUnit futureUnit = timeline.get(startIndex + i);
-            double change = futureUnit.getPercentageChange();
-            simulatedCapital *= (1 + (change / 100));
-            predictionsMade++;
-
-            System.out.printf("\u001B[33m%d min later: %+.2f%% on %s → $%.2f\u001B[0m%n",
-                    i, change,
-                    futureUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
-                    simulatedCapital
-            );
-        }
-
-        System.out.printf("\u001B[32mFinal simulation result: $%.2f (%.2f%% change)\u001B[0m%n",
-                simulatedCapital,
-                ((simulatedCapital - capital) / capital) * 100
-        );
-
-        if (predictionsMade < 5) {
-            System.out.println("Warning: Only " + predictionsMade + " predictions available");
-        }
     }
 
     private record TimeInterval(double startTime, double endTime) {
