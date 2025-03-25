@@ -1,7 +1,6 @@
 TODO
 Version 1.0:
 - [ ] Finish data comparison for minute data
-- [ ] Recheck the timing of the trading loop
 
 Version 1.5:
 - [ ] Update frame sizes for second based processing

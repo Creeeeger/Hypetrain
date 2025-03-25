@@ -37,11 +37,11 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import static org.crecker.mainUI.addNotification;
-import static org.crecker.mainUI.gui;
 import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.getData;
 import static org.crecker.data_tester.parseStockUnit;
+import static org.crecker.mainUI.addNotification;
+import static org.crecker.mainUI.gui;
 
 public class pLTester {
     // Index map for quick timestamp lookups
@@ -135,7 +135,7 @@ public class pLTester {
 
             StockUnit stockUnit = null;
             boolean entered = false;
-            for (int offset = 1; offset <= 5; offset++) {
+            for (int offset = 0; offset <= 4; offset++) {
                 int currentIndex = baseIndex + offset;
                 StockUnit unit = timeline.get(currentIndex);
                 stockUnit = unit;
@@ -182,7 +182,7 @@ public class pLTester {
                         String exitChoice = scanner.nextLine().trim().toLowerCase();
 
                         if (exitChoice.equals("y")) {
-                            capital = calculateTradeValue(timeline, tradeEntryIndex, i, tradeEntryCapital);
+                            capital = calculateTradeValue(timeline, tradeEntryIndex + 1, i, tradeEntryCapital);
                             capital -= FEE;
                             inTrade = false;
                             System.out.printf("\nEXITED TRADE AT %s | NEW CAPITAL: €%.2f%n",
@@ -199,7 +199,7 @@ public class pLTester {
                     // AUTO-CLOSE IF STILL IN TRADE
                     if (inTrade) {
                         int finalIndex = timeline.size() - 1;
-                        capital = calculateTradeValue(timeline, tradeEntryIndex, finalIndex, tradeEntryCapital);
+                        capital = calculateTradeValue(timeline, tradeEntryIndex + 1, finalIndex, tradeEntryCapital);
                         capital -= FEE;
                         System.out.printf("\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n", capital);
                     }
