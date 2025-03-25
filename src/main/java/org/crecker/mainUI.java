@@ -42,14 +42,17 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-public class Main_UI extends JFrame {
+import static org.crecker.pLTester.PLAnalysis;
+
+public class mainUI extends JFrame {
     public static JTextArea logTextArea;
-    public static Main_UI gui;
+    public static mainUI gui;
     static int volume;
     static boolean shouldSort, useRealtime;
+    static boolean globalByChange = false;
     static String symbols, apiKey;
     static String selected_stock = "-Select a Stock-"; //selected_stock is the Stock to show in the chart bar
-    static JPanel symbol_panel, chart_tool_panel, hype_panel, chartPanel;
+    static JPanel symbolPanel, chartToolPanel, hypePanel, chartPanel;
     static JTextField searchField;
     static JButton tenMinutesButton, thirtyMinutesButton, oneHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
     static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel, percentageChange;
@@ -76,9 +79,9 @@ public class Main_UI extends JFrame {
     private static Date startDate;
     private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     private String currentStockSymbol = null; // Track the currently displayed stock symbol
-    private static Main_UI instance;
+    private static mainUI instance;
 
-    public Main_UI() {
+    public mainUI() {
         instance = this;
 
         // Setting layout for the frame (1 row, 4 columns)
@@ -98,17 +101,17 @@ public class Main_UI extends JFrame {
         setJMenuBar(createMenuBar());
 
         //Panels
-        symbol_panel = create_symbol_panel();
-        chart_tool_panel = create_chart_tool_panel();
-        hype_panel = create_hype_panel();
+        symbolPanel = createSymbolPanel();
+        chartToolPanel = createChartToolPanel();
+        hypePanel = createHypePanel();
 
         // Add sections to the frame using BorderLayout
-        add(symbol_panel, BorderLayout.WEST);
-        add(chart_tool_panel, BorderLayout.CENTER);
-        add(hype_panel, BorderLayout.EAST);
+        add(symbolPanel, BorderLayout.WEST);
+        add(chartToolPanel, BorderLayout.CENTER);
+        add(hypePanel, BorderLayout.EAST);
     }
 
-    public static Main_UI getInstance() {
+    public static mainUI getInstance() {
         return instance;
     }
 
@@ -122,7 +125,7 @@ public class Main_UI extends JFrame {
     }
 
     public static void main(String[] args) {
-        gui = new Main_UI();
+        gui = new mainUI();
         gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
         gui.setSize(1900, 1000); // Width and height of the window
         gui.setVisible(true);
@@ -136,7 +139,7 @@ public class Main_UI extends JFrame {
         if (!config.exists()) {
             config_handler.create_config();
             setValues();
-            load_table(symbols);
+            loadTable(symbols);
 
             if (!apiKey.isEmpty()) {
                 Main_data_handler.InitAPi(apiKey);
@@ -144,7 +147,7 @@ public class Main_UI extends JFrame {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            Settings_handler gui_Setting = new Settings_handler(volume, symbols = create_sym_array(), shouldSort, apiKey, useRealtime);
+            Settings_handler gui_Setting = new Settings_handler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime);
             gui_Setting.setVisible(true);
             gui_Setting.setSize(500, 500);
             gui_Setting.setAlwaysOnTop(true);
@@ -163,10 +166,11 @@ public class Main_UI extends JFrame {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            load_table(symbols);
+            loadTable(symbols);
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
+        PLAnalysis();
     }
 
     // Utility method to refresh all components in a container
@@ -182,13 +186,13 @@ public class Main_UI extends JFrame {
         });
     }
 
-    public static void save_config(String[][] data) {
+    public static void saveConfig(String[][] data) {
         config_handler.save_config(data);
         logTextArea.append("Config saved successfully\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
 
-    public static void load_table(String config) {
+    public static void loadTable(String config) {
         // Split the string into individual entries
         stockColors.clear();
         stockListModel.clear();
@@ -232,7 +236,7 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public static String create_sym_array() {
+    public static String createSymArray() {
         StringBuilder symBuilder = new StringBuilder();
 
         for (Map.Entry<String, Color> entry : stockColors.entrySet()) {
@@ -265,7 +269,7 @@ public class Main_UI extends JFrame {
     public static String[][] getValues() {
         return new String[][]{
                 {"volume", String.valueOf(volume)},
-                {"symbols", symbols = create_sym_array()},
+                {"symbols", symbols = createSymArray()},
                 {"sort", String.valueOf(shouldSort)},
                 {"key", apiKey},
                 {"realtime", String.valueOf(useRealtime)},
@@ -277,12 +281,12 @@ public class Main_UI extends JFrame {
             // Get current time
             LocalDateTime now = LocalDateTime.now();
 
-            // Remove old notifications (reverse iteration to prevent index shifting)
+            // Remove notifications that are either older than 20 minutes or have the same stock symbol
             for (int i = notificationListModel.size() - 1; i >= 0; i--) {
                 Notification existing = notificationListModel.getElementAt(i);
                 long minutesOld = ChronoUnit.MINUTES.between(existing.getLocalDateTime(), now);
 
-                if (minutesOld > 20) {
+                if (minutesOld > 20 || existing.getSymbol().equals(symbol)) {
                     notificationListModel.remove(i);
                 }
             }
@@ -384,11 +388,11 @@ public class Main_UI extends JFrame {
         percentageChange.setText(String.format("Percentage Change: %.3f%%", percentageDiff));
     }
 
-    public static void load_config() {
+    public static void loadConfig() {
         setValues();
 
-        load_table(symbols);
-        Main_UI.refreshAllComponents(gui.getContentPane());
+        loadTable(symbols);
+        mainUI.refreshAllComponents(gui.getContentPane());
         Main_data_handler.InitAPi(apiKey); //comment out when not testing api to save tokens
 
         logTextArea.append("Config reloaded\n");
@@ -406,7 +410,7 @@ public class Main_UI extends JFrame {
                 stockColors.remove(selectedValue);
                 stockListModel.removeElement(selectedValue);
 
-                symbols = create_sym_array(); //Create the symbol array
+                symbols = createSymArray(); //Create the symbol array
             }
         });
         return removeButton;
@@ -415,7 +419,7 @@ public class Main_UI extends JFrame {
     public void handleStockSelection(String symbol) {
         try {
             selected_stock = symbol.toUpperCase().trim();
-            Main_data_handler.get_timeline(selected_stock, values -> {
+            Main_data_handler.getTimeline(selected_stock, values -> {
                 // Extract original close values to avoid interference from concurrent modifications
                 List<Double> originalCloses = new ArrayList<>(values.size());
                 for (StockUnit stock : values) {
@@ -444,7 +448,7 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public JPanel create_symbol_panel() {
+    public JPanel createSymbolPanel() {
         // Create a panel with BorderLayout
         JPanel panel = new JPanel(new BorderLayout());
         panel.setPreferredSize(new Dimension(250, 0)); // Set fixed width of 150px
@@ -500,7 +504,7 @@ public class Main_UI extends JFrame {
                 }
 
                 // Fetch Stock data asynchronously
-                Main_data_handler.get_Info_Array(selected_stock, values -> {
+                Main_data_handler.getInfoArray(selected_stock, values -> {
                     if (values != null && values.length >= 9) {
                         // Handle null values by assigning default value using parallel processing
                         Arrays.setAll(values, i -> values[i] == null ? 0.00 : values[i]);
@@ -521,7 +525,7 @@ public class Main_UI extends JFrame {
                     }
                 });
 
-                Main_data_handler.get_timeline(selected_stock, values -> {
+                Main_data_handler.getTimeline(selected_stock, values -> {
                     // Extract original close values to avoid interference from concurrent modifications
                     List<Double> originalCloses = new ArrayList<>(values.size());
                     for (StockUnit stock : values) {
@@ -544,7 +548,7 @@ public class Main_UI extends JFrame {
                     });
                 });
 
-                Main_data_handler.receive_News(selected_stock, values -> {
+                Main_data_handler.receiveNews(selected_stock, values -> {
                     // Clear the news list and update UI in the Event Dispatch Thread
                     SwingUtilities.invokeLater(() -> {
                         NewsListModel.clear();
@@ -578,7 +582,7 @@ public class Main_UI extends JFrame {
                 // Add the selected symbol to the Stock list
                 stockListModel.addElement(selectedSymbol);
                 stockColors.put(selectedSymbol, generateRandomColor()); // Assign a random color or use another logic
-                symbols = create_sym_array();
+                symbols = createSymArray();
             }
         });
 
@@ -687,7 +691,7 @@ public class Main_UI extends JFrame {
         return new Color(red, green, blue);
     }
 
-    public JPanel create_chart_tool_panel() {
+    public JPanel createChartToolPanel() {
         JPanel mainPanel = new JPanel(new BorderLayout());
 
         // First Row - Chart and News
@@ -1110,7 +1114,7 @@ public class Main_UI extends JFrame {
         return chartPanel;
     }
 
-    public JPanel create_hype_panel() {
+    public JPanel createHypePanel() {
         JPanel panel = new JPanel();
         panel.setPreferredSize(new Dimension(300, 0)); // Set fixed width of 200px
         panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
@@ -1128,7 +1132,7 @@ public class Main_UI extends JFrame {
             @Override
             public void mouseClicked(MouseEvent e) {
                 if (shouldSort) {
-                    sort_notifications();
+                    sortNotifications(globalByChange);
                 }
 
                 if (e.getClickCount() == 2) { // Open on double click
@@ -1239,7 +1243,8 @@ public class Main_UI extends JFrame {
 
         //Notifications
         JMenuItem clear = new JMenuItem("Clear Notifications");
-        JMenuItem sort = new JMenuItem("Sort Notifications");
+        JMenuItem sortChange = new JMenuItem("Sort Notifications by Change");
+        JMenuItem sortDate = new JMenuItem("Sort Notifications by Date");
 
         //add it to the menus File
         file.add(load);
@@ -1256,7 +1261,8 @@ public class Main_UI extends JFrame {
 
         //Notifications
         Notifications.add(clear);
-        Notifications.add(sort);
+        Notifications.add(sortChange);
+        Notifications.add(sortDate);
 
         // Add menus to the menu bar
         menuBar.add(file);
@@ -1264,32 +1270,41 @@ public class Main_UI extends JFrame {
         menuBar.add(hype_mode_menu);
         menuBar.add(Notifications);
 
-        load.addActionListener(new event_Load());
-        save.addActionListener(new event_save());
-        exit.addActionListener(new event_exit());
-        import_c.addActionListener(new event_import());
-        export_c.addActionListener(new event_export());
-        setting_handler.addActionListener(new event_settings());
-        activate_hype_mode.addActionListener(new event_activate_hype_mode());
+        load.addActionListener(new eventLoad());
+        save.addActionListener(new eventSave());
+        exit.addActionListener(new eventExit());
+        import_c.addActionListener(new eventImport());
+        export_c.addActionListener(new eventExport());
+        setting_handler.addActionListener(new eventSettings());
+        activate_hype_mode.addActionListener(new eventActivateHypeMode());
         clear.addActionListener(e -> notificationListModel.clear());
-        sort.addActionListener(new event_sort_notifications());
+        sortChange.addActionListener(new eventSortNotifications(true));
+        sortDate.addActionListener(new eventSortNotifications(false));
 
         return menuBar;
     }
 
-    public void sort_notifications() {
+    public void sortNotifications(boolean byChange) {
+        globalByChange = byChange;
+
         // Convert the model's elements to a List using Collections.list
         List<Notification> notifications = Collections.list(notificationListModel.elements());
 
-        // Sort notifications in descending order of percentage change using a concise comparator
-        notifications.sort(Comparator.comparingDouble(Notification::getChange).reversed());
+        if (byChange) {
+            // Sort notifications in descending order of percentage change using a concise comparator
+            notifications.sort(Comparator.comparingDouble(Notification::getChange).reversed());
+        } else {
+            // Sort notifications in descending order by date (newest first)
+            notifications.sort(Comparator.comparing(Notification::getLocalDateTime).reversed());
+        }
 
         // Clear the model and add all sorted notifications back
         notificationListModel.clear();
         notificationListModel.addAll(notifications);
     }
 
-    public static class event_export implements ActionListener {
+    public static class eventExport implements ActionListener {
+
         @Override
         public void actionPerformed(ActionEvent e) {
             // Define the source file (config.xml in the root directory)
@@ -1325,7 +1340,7 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public static class event_activate_hype_mode implements ActionListener {
+    public static class eventActivateHypeMode implements ActionListener {
         private static final ExecutorService executorService = Executors.newSingleThreadExecutor();
         private static final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(1);
 
@@ -1334,7 +1349,7 @@ public class Main_UI extends JFrame {
             // Run the Hype Mode in a dedicated background thread
             executorService.submit(() -> {
                 try {
-                    Main_data_handler.start_Hype_Mode(volume);
+                    Main_data_handler.startHypeMode(volume);
                 } catch (Exception ex) {
                     ex.printStackTrace();
                 }
@@ -1353,7 +1368,6 @@ public class Main_UI extends JFrame {
                                         double latestClose = value.getClose();
                                         TimeSeries series = notification.getTimeSeries();
                                         Date start = series.getDataItem(0).getPeriod().getStart();
-
 
                                         SwingUtilities.invokeLater(() -> {
                                             // Update series data
@@ -1400,7 +1414,7 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public static class event_settings implements ActionListener {
+    public static class eventSettings implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -1412,25 +1426,25 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public static class event_save implements ActionListener {
+    public static class eventSave implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            save_config(getValues());
+            saveConfig(getValues());
         }
     }
 
-    public static class event_exit implements ActionListener {
+    public static class eventExit implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            save_config(getValues()); //Save them in case user forgot
+            saveConfig(getValues()); //Save them in case user forgot
             System.out.println("Exit application");
             System.exit(0); // Exit the application
         }
     }
 
-    public static class event_import implements ActionListener {
+    public static class eventImport implements ActionListener {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Create a JFileChooser for importing files
@@ -1452,7 +1466,7 @@ public class Main_UI extends JFrame {
                     // Copy and rename the file, overwriting if it exists
                     Files.copy(selectedFile.toPath(), configFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
 
-                    load_config();
+                    loadConfig();
 
                     JOptionPane.showMessageDialog(null, "Configuration imported and saved as config.xml successfully!");
 
@@ -1464,18 +1478,24 @@ public class Main_UI extends JFrame {
         }
     }
 
-    public static class event_Load implements ActionListener {
+    public static class eventLoad implements ActionListener {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            load_config();
+            loadConfig();
         }
     }
 
-    public class event_sort_notifications implements ActionListener {
+    public class eventSortNotifications implements ActionListener {
+        boolean byChange;
+
+        public eventSortNotifications(boolean change) {
+            this.byChange = change;
+        }
+
         @Override
         public void actionPerformed(ActionEvent e) {
-            sort_notifications();
+            sortNotifications(byChange);
         }
     }
 }

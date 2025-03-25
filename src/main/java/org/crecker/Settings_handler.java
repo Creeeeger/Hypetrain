@@ -5,8 +5,8 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
-import static org.crecker.Main_UI.gui;
-import static org.crecker.Main_UI.logTextArea;
+import static org.crecker.mainUI.gui;
+import static org.crecker.mainUI.logTextArea;
 
 public class Settings_handler extends JFrame {
     public static JPanel settingsPanel;
@@ -112,8 +112,8 @@ public class Settings_handler extends JFrame {
                 logTextArea.append("Data saved successfully to config\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-                Main_UI.load_config();
-                Main_UI.refreshAllComponents(gui.getContentPane());
+                mainUI.loadConfig();
+                mainUI.refreshAllComponents(gui.getContentPane());
 
                 logTextArea.append("Config updated and re-loaded\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());

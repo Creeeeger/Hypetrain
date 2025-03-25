@@ -37,8 +37,8 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
-import static org.crecker.Main_UI.addNotification;
-import static org.crecker.Main_UI.gui;
+import static org.crecker.mainUI.addNotification;
+import static org.crecker.mainUI.gui;
 import static org.crecker.Main_data_handler.*;
 import static org.crecker.data_tester.getData;
 import static org.crecker.data_tester.parseStockUnit;
@@ -147,6 +147,8 @@ public class pLTester {
                         unit.getPercentageChange(),
                         symbol);
 
+                notification.addDataPoint(unit);
+
                 System.out.print("Enter trade? (y/n/exit): ");
                 String input = scanner.nextLine().trim().toLowerCase();
 
@@ -173,6 +175,8 @@ public class pLTester {
                                 minuteUnit.getClose(),
                                 minuteUnit.getPercentageChange(),
                                 totalChange);
+
+                        notification.addDataPoint(minuteUnit);
 
                         System.out.print("Exit trade now? (y/n): ");
                         String exitChoice = scanner.nextLine().trim().toLowerCase();
