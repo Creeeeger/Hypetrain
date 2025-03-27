@@ -48,6 +48,8 @@ public class pLTester {
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
     static JLabel percentageChange;
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
+    static boolean tradeView = true;
+    static int feature = 0;
     private static double point1X = Double.NaN;
     private static double point1Y = Double.NaN;
     private static double point2X = Double.NaN;
@@ -56,8 +58,6 @@ public class pLTester {
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
     private static boolean isAdjusting = false;
-    static boolean tradeView = true;
-    static int feature = 0;
 
     public static void main(String[] args) {
         //updateStocks();
@@ -506,11 +506,26 @@ public class pLTester {
                 TimeSeriesCollection featureDataset = new TimeSeriesCollection();
                 featureDataset.addSeries(featureSeries);
 
+                double lower = featureSeries.getMinY() - Math.abs(featureSeries.getMinY() * 0.05);
+                if (lower == 0.0) {
+                    lower = -0.05;
+                }
+
                 // Create chart
                 JFreeChart chart = createFeatureChart(
-                        processedSymbol, priceDataset, predictionDataset, featureDataset, i, timeline
+                        processedSymbol,
+                        priceDataset,
+                        predictionDataset,
+                        featureDataset,
+                        i,
+                        timeline,
+                        lower,
+                        featureSeries.getMaxY() + Math.abs(featureSeries.getMaxY() * 0.05)
                 );
+
                 ChartPanel chartPanel = new ChartPanel(chart);
+                chartPanel.setDomainZoomable(true); // Allow domain zoom
+                chartPanel.setRangeZoomable(false); // Disable range zoom
                 createPercentageMarkers(chart, chartPanel);
 
                 chartPanels.add(chartPanel);
@@ -542,7 +557,8 @@ public class pLTester {
     }
 
     private static JFreeChart createFeatureChart(String symbol, TimeSeriesCollection priceDataset, TimeSeriesCollection predictionDataset,
-                                                 TimeSeriesCollection featureDataset, int featureIndex, List<StockUnit> timeline) {
+                                                 TimeSeriesCollection featureDataset, int featureIndex, List<StockUnit> timeline, double lower, double upper) {
+        
         JFreeChart chart = ChartFactory.createTimeSeriesChart(
                 symbol + " - Feature " + featureIndex,
                 "Time",
@@ -585,8 +601,10 @@ public class pLTester {
 
         // Configure auto-scaling
         priceAxis.setAutoRange(true);
-        featureAxis.setAutoRange(true);
-        predictionAxis.setAutoRange(true);
+        featureAxis.setAutoRange(false);
+        featureAxis.setRange(lower, upper);
+        predictionAxis.setRange(-0.05, 1.05);
+        predictionAxis.setAutoRange(false);
 
         // PRESERVE YOUR MARKERS
         // Zero line marker (primary axis)
@@ -633,13 +651,24 @@ public class pLTester {
             domainAxis.addChangeListener(event -> {
                 if (!isAdjusting) {
                     isAdjusting = true;
-                    Range newRange = domainAxis.getRange();
-                    // Update all other panels with the new range
+                    Range newDomainRange = domainAxis.getRange();
+
+                    // Update domain for all charts
                     for (ChartPanel otherPanel : chartPanels) {
                         if (otherPanel != panel) {
-                            otherPanel.getChart().getXYPlot().getDomainAxis().setRange(newRange);
+                            XYPlot otherPlot = otherPanel.getChart().getXYPlot();
+                            otherPlot.getDomainAxis().setRange(newDomainRange);
                         }
                     }
+
+                    // Trigger price axis auto-range for all charts
+                    for (ChartPanel p : chartPanels) {
+                        XYPlot plot = p.getChart().getXYPlot();
+                        NumberAxis priceAxis = (NumberAxis) plot.getRangeAxis(0);
+                        priceAxis.setAutoRange(true); // Force auto-range
+                        priceAxis.configure(); // Recalculate based on visible data
+                    }
+
                     isAdjusting = false;
                 }
             });
