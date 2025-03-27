@@ -1,6 +1,6 @@
 TODO
 Version 1.0:
-- [ ] Finish data comparison for minute data
+- [ ] Flatten out hallucinations of inference
 
 Version 1.5:
 - [ ] Update frame sizes for second based processing
