@@ -39,6 +39,5 @@ build/
 *.txt
 *log
 *.csv
-/rallyMLModel/*.csv
 !ToDO.txt
 config.xml
