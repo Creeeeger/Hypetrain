@@ -34,6 +34,7 @@ import com.crazzyghost.alphavantage.timeseries.request.*;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import okhttp3.Call;
+import okhttp3.Request;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
 
@@ -111,10 +112,14 @@ public final class TimeSeries implements Fetcher {
      */
     @Override
     public void fetch() {
+        final String DEMO_URL = "https://www.alphavantage.co/query?function=TIME_SERIES_INTRADAY&symbol=IBM&interval=5min&apikey=demo";
 
         Config.checkNotNullOrKeyEmpty(config);
+        Request request = new Request.Builder()
+                .url(DEMO_URL)
+                .build();
 
-        config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new okhttp3.Callback() {
+        config.getOkHttpClient().newCall(request).enqueue(new okhttp3.Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
                 if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException(e.getMessage()));

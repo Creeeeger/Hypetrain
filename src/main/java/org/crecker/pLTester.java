@@ -266,75 +266,9 @@ public class pLTester {
 
         fileUnits.forEach(unit -> unit.setTarget(0));
 
-        List<StockUnit> syntheticUnits = new ArrayList<>();
-        for (StockUnit unit : fileUnits) {
-            unit.setTarget(0);
-            syntheticUnits.addAll(generateSyntheticData(unit));
-        }
-
         List<StockUnit> existing = symbolTimelines.getOrDefault(symbol, new ArrayList<>());
         existing.addAll(fileUnits);
-        //   existing.addAll(syntheticUnits);
         symbolTimelines.put(symbol, existing);
-    }
-
-    private static List<StockUnit> generateSyntheticData(StockUnit original) {
-        List<StockUnit> synthetic = new ArrayList<>();
-        int steps = 2;
-        double volatility = 0.00001; // Adjust for desired fluctuation level
-
-        double open = original.getOpen();
-        double close = original.getClose();
-        double delta = close - open;
-
-        for (int i = 0; i < steps; i++) {
-            String timestamp = original.getLocalDateTimeDate().plusSeconds(30 * i).toString();
-            if (timestamp.substring(timestamp.indexOf('T') + 1).matches("^[0-9][0-9]:[0-9][0-9]$")) {
-                timestamp = original.getLocalDateTimeDate().plusSeconds(30 * i) + ":00";
-            }
-
-            timestamp = timestamp.replace("T", " ");
-            double t = i / (double) (steps - 1);
-
-            // Base price with linear interpolation
-            double basePrice = open + (delta * t);
-            // Add random noise (positive or negative)
-            double noise = basePrice * volatility * (Math.random() - 0.5) * 2;
-            double syntheticClose = basePrice + noise;
-
-            // For first and last steps, clamp to original open/close
-            if (i == 0) syntheticClose = open + (noise * 0.1); // Small noise for first step
-            if (i == steps - 1) syntheticClose = close;
-
-            double syntheticOpen = (i == 0) ? open : synthetic.get(0).getClose();
-
-            // Calculate high/low with some variation
-            double randomFactor = Math.abs(syntheticClose - syntheticOpen) + (volatility * syntheticOpen);
-            double syntheticHigh = Math.max(syntheticOpen, syntheticClose) + (randomFactor * Math.random());
-            double syntheticLow = Math.min(syntheticOpen, syntheticClose) - (randomFactor * Math.random());
-
-            StockUnit syntheticUnit = new StockUnit.Builder()
-                    .time(timestamp)
-                    .open(syntheticOpen)
-                    .high(syntheticHigh)
-                    .low(syntheticLow)
-                    .close(syntheticClose)
-                    .adjustedClose(syntheticClose) // Mirror close unless adjusted
-                    .volume(original.getVolume() / steps) // Distribute volume evenly
-                    .dividendAmount(original.getDividendAmount())
-                    .splitCoefficient(original.getSplitCoefficient())
-                    .symbol(original.getSymbol())
-                    .percentageChange(calculatePercentageChange(syntheticOpen, syntheticClose))
-                    .target(original.getTarget())
-                    .build();
-
-            synthetic.add(syntheticUnit);
-        }
-        return synthetic;
-    }
-
-    private static double calculatePercentageChange(double open, double close) {
-        return ((close - open) / open) * 100;
     }
 
     public static void exportToCSV(List<StockUnit> stocks) {
@@ -558,7 +492,7 @@ public class pLTester {
 
     private static JFreeChart createFeatureChart(String symbol, TimeSeriesCollection priceDataset, TimeSeriesCollection predictionDataset,
                                                  TimeSeriesCollection featureDataset, int featureIndex, List<StockUnit> timeline, double lower, double upper) {
-        
+
         JFreeChart chart = ChartFactory.createTimeSeriesChart(
                 symbol + " - Feature " + featureIndex,
                 "Time",

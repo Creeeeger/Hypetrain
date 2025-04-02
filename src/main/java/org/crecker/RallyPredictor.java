@@ -9,6 +9,8 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.Collections;
 import java.util.LinkedList;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -17,17 +19,16 @@ public class RallyPredictor implements AutoCloseable {
     private static RallyPredictor instance;
     private final OrtEnvironment env;
     private final OrtSession session;
-    private final LinkedList<float[]> buffer;
-    private final ReentrantLock bufferLock = new ReentrantLock();
-    private final int length = mainDataHandler.INDICATOR_RANGE_MAP.size();
-    private int dynamicBufferSize = 28; // Initial default value
+    private final Map<String, LinkedList<float[]>> symbolBuffers = new ConcurrentHashMap<>();
+    private final ReentrantLock sizeAdjustmentLock = new ReentrantLock();
+    private int dynamicBufferSize = 28;
+    private final int featureLength = mainDataHandler.INDICATOR_RANGE_MAP.size();
 
     // Private constructor to prevent instantiation
     private RallyPredictor(String modelPath) throws OrtException {
         this.env = OrtEnvironment.getEnvironment();
         OrtSession.SessionOptions options = new OrtSession.SessionOptions();
         this.session = env.createSession(modelPath, options);
-        this.buffer = new LinkedList<>();
     }
 
     // Singleton instance getter
@@ -38,84 +39,89 @@ public class RallyPredictor implements AutoCloseable {
         return instance;
     }
 
-    public static float predict(float[] features) {
+    public static float predict(float[] features, String symbol) {
         Path modelPath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "spike_predictor.onnx");
         try {
-            return RallyPredictor.getInstance(modelPath.toString()).updateAndPredict(features);
+            Float prediction = RallyPredictor.getInstance(modelPath.toString()).updateAndPredict(symbol, features);
+            return prediction != null ? prediction : 0F;
         } catch (Exception e) {
             System.out.println("predict Function: " + e.getMessage());
-            return 0;
+            return 0F;
         }
     }
 
-    /**
-     * Adds new features to the buffer and predicts spike probability if the buffer is full.
-     *
-     * @param features The feature vector for the current time step.
-     * @return The spike probability, or null if the buffer is not yet full.
-     */
-    public synchronized Float updateAndPredict(float[] features) {
-        bufferLock.lock();
-        try {
-            if (buffer.size() >= dynamicBufferSize) {
-                buffer.remove(0); // Remove the oldest feature if the buffer is full
-            }
+    public Float updateAndPredict(String symbol, float[] features) {
+        LinkedList<float[]> buffer = symbolBuffers.computeIfAbsent(symbol, k -> new LinkedList<>());
 
-            buffer.add(features); // Add the new feature to the buffer
+        synchronized (buffer) {
+            if (buffer.size() >= dynamicBufferSize) {
+                buffer.removeFirst(); // Keep buffer size in check
+            }
+            buffer.addLast(features); // Add new feature vector
 
             if (buffer.size() >= dynamicBufferSize) {
-                return predictSpike(); // Only predict once the buffer is full
+                try {
+                    return predictSpike(buffer);
+                } catch (OrtException e) {
+                    handleModelError(e);
+                }
             }
-        } catch (Exception e) {
-            e.printStackTrace();
-        } finally {
-            bufferLock.unlock();
         }
         return 0F;
     }
 
-    /**
-     * Predicts the spike probability using the current buffer.
-     *
-     * @return The spike probability, or null if the buffer is not yet full.
-     */
-    private Float predictSpike() throws OrtException {
-        try {
-            float[][][] inputArray = prepareInputArray();
+    private Float predictSpike(LinkedList<float[]> buffer) throws OrtException {
+        float[][][] inputArray = prepareInputArray(buffer);
 
-            try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
-                try (OrtSession.Result result = session.run(Collections.singletonMap("args_0", inputTensor))) {
-                    float[][] output = (float[][]) result.get(0).getValue();
-                    return output[0][0];
-                }
-            }
-        } catch (OrtException e) {
-            Integer expectedSize = parseExpectedSizeFromError(e.getMessage());
-            if (expectedSize != null) {
-                System.out.println("Adapting buffer size from " + dynamicBufferSize + " to " + expectedSize);
-                dynamicBufferSize = expectedSize;
-            } else {
-                throw e;
+        try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
+            try (OrtSession.Result result = session.run(Collections.singletonMap("args_0", inputTensor))) {
+                float[][] output = (float[][]) result.get(0).getValue();
+                return output[0][0];
             }
         }
-
-        return null;
     }
 
-    private float[][][] prepareInputArray() {
-        float[][][] inputArray = new float[1][dynamicBufferSize][length];
+    /**
+     * Prepares input by replicating the latest feature vector (like version 2 does).
+     */
+    private float[][][] prepareInputArray(LinkedList<float[]> buffer) {
+        float[][][] inputArray = new float[1][dynamicBufferSize][featureLength];
+
+        float[] latest = buffer.getLast();
 
         for (int i = 0; i < dynamicBufferSize; i++) {
-
-            float[] features = buffer.get(buffer.size() - 1);
-
-            System.arraycopy(
-                    features, 0,
-                    inputArray[0][i], 0,
-                    Math.min(features.length, length)
-            );
+            System.arraycopy(latest, 0, inputArray[0][i], 0, Math.min(latest.length, featureLength));
         }
+
         return inputArray;
+    }
+
+    private void handleModelError(OrtException e) {
+        Integer expectedSize = parseExpectedSizeFromError(e.getMessage());
+        if (expectedSize != null) {
+            sizeAdjustmentLock.lock();
+            try {
+                if (expectedSize != dynamicBufferSize) {
+                    System.out.println("Adjusting buffer size to " + expectedSize);
+                    dynamicBufferSize = expectedSize;
+                    trimAllBuffers();
+                }
+            } finally {
+                sizeAdjustmentLock.unlock();
+            }
+        } else {
+            e.printStackTrace();
+        }
+    }
+
+    private void trimAllBuffers() {
+        symbolBuffers.forEach((symbol, buffer) -> {
+            synchronized (buffer) {
+                while (buffer.size() > dynamicBufferSize) {
+                    buffer.removeFirst();
+                }
+            }
+        });
     }
 
     private Integer parseExpectedSizeFromError(String errorMessage) {
@@ -132,6 +138,6 @@ public class RallyPredictor implements AutoCloseable {
     public void close() throws Exception {
         if (session != null) session.close();
         if (env != null) env.close();
-        instance = null; // Reset the singleton instance when closed
+        instance = null; // Reset singleton on close
     }
 }

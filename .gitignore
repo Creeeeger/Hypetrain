@@ -38,6 +38,5 @@ build/
 .DS_Store
 *.txt
 *log
-*.csv
 !ToDO.txt
 config.xml
