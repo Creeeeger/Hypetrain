@@ -12,7 +12,7 @@ from keras.src.metrics import Precision, Recall, AUC
 from keras.src.regularizers import regularizers
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import MinMaxScaler
-
+# pip install numpy pandas tensorflow tf2onnx imbalanced-learn scikit-learn
 
 # 1. Feature Engineering
 def create_features(data_of_csv):

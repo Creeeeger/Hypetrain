@@ -42,8 +42,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
-import static org.crecker.pLTester.PLAnalysis;
-
 public class mainUI extends JFrame {
     public static JTextArea logTextArea;
     public static mainUI gui;
@@ -170,7 +168,6 @@ public class mainUI extends JFrame {
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
-        PLAnalysis();
     }
 
     // Utility method to refresh all components in a container

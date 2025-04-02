@@ -1,6 +1,16 @@
 TODO
 Version 1.0:
-- [ ] Flatten out hallucinations of inference
+--Dip checker--
+- get time state saver and a shift for absolute dips to ensure we enter at the right time
+- maybe train DIP ML model
+- make a variable movement of the average of the stock to make a proper dip limit to ensure that dips only occur at the right amount
+
+--Rise checker--
+- Create fill the gap (local R line indicator)
+- add a minimum rise tracker before notification make this stock dependant hence different levels of movement influence things differently
+- add a rise in percentage to be used in case inference says no
+- add downwards trend-line check
+- add upwards trend-line check
 
 Version 1.5:
 - [ ] Update frame sizes for second based processing
@@ -9,3 +19,5 @@ Version 1.5:
 Version 2.0:
 - [ ] Update inference for second data
 - [ ] Update linking for second data
+
+In advance already second data won't change the world

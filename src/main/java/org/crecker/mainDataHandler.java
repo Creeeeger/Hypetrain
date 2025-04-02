@@ -22,6 +22,7 @@ import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.crecker.RallyPredictor.predict;
@@ -48,7 +49,7 @@ public class mainDataHandler {
         put("KELTNER", Map.of("min", 0.0, "max", 1.0));
         put("ELDER_RAY", Map.of("min", -3.0, "max", 3.0));
     }};
-    static final Map<String, List<StockUnit>> symbolTimelines = new HashMap<>();
+    static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
@@ -64,10 +65,6 @@ public class mainDataHandler {
             }
         }
     }
-
-    // Base value of 1 for minute data. If you half the time of 1 minute to 30 seconds change value to 2.
-    // If you double to 2 minute periods then change value to 0.5 and so on
-    static double frequency = 1.0;
 
     public static void main(String[] args) {
         PLAnalysis();
@@ -182,7 +179,7 @@ public class mainDataHandler {
                 , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
                 , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
                 , "BN", "BNS", "BNTX", "BP", "BRK/B", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-                , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD"
+                , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
                 , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
                 , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
                 , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
@@ -258,59 +255,123 @@ public class mainDataHandler {
     }
 
     public static void getAvailableSymbols(int tradeVolume, String[] possibleSymbols, SymbolCallback callback) {
-        List<String> actualSymbols = new ArrayList<>();
+        if (possibleSymbols.length == 0) {
+            callback.onSymbolsAvailable(Collections.emptyList());
+            return;
+        }
 
-        for (int i = 0; i < possibleSymbols.length; i++) {
-            int finalI = i;
+        List<String> actualSymbols = new CopyOnWriteArrayList<>();
+        AtomicInteger remaining = new AtomicInteger(possibleSymbols.length);
+
+        for (String symbol : possibleSymbols) {
             AlphaVantage.api()
                     .fundamentalData()
                     .companyOverview()
-                    .forSymbol(possibleSymbols[i])
+                    .forSymbol(symbol)
                     .onSuccess(e -> {
-                        long marketCapitalization = ((CompanyOverviewResponse) e).getOverview().getMarketCapitalization();
-                        long sharesOutstanding = ((CompanyOverviewResponse) e).getOverview().getSharesOutstanding();
+                        CompanyOverviewResponse companyResponse = (CompanyOverviewResponse) e;
+                        long marketCapitalization = companyResponse.getOverview().getMarketCapitalization();
+                        long sharesOutstanding = companyResponse.getOverview().getSharesOutstanding();
 
                         AlphaVantage.api()
                                 .timeSeries()
                                 .daily()
-                                .forSymbol(possibleSymbols[finalI])
+                                .forSymbol(symbol)
                                 .outputSize(OutputSize.COMPACT)
                                 .onSuccess(tsResponse -> {
-                                    double close = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getClose();
-                                    double volume = ((TimeSeriesResponse) tsResponse).getStockUnits().get(0).getVolume();
-
-                                    // Check conditions and add to actual symbols
-                                    if (tradeVolume < marketCapitalization) {
-                                        if (((double) tradeVolume / close) < volume) {
-                                            if (((long) tradeVolume / close) < sharesOutstanding) {
-                                                actualSymbols.add(possibleSymbols[finalI]);
-                                            }
-                                        }
+                                    TimeSeriesResponse ts = (TimeSeriesResponse) tsResponse;
+                                    if (ts.getStockUnits().isEmpty()) {
+                                        checkCompletion(remaining, actualSymbols, callback);
+                                        return;
                                     }
 
-                                    // Check if all symbols have been processed
-                                    if (finalI == possibleSymbols.length - 1) {
-                                        callback.onSymbolsAvailable(actualSymbols); // Call the callback when all are done
+                                    double close = ts.getStockUnits().get(0).getClose();
+                                    double volume = ts.getStockUnits().get(0).getVolume();
+
+                                    if (tradeVolume < marketCapitalization
+                                            && ((double) tradeVolume / close) < volume
+                                            && ((long) (tradeVolume / close) < sharesOutstanding)) {
+                                        actualSymbols.add(symbol);
                                     }
+
+                                    checkCompletion(remaining, actualSymbols, callback);
                                 })
-                                .onFailure(mainDataHandler::handleFailure)
+                                .onFailure(error -> {
+                                    mainDataHandler.handleFailure(error);
+                                    checkCompletion(remaining, actualSymbols, callback);
+                                })
                                 .fetch();
                     })
-                    .onFailure(mainDataHandler::handleFailure)
+                    .onFailure(error -> {
+                        mainDataHandler.handleFailure(error);
+                        checkCompletion(remaining, actualSymbols, callback);
+                    })
                     .fetch();
+        }
+    }
+
+    private static void checkCompletion(AtomicInteger remaining, List<String> actualSymbols, SymbolCallback callback) {
+        if (remaining.decrementAndGet() == 0) {
+            callback.onSymbolsAvailable(actualSymbols);
         }
     }
 
     public static void hypeModeFinder(List<String> symbols) {
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
 
-        // Use a thread-safe list for matches
-        List<RealTimeResponse.RealTimeMatch> matches = Collections.synchronizedList(new ArrayList<>());
+        for (String symbol : symbols) {
+            AlphaVantage.api()
+                    .timeSeries()
+                    .intraday()
+                    .forSymbol(symbol)
+                    .interval(Interval.ONE_MIN)
+                    .outputSize(OutputSize.COMPACT)
+                    .onSuccess(e -> {
+                        try {
+                            TimeSeriesResponse response = (TimeSeriesResponse) e;
+                            List<StockUnit> units = response.getStockUnits();
+
+                            // Reverse the list to correct chronological order
+                            List<StockUnit> reversedUnits = new ArrayList<>(units);
+                            Collections.reverse(reversedUnits);
+
+                            // Add reversed units to symbol timeline
+                            synchronized (symbolTimelines) {
+                                symbolTimelines.computeIfAbsent(symbol, k ->
+                                        Collections.synchronizedList(new ArrayList<>())
+                                ).addAll(reversedUnits);
+                            }
+
+                            if (reversedUnits.isEmpty()) {
+                                System.out.println("Empty response for: " + symbol);
+                            }
+
+                            countDownLatch.countDown();
+                        } catch (Exception ex) {
+                            ex.printStackTrace();
+                            countDownLatch.countDown();
+                        }
+                    })
+                    .onFailure(error -> {
+                        mainDataHandler.handleFailure(error);
+                        countDownLatch.countDown();
+                    })
+                    .fetch();
+        }
+
+        try {
+            countDownLatch.await(1, TimeUnit.MINUTES);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        calculateStockPercentageChange(false);
 
         while (!Thread.currentThread().isInterrupted()) {
+            List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
             try {
-                matches.clear();
                 int totalBatches = (int) Math.ceil(symbols.size() / 100.0);
                 CountDownLatch latch = new CountDownLatch(totalBatches);
 
@@ -338,7 +399,9 @@ public class mainDataHandler {
                 }
 
                 processStockData(matches);
-                Thread.sleep(5000);
+
+                // wait 1 Minute
+                Thread.sleep(60000);
 
             } catch (InterruptedException e) {
                 e.printStackTrace();
@@ -376,7 +439,7 @@ public class mainDataHandler {
     }
 
     public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
-        Map<String, StockUnit> currentBatch = new HashMap<>();
+        Map<String, StockUnit> currentBatch = new ConcurrentHashMap<>();
 
         for (RealTimeResponse.RealTimeMatch match : matches) {
             String symbol = match.getSymbol().toUpperCase();
@@ -388,14 +451,14 @@ public class mainDataHandler {
                     .build();
 
             // Update symbol timeline
-            symbolTimelines.computeIfAbsent(symbol, k -> new ArrayList<>()).add(unit);
+            symbolTimelines.computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>())).add(unit);
             currentBatch.put(symbol, unit);
         }
         logTextArea.append("Processed " + currentBatch.size() + " valid stock entries\n");
-        calculateStockPercentageChange();
+        calculateStockPercentageChange(true);
     }
 
-    public static void calculateStockPercentageChange() {
+    public static void calculateStockPercentageChange(boolean realFrame) {
         synchronized (symbolTimelines) {
             symbolTimelines.forEach((symbol, timeline) -> {
                 if (timeline.size() < 2) {
@@ -420,7 +483,7 @@ public class mainDataHandler {
             });
         }
 
-        calculateSpikesInRally(frameSize, true);
+        calculateSpikesInRally(frameSize, realFrame);
     }
 
     public static void calculateSpikesInRally(int minutesPeriod, boolean realFrame) {
@@ -602,8 +665,8 @@ public class mainDataHandler {
         //raw features
         double[] features = computeFeatures(stocks, symbol);
 
-        // feed normalized features
-        double prediction = predict(normalizeFeatures(features));
+        // feed normalized features and symbol
+        double prediction = predict(normalizeFeatures(features), symbol);
 
         synchronized (featureTimeSeriesArray) {
             for (int i = 0; i < features.length; i++) {
@@ -649,44 +712,105 @@ public class mainDataHandler {
                 .mapToDouble(StockUnit::getPercentageChange)
                 .sum();
 
+        double atr = calculateATR(stocks, 14); // Calculate 14-period ATR
+        double dipThreshold = -2 * atr; // Example: 2x ATR as threshold
+
+        if (changeDown < dipThreshold) {
+            createNotification(symbol, changeDown, alertsList, timeSeries,
+                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                    prediction, true);
+        }
+
+        if (isUpwardTrend(stocks, 5)) {
+//            createNotification(symbol, changeDown, alertsList, timeSeries,
+//                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+//                    prediction, true);
+        }
+
+        double gapLevel = findRecentGap(stocks, 5);
+        if (gapLevel != -1) {
+            double currentPrice = stocks.get(stocks.size() - 1).getClose();
+            if (Math.abs(currentPrice - gapLevel) < gapLevel * 0.02) {
+//                createNotification(symbol, changeDown, alertsList, timeSeries,
+//                        stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+//                        prediction, true);
+            }
+        }
+
         // 1. calculateTRIX
         // 2. calculateROC              GD
         // 5. cumulativePercentageChange
         // 6. isKeltnerBreakout -- should be 1 but can lead to delay
         // 7. elderRayIndex
 
-        if (changeDown < -5) {
-            createNotification(symbol, changeDown, alertsList, timeSeries,
-                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                    prediction, true);
+//        if (changeDown < -5) {
+//            createNotification(symbol, changeDown, alertsList, timeSeries,
+//                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+//                    prediction, true);
+//        }
+
+//        if (features[0] == 1) { //Save
+//            if (features[4] == 1) { //Save -| prediction
+
+        //    if (features[5] > 0.6) {
+        if (prediction > 0.93) {
+//                    if(features[6] ==1) {
+//                        createNotification(symbol, changeUp, alertsList, timeSeries,
+//                                stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+//                                prediction, false);
+//                    }
+
+
+            // }
+
+//                    if (features[1] > 0.12) { //maybe >0
+//                        if (features[2] > 0.1) { // > 0.2 +-
+//                            if (features[6] == 1) {
+//                                if (features[7] > 0.18) {
+//                                    createNotification(symbol, stocks.stream()
+//                                            .skip(stocks.size() - 4)
+//                                            .mapToDouble(StockUnit::getPercentageChange)
+//                                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction, false);
+//                                }
+//                            }
+//                        }
+//                    }
+        }
+//            }
+//        }
+        return alertsList;
+    }
+
+    private static boolean isUpwardTrend(List<StockUnit> window, int periods) {
+        // Simple linear regression on closing prices
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        int n = Math.min(periods, window.size());
+
+        for (int i = 0; i < n; i++) {
+            double y = window.get(window.size() - n + i).getClose();
+            sumX += i;
+            sumY += y;
+            sumXY += (double) i * y;
+            sumX2 += (double) i * (double) i;
         }
 
-        if (features[0] == 1) { //Save
-            if (features[4] == 1) { //Save -| prediction
+        double slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        return slope > 0; // Positive slope indicates upward trend
+    }
 
-                //    if (features[5] > 0.6) {
-                if (prediction > 0.90) {
-                    createNotification(symbol, changeUp, alertsList, timeSeries,
-                            stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                            prediction, false);
-                    // }
 
-                    if (features[1] > 0.12) { //maybe >0
-                        if (features[2] > 0.2) { // > 0.2 +-
-                            if (features[6] == 1) {
-                                if (features[7] > 0.18) {
-                                    createNotification(symbol, stocks.stream()
-                                            .skip(stocks.size() - 4)
-                                            .mapToDouble(StockUnit::getPercentageChange)
-                                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction, false);
-                                }
-                            }
-                        }
-                    }
-                }
+    private static double findRecentGap(List<StockUnit> window, int lookback) {
+        for (int i = window.size() - 1; i > 0 && lookback > 0; i--, lookback--) {
+            double previousClose = window.get(i - 1).getClose();
+            double currentOpen = window.get(i).getOpen();
+
+            if (currentOpen > previousClose * 1.01) { // Gap up
+                return previousClose;
+            } else if (currentOpen < previousClose * 0.99) { // Gap down
+                return previousClose;
             }
         }
-        return alertsList;
+        return -1; // No gap found
     }
 
     //Indicators
