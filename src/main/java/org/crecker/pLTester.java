@@ -237,7 +237,14 @@ public class pLTester {
     }
 
     private static void logFinalResults(double capital, double initial, int calls) {
-        double revenue = (capital - initial) * 0.75;
+        double revenue;
+
+        // Ensure losses aren't made cheaper by tax reduction
+        if ((capital - initial) > 0) {
+            revenue = (capital - initial) * 0.75;
+        } else {
+            revenue = (capital - initial);
+        }
 
         if (calls > 0) {
             System.out.printf("Total Revenue: €%.2f%n", revenue);
@@ -391,7 +398,7 @@ public class pLTester {
         try {
             addNotification(currentEvent.getTitle(), currentEvent.getContent(),
                     currentEvent.getTimeSeries(), currentEvent.getLocalDateTime(),
-                    currentEvent.getSymbol(), currentEvent.getChange(), currentEvent.isDip());
+                    currentEvent.getSymbol(), currentEvent.getChange(), currentEvent.getConfig());
         } catch (Exception e) {
             e.printStackTrace();
         }
@@ -1000,12 +1007,33 @@ public class pLTester {
 
             if (index != null && index < timeline.size()) {
                 StockUnit unit = timeline.get(index);
-                ValueMarker marker = new ValueMarker(unit.getDateDate().getTime());
-                marker.setPaint(new Color(220, 20, 60, 150));
-                marker.setStroke(new BasicStroke(1.0f));
+                ValueMarker marker = getValueMarker(notification, unit);
                 plot.addDomainMarker(marker);
             }
         }
+    }
+
+    @NotNull
+    private static ValueMarker getValueMarker(Notification notification, StockUnit unit) {
+        ValueMarker marker = new ValueMarker(unit.getDateDate().getTime());
+        int config = notification.getConfig();
+
+        Color color;
+        if (config == 0) {
+            color = new Color(255, 0, 0);         // Bright Red
+        } else if (config == 1) {
+            color = new Color(255, 140, 0);       // Deep Orange
+        } else if (config == 2) {
+            color = new Color(0, 128, 255);       // Sky Blue
+        } else if (config == 3) {
+            color = new Color(34, 177, 76);       // Leaf Green
+        } else {
+            color = new Color(128, 0, 128);       // Royal Purple
+        }
+
+        marker.setPaint(color);
+        marker.setStroke(new BasicStroke(1.0f));
+        return marker;
     }
 
     private static void addFirstMarker(XYPlot plot, double xPosition) {

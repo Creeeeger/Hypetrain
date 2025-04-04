@@ -519,7 +519,7 @@ public class mainDataHandler {
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
                                 addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(),
-                                        notification.getLocalDateTime(), notification.getSymbol(), notification.getChange(), notification.isDip());
+                                        notification.getLocalDateTime(), notification.getSymbol(), notification.getChange(), notification.getConfig());
                             }
                         }
                     } catch (Exception e) {
@@ -698,119 +698,87 @@ public class mainDataHandler {
 
     // Method for evaluating results
     private static List<Notification> evaluateResult(TimeSeries timeSeries, double prediction,
-                                                     List<StockUnit> stocks, String symbol,
-                                                     double[] features) {
+                                                     List<StockUnit> stocks, String symbol, double[] features) {
         List<Notification> alertsList = new ArrayList<>();
 
-        double changeUp = stocks.stream()
-                .skip(stocks.size() - 4)
-                .mapToDouble(StockUnit::getPercentageChange)
-                .sum();
+        double changeUp = stocks.stream().skip(stocks.size() - 4).
+                mapToDouble(StockUnit::getPercentageChange).sum();
 
-        double changeDown = stocks.stream()
-                .skip(stocks.size() - 8)
-                .mapToDouble(StockUnit::getPercentageChange)
-                .sum();
+        double changeDown = stocks.stream().skip(stocks.size() - 8).
+                mapToDouble(StockUnit::getPercentageChange).sum();
 
-        double atr = calculateATR(stocks, 14); // Calculate 14-period ATR
-        double dipThreshold = -2 * atr; // Example: 2x ATR as threshold
+        // Dip down
+        dipDown(timeSeries, prediction, stocks, symbol, changeDown, changeUp, alertsList);
 
-        if (changeDown < dipThreshold) {
-            createNotification(symbol, changeDown, alertsList, timeSeries,
-                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                    prediction, true);
-        }
+        // fill the gap
+        fillTheGap(timeSeries, prediction, stocks, symbol, alertsList);
 
-        if (isUpwardTrend(stocks, 5)) {
-//            createNotification(symbol, changeDown, alertsList, timeSeries,
-//                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-//                    prediction, true);
-        }
+        // Spike & (R Line Spike)
+        spikeUp(timeSeries, prediction, stocks, symbol, features, changeUp, alertsList);
 
-        double gapLevel = findRecentGap(stocks, 5);
-        if (gapLevel != -1) {
-            double currentPrice = stocks.get(stocks.size() - 1).getClose();
-            if (Math.abs(currentPrice - gapLevel) < gapLevel * 0.02) {
-//                createNotification(symbol, changeDown, alertsList, timeSeries,
-//                        stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-//                        prediction, true);
-            }
-        }
-
-        // 1. calculateTRIX
-        // 2. calculateROC              GD
-        // 5. cumulativePercentageChange
-        // 6. isKeltnerBreakout -- should be 1 but can lead to delay
-        // 7. elderRayIndex
-
-//        if (changeDown < -5) {
-//            createNotification(symbol, changeDown, alertsList, timeSeries,
-//                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-//                    prediction, true);
-//        }
-
-//        if (features[0] == 1) { //Save
-//            if (features[4] == 1) { //Save -| prediction
-
-        //    if (features[5] > 0.6) {
-        if (prediction > 0.93) {
-//                    if(features[6] ==1) {
-//                        createNotification(symbol, changeUp, alertsList, timeSeries,
-//                                stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-//                                prediction, false);
-//                    }
-
-
-            // }
-
-//                    if (features[1] > 0.12) { //maybe >0
-//                        if (features[2] > 0.1) { // > 0.2 +-
-//                            if (features[6] == 1) {
-//                                if (features[7] > 0.18) {
-//                                    createNotification(symbol, stocks.stream()
-//                                            .skip(stocks.size() - 4)
-//                                            .mapToDouble(StockUnit::getPercentageChange)
-//                                            .sum(), alertsList, timeSeries, stocks.get(stocks.size() - 1).getLocalDateTimeDate(), prediction, false);
-//                                }
-//                            }
-//                        }
-//                    }
-        }
-//            }
-//        }
         return alertsList;
     }
 
-    private static boolean isUpwardTrend(List<StockUnit> window, int periods) {
-        // Simple linear regression on closing prices
-        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
-        int n = Math.min(periods, window.size());
-
-        for (int i = 0; i < n; i++) {
-            double y = window.get(window.size() - n + i).getClose();
-            sumX += i;
-            sumY += y;
-            sumXY += (double) i * y;
-            sumX2 += (double) i * (double) i;
-        }
-
-        double slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
-        return slope > 0; // Positive slope indicates upward trend
-    }
-
-
-    private static double findRecentGap(List<StockUnit> window, int lookback) {
-        for (int i = window.size() - 1; i > 0 && lookback > 0; i--, lookback--) {
-            double previousClose = window.get(i - 1).getClose();
-            double currentOpen = window.get(i).getOpen();
-
-            if (currentOpen > previousClose * 1.01) { // Gap up
-                return previousClose;
-            } else if (currentOpen < previousClose * 0.99) { // Gap down
-                return previousClose;
+    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features, double changeUp, List<Notification> alertsList) {
+        if (features[0] == 1) {
+            if (features[4] == 1) {
+                if (features[5] > 0.6) {
+                    if (prediction > 0.93) {
+                        if (features[6] == 1) {
+                            createNotification(symbol, changeUp, alertsList, timeSeries,
+                                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                                    prediction, 3);
+                        }
+                    }
+                }
             }
         }
-        return -1; // No gap found
+    }
+
+    private static void dipDown(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double changeDown, double changeUp, List<Notification> alertsList) {
+        if (changeDown < -2 * calculateATR(stocks, 14)) {
+            createNotification(symbol, changeUp, alertsList, timeSeries,
+                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                    prediction, 0);
+        }
+    }
+
+    private static void fillTheGap(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, List<Notification> alertsList) {
+        List<StockUnit> allStocks = symbolTimelines.get(symbol);
+        int smaPeriod = 20;
+        int atrPeriod = 14;
+
+        if (allStocks.size() >= smaPeriod) {
+            int endIndex = allStocks.size();
+            int startIndex = endIndex - smaPeriod;
+
+            // Calculate current SMA20
+            List<StockUnit> smaStocks = allStocks.subList(startIndex, endIndex);
+            double sma20 = smaStocks.stream().mapToDouble(StockUnit::getClose).sum() / smaPeriod;
+
+            // Check if previous SMA20 exists for trend direction
+            if (startIndex >= 1) {
+                List<StockUnit> prevSmaStocks = allStocks.subList(startIndex - 1, endIndex - 1);
+                double prevSma20 = prevSmaStocks.stream().mapToDouble(StockUnit::getClose).sum() / smaPeriod;
+                boolean uptrend = sma20 > prevSma20;
+
+                double currentClose = stocks.get(stocks.size() - 1).getClose();
+                double deviationFromTrend = currentClose - sma20;
+
+                // Calculate ATR using entire timeline's recent data
+                if (allStocks.size() >= atrPeriod) {
+                    List<StockUnit> atrStocks = allStocks.subList(endIndex - atrPeriod, endIndex);
+                    double atr = calculateATR(atrStocks, atrPeriod);
+                    double gapThreshold = -2 * atr; // Adjust multiplier based on historical analysis
+
+                    if (uptrend && deviationFromTrend < gapThreshold) {
+                        createNotification(symbol, deviationFromTrend, alertsList, timeSeries,
+                                stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                                prediction, 1); // Use appropriate notification type code
+                    }
+                }
+            }
+        }
     }
 
     //Indicators
@@ -1049,6 +1017,10 @@ public class mainDataHandler {
 
     /**
      * Creates a notification for a stock event (increase or dip) and adds it to the alerts list.
+     * config 0 dip
+     * config 1 gap filler
+     * config 2 R-line spike
+     * config 3 spike
      *
      * @param symbol      The name of the stock.
      * @param totalChange The total percentage change triggering the notification.
@@ -1056,15 +1028,23 @@ public class mainDataHandler {
      * @param timeSeries  The time series for graphical representation.
      * @param date        The date of the event.
      */
-    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction, boolean dip) {
-        if (dip) {
+    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction, int config) {
+        if (config == 0) {
             alertsList.add(new Notification(String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Decreased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    timeSeries, date, symbol, totalChange, true));
-        } else {
+                    timeSeries, date, symbol, totalChange, 0));
+        } else if (config == 1) {
+            alertsList.add(new Notification(String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Will fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    timeSeries, date, symbol, totalChange, 1));
+        } else if (config == 2) {
+            alertsList.add(new Notification(String.format("%.3f%% %s R-Line %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("R-Line Spike Proceed with caution by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    timeSeries, date, symbol, totalChange, 2));
+        } else if (config == 3) {
             alertsList.add(new Notification(String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    timeSeries, date, symbol, totalChange, false));
+                    timeSeries, date, symbol, totalChange, 3));
         }
     }
 
