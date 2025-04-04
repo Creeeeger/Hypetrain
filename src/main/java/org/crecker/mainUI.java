@@ -273,7 +273,7 @@ public class mainUI extends JFrame {
         };
     }
 
-    public static void addNotification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, boolean dip) {
+    public static void addNotification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, int config) {
         SwingUtilities.invokeLater(() -> {
             // Get current time
             LocalDateTime now = LocalDateTime.now();
@@ -290,7 +290,7 @@ public class mainUI extends JFrame {
 
             // Add new notification
             notificationListModel.addElement(new Notification(title, content, timeSeries,
-                    localDateTime, symbol, change, dip));
+                    localDateTime, symbol, change, config));
         });
 
         String osName = System.getProperty("os.name").toLowerCase();

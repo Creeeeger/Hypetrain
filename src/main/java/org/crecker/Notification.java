@@ -33,25 +33,37 @@ public class Notification {
     private final LocalDateTime localDateTime;
     private final String symbol;
     private final double change;
-    private final boolean dip;
+    private final int config;
     private final Color color;
     JLabel percentageChange;
     private JFrame notificationFrame; // Frame for the notification
     private ChartPanel chartPanel;
 
-    public Notification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, boolean dip) {
+    public Notification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, int config) {
         this.title = title;
         this.content = content;
         this.timeSeries = timeSeries;
         this.localDateTime = localDateTime;
         this.symbol = symbol;
         this.change = change;
-        this.dip = dip;
-        if (dip) {
-            this.color = new Color(250, 30, 13);
+        this.config = config;
 
+        /*
+          config 0 dip
+          config 1 gap filler
+          config 2 R-line spike
+          config 3 spike
+         */
+        if (config == 0) {
+            this.color = new Color(255, 0, 0);         // Bright Red
+        } else if (config == 1) {
+            this.color = new Color(255, 140, 0);       // Deep Orange
+        } else if (config == 2) {
+            this.color = new Color(0, 128, 255);       // Sky Blue
+        } else if (config == 3) {
+            this.color = new Color(34, 177, 76);       // Leaf Green
         } else {
-            this.color = new Color(33, 215, 13);
+            this.color = new Color(128, 0, 128);       // Royal Purple
         }
     }
 
@@ -70,7 +82,7 @@ public class Notification {
         // Create and add the first marker
         marker1 = new ValueMarker(xPosition);
         marker1.setPaint(Color.GREEN);  // First marker in green
-        marker1.setStroke(new BasicStroke(1.5f));  // Customize thickness
+        marker1.setStroke(new BasicStroke(2.5f));  // Customize thickness
         plot.addDomainMarker(marker1);
     }
 
@@ -102,8 +114,8 @@ public class Notification {
         return timeSeries;
     }
 
-    public boolean isDip() {
-        return dip;
+    public int getConfig() {
+        return config;
     }
 
     public void addDataPoint(StockUnit unit) {
@@ -119,9 +131,7 @@ public class Notification {
     }
 
     private void updateUI() {
-        SwingUtilities.invokeLater(() -> {
-            chartPanel.repaint();
-        });
+        SwingUtilities.invokeLater(() -> chartPanel.repaint());
     }
 
     public void showNotification() {

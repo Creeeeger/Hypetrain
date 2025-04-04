@@ -1,17 +1,16 @@
 TODO
 Version 1.0:
 --Dip checker--
-- get time state saver and a shift for absolute dips to ensure we enter at the right time
-- maybe train DIP ML model
-- make a variable movement of the average of the stock to make a proper dip limit to ensure that dips only occur at the right amount
+- get time state saver and a shift for absolute dips to ensure we enter at the right time -> train DIPPER (GIGIDI) ML model -- sorry that had to be written down
+
 
 --Rise checker--
-- Create fill the gap (local R line indicator)
-- add a minimum rise tracker before notification make this stock dependant hence different levels of movement influence things differently
-- add a rise in percentage to be used in case inference says no
-- add downwards trend-line check
-- add upwards trend-line check
+- add a rise in percentage to be used in case inference says no (add risk category)
 
+- add downwards & upwards trend-line check for support
+
+
+DO ENHANCED EFFECTIVITY OF SECOND ANALYSIS
 Version 1.5:
 - [ ] Update frame sizes for second based processing
 - [ ] Update indicators for second data (maybe add time frequency variable)
