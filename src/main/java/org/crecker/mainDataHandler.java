@@ -56,6 +56,29 @@ public class mainDataHandler {
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     static int frameSize = 30; // Frame size for analysis
     public static final TimeSeries[] featureTimeSeriesArray = new TimeSeries[8];
+    public static String[] stockSymbols = {
+            "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
+            , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
+            , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
+            , "BN", "BNS", "BNTX", "BP", "BRK/B", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
+            , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
+            , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
+            , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
+            , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
+            , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "HUT", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY", "INOD"
+            , "INSP", "INTC", "INTU", "IONQ", "IREN", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
+            , "LKNC", "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
+            , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
+            , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
+            , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PH", "PLD"
+            , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
+            , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
+            , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
+            , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
+            , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
+            , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
+            , "ZIM", "ZTO", "ZTS", "ВТВТ"
+    };
 
     static {
         // Initialize feature TimeSeries, excluding index 3
@@ -174,30 +197,6 @@ public class mainDataHandler {
     }
 
     public static void startHypeMode(int tradeVolume) {
-        String[] stockSymbols = {
-                "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
-                , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
-                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
-                , "BN", "BNS", "BNTX", "BP", "BRK/B", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-                , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
-                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
-                , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
-                , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
-                , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "HUT", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY", "INOD"
-                , "INSP", "INTC", "INTU", "IONQ", "IREN", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
-                , "LKNC", "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
-                , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
-                , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
-                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PH", "PLD"
-                , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
-                , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
-                , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
-                , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
-                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
-                , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
-                , "ZIM", "ZTO", "ZTS", "ВТВТ"
-        };
-
         logTextArea.append(String.format("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Stocks to scan\n", tradeVolume, stockSymbols.length));
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
@@ -333,6 +332,10 @@ public class mainDataHandler {
                             TimeSeriesResponse response = (TimeSeriesResponse) e;
                             List<StockUnit> units = response.getStockUnits();
 
+                            units.forEach(stockUnit -> {
+                                stockUnit.setSymbol(symbol);
+                            });
+
                             // Reverse the list to correct chronological order
                             List<StockUnit> reversedUnits = new ArrayList<>(units);
                             Collections.reverse(reversedUnits);
@@ -448,6 +451,8 @@ public class mainDataHandler {
                     .close(match.getClose())
                     .time(match.getTimestamp())
                     .volume(match.getVolume())
+                    .high(match.getHigh())
+                    .open(match.getOpen())
                     .build();
 
             // Update symbol timeline
@@ -616,24 +621,23 @@ public class mainDataHandler {
 
     private static double[] computeFeatures(List<StockUnit> stocks, String symbol) {
         double[] features = new double[INDICATOR_RANGE_MAP.size()];
-        int featureIndex = 0;
 
         // Trend Following Indicators
-        features[featureIndex++] = isSMACrossover(stocks, 9, 21, symbol); // 0
-        features[featureIndex++] = calculateTRIX(stocks, 5); // 1
+        features[0] = isSMACrossover(stocks, 9, 21, symbol); // 0
+        features[1] = calculateTRIX(stocks, 5); // 1
 
         // Momentum Indicators
-        features[featureIndex++] = calculateROC(stocks, 20); // 2
+        features[2] = calculateROC(stocks, 20); // 2
 
-        features[featureIndex++] = 0.2; // 3
+        features[3] = 0.2; // 3
 
         // Statistical Indicators
-        features[featureIndex++] = isCumulativeSpike(stocks, 10, 0.35); // 4
-        features[featureIndex++] = cumulativePercentageChange(stocks); // 5
+        features[4] = isCumulativeSpike(stocks, 10, 0.35); // 4
+        features[5] = cumulativePercentageChange(stocks); // 5
 
         // Advanced Indicators
-        features[featureIndex++] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 6
-        features[featureIndex++] = elderRayIndex(stocks, 12); // 7
+        features[6] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 6
+        features[7] = elderRayIndex(stocks, 12); // 7
 
         return features;
     }
@@ -704,8 +708,10 @@ public class mainDataHandler {
         double changeUp = stocks.stream().skip(stocks.size() - 4).
                 mapToDouble(StockUnit::getPercentageChange).sum();
 
-        double changeDown = stocks.stream().skip(stocks.size() - 8).
+        double changeDown = stocks.stream().skip(stocks.size() - 1).
                 mapToDouble(StockUnit::getPercentageChange).sum();
+
+        double nearRes = isNearResistance(stocks);
 
         // Dip down
         dipDown(timeSeries, prediction, stocks, symbol, changeDown, changeUp, alertsList);
@@ -713,21 +719,27 @@ public class mainDataHandler {
         // fill the gap
         fillTheGap(timeSeries, prediction, stocks, symbol, alertsList);
 
-        // Spike & (R Line Spike)
-        spikeUp(timeSeries, prediction, stocks, symbol, features, changeUp, alertsList);
+        // Spike & R-Line
+        spikeUp(timeSeries, prediction, stocks, symbol, features, changeUp, alertsList, nearRes);
 
         return alertsList;
     }
 
-    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features, double changeUp, List<Notification> alertsList) {
-        if (features[0] == 1) {
-            if (features[4] == 1) {
-                if (features[5] > 0.6) {
-                    if (prediction > 0.93) {
-                        if (features[6] == 1) {
+    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features,
+                                double changeUp, List<Notification> alertsList, double nearRes) {
+
+        if (features[4] == 1) {
+            if (features[5] > 0.6) {
+                if (prediction > 0.93) {
+                    if (features[6] == 1) {
+                        if (nearRes == 0) {
                             createNotification(symbol, changeUp, alertsList, timeSeries,
                                     stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                                     prediction, 3);
+                        } else {
+                            createNotification(symbol, changeUp, alertsList, timeSeries,
+                                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                                    prediction, 2);
                         }
                     }
                 }
@@ -735,7 +747,8 @@ public class mainDataHandler {
         }
     }
 
-    private static void dipDown(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double changeDown, double changeUp, List<Notification> alertsList) {
+    private static void dipDown(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol,
+                                double changeDown, double changeUp, List<Notification> alertsList) {
         if (changeDown < -2 * calculateATR(stocks, 14)) {
             createNotification(symbol, changeUp, alertsList, timeSeries,
                     stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
@@ -743,7 +756,8 @@ public class mainDataHandler {
         }
     }
 
-    private static void fillTheGap(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, List<Notification> alertsList) {
+    private static void fillTheGap(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String
+            symbol, List<Notification> alertsList) {
         List<StockUnit> allStocks = symbolTimelines.get(symbol);
         int smaPeriod = 20;
         int atrPeriod = 14;
@@ -779,6 +793,30 @@ public class mainDataHandler {
                 }
             }
         }
+    }
+
+    private static double isNearResistance(List<StockUnit> stocks) {
+        if (stocks.size() < 2) {
+            return 0.0; // Not enough data points
+        }
+
+        // Exclude last candle to determine resistance level
+        List<StockUnit> previousStocks = stocks.subList(0, stocks.size() - 1);
+
+        if (previousStocks.isEmpty()) {
+            return 0.0;
+        }
+
+        double resistanceLevel = previousStocks.stream()
+                .mapToDouble(StockUnit::getHigh)
+                .max()
+                .orElse(0.0);
+
+        StockUnit currentStock = stocks.get(stocks.size() - 1);
+        double currentClose = currentStock.getClose();
+        double threshold = resistanceLevel * 0.995; // Within 0.5% below resistance
+
+        return (currentClose >= threshold && currentClose <= resistanceLevel) ? 1.0 : 0.0;
     }
 
     //Indicators
@@ -888,7 +926,8 @@ public class mainDataHandler {
     }
 
     // 6. Keltner Channels Breakout
-    public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier, double cumulativeLimit) {
+    public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier,
+                                        double cumulativeLimit) {
         // Check if we have enough data for calculations
         if (window.size() < Math.max(emaPeriod, 4) + 1) {
             return 0; // Not enough data points
@@ -1028,7 +1067,8 @@ public class mainDataHandler {
      * @param timeSeries  The time series for graphical representation.
      * @param date        The date of the event.
      */
-    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction, int config) {
+    private static void createNotification(String symbol, double totalChange, List<
+            Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction, int config) {
         if (config == 0) {
             alertsList.add(new Notification(String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Decreased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),

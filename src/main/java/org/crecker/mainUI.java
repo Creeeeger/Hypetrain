@@ -52,8 +52,10 @@ public class mainUI extends JFrame {
     static String selectedStock = "-Select a Stock-"; //selectedStock is the Stock to show in the chart bar
     static JPanel symbolPanel, chartToolPanel, hypePanel, chartPanel;
     static JTextField searchField;
-    static JButton tenMinutesButton, thirtyMinutesButton, oneHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
-    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel, fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel, percentageChange;
+    static JButton oneMinutesButton, threeMinutesButton, fiveMinutesButton, tenMinutesButton, thirtyMinutesButton,
+            oneHourButton, fourHourButton, oneDayButton, threeDaysButton, oneWeekButton, twoWeeksButton, oneMonthButton;
+    static JLabel openLabel, highLabel, lowLabel, volumeLabel, peLabel, mktCapLabel,
+            fiftyTwoWkHighLabel, fiftyTwoWkLowLabel, pegLabel, percentageChange;
     static DefaultListModel<String> stockListModel;
     static Map<String, Color> stockColors;
     static ChartPanel chartDisplay; // This will hold the chart
@@ -747,28 +749,41 @@ public class mainUI extends JFrame {
 
         // Buttons for time range selection (Day, Week, Month)
         JPanel buttonPanel = new JPanel();
+        buttonPanel.setLayout(new GridLayout(2, 5, 5, 5)); // 2 rows, 4 columns, 5px horizontal & vertical gaps
+
+        oneMinutesButton = new JButton("1 Minute");
+        threeMinutesButton = new JButton("3 Minutes");
+        fiveMinutesButton = new JButton("5 Minutes");
         tenMinutesButton = new JButton("10 Minutes");
         thirtyMinutesButton = new JButton("30 Minutes");
         oneHourButton = new JButton("1 Hour");
+        fourHourButton = new JButton("4 Hours");
         oneDayButton = new JButton("1 Day");
         threeDaysButton = new JButton("3 Days");
         oneWeekButton = new JButton("1 Week");
         twoWeeksButton = new JButton("2 Weeks");
         oneMonthButton = new JButton("1 Month");
 
+        oneMinutesButton.setEnabled(false);
+        threeMinutesButton.setEnabled(false);
+        fiveMinutesButton.setEnabled(false);
         tenMinutesButton.setEnabled(false);
         thirtyMinutesButton.setEnabled(false);
         oneHourButton.setEnabled(false);
+        fourHourButton.setEnabled(false);
         oneDayButton.setEnabled(false);
         threeDaysButton.setEnabled(false);
         oneWeekButton.setEnabled(false);
         twoWeeksButton.setEnabled(false);
         oneMonthButton.setEnabled(false);
 
-        //add day buttons
+        buttonPanel.add(oneMinutesButton);
+        buttonPanel.add(threeMinutesButton);
+        buttonPanel.add(fiveMinutesButton);
         buttonPanel.add(tenMinutesButton);
         buttonPanel.add(thirtyMinutesButton);
         buttonPanel.add(oneHourButton);
+        buttonPanel.add(fourHourButton);
         buttonPanel.add(oneDayButton);
         buttonPanel.add(threeDaysButton);
         buttonPanel.add(oneWeekButton);
@@ -776,14 +791,18 @@ public class mainUI extends JFrame {
         buttonPanel.add(oneMonthButton);
 
         // Adding Action Listeners with lambda expressions
-        tenMinutesButton.addActionListener(e -> refreshChartData(6));
-        thirtyMinutesButton.addActionListener(e -> refreshChartData(7));
-        oneHourButton.addActionListener(e -> refreshChartData(8));
-        oneDayButton.addActionListener(e -> refreshChartData(1));
-        threeDaysButton.addActionListener(e -> refreshChartData(2));
-        oneWeekButton.addActionListener(e -> refreshChartData(3));
-        twoWeeksButton.addActionListener(e -> refreshChartData(4));
-        oneMonthButton.addActionListener(e -> refreshChartData(5));
+        oneMinutesButton.addActionListener(e -> refreshChartData(1));
+        threeMinutesButton.addActionListener(e -> refreshChartData(2));
+        fiveMinutesButton.addActionListener(e -> refreshChartData(3));
+        tenMinutesButton.addActionListener(e -> refreshChartData(4));
+        thirtyMinutesButton.addActionListener(e -> refreshChartData(5));
+        oneHourButton.addActionListener(e -> refreshChartData(6));
+        fourHourButton.addActionListener(e -> refreshChartData(7));
+        oneDayButton.addActionListener(e -> refreshChartData(8));
+        threeDaysButton.addActionListener(e -> refreshChartData(9));
+        oneWeekButton.addActionListener(e -> refreshChartData(10));
+        twoWeeksButton.addActionListener(e -> refreshChartData(11));
+        oneMonthButton.addActionListener(e -> refreshChartData(12));
 
         // Placeholder for JFreeChart (replace with actual chart code)
         JPanel chartPlaceholder = new JPanel(new BorderLayout());
@@ -1007,9 +1026,13 @@ public class mainUI extends JFrame {
         updateYAxisRange(plot, startDate, endDate);
 
         chartDisplay.repaint();
+        oneMinutesButton.setEnabled(true);
+        threeMinutesButton.setEnabled(true);
+        fiveMinutesButton.setEnabled(true);
         tenMinutesButton.setEnabled(true);
         thirtyMinutesButton.setEnabled(true);
         oneHourButton.setEnabled(true);
+        fourHourButton.setEnabled(true);
         oneDayButton.setEnabled(true);
         threeDaysButton.setEnabled(true);
         oneWeekButton.setEnabled(true);
@@ -1041,14 +1064,18 @@ public class mainUI extends JFrame {
 
     private long getDurationMillis(int choice) {
         return switch (choice) {
-            case 1 -> TimeUnit.DAYS.toMillis(1);    // 1 day
-            case 2 -> TimeUnit.DAYS.toMillis(3);    // 3 days
-            case 3 -> TimeUnit.DAYS.toMillis(7);    // 1 week
-            case 4 -> TimeUnit.DAYS.toMillis(14);   // 2 weeks
-            case 5 -> TimeUnit.DAYS.toMillis(30);   // ~1 month
-            case 6 -> TimeUnit.MINUTES.toMillis(10);   // 10 Min
-            case 7 -> TimeUnit.MINUTES.toMillis(30);   // 30 Min
-            case 8 -> TimeUnit.HOURS.toMillis(1);   // 1 Hour
+            case 1 -> TimeUnit.MINUTES.toMillis(1);     // 1 Minute
+            case 2 -> TimeUnit.MINUTES.toMillis(3);     // 3 Minutes
+            case 3 -> TimeUnit.MINUTES.toMillis(5);     // 5 Minutes
+            case 4 -> TimeUnit.MINUTES.toMillis(10);    // 10 Minutes
+            case 5 -> TimeUnit.MINUTES.toMillis(30);    // 30 Minutes
+            case 6 -> TimeUnit.HOURS.toMillis(1);       // 1 Hour
+            case 7 -> TimeUnit.HOURS.toMillis(4);       // 4 Hours
+            case 8 -> TimeUnit.DAYS.toMillis(1);        // 1 Day
+            case 9 -> TimeUnit.DAYS.toMillis(3);        // 3 Days
+            case 10 -> TimeUnit.DAYS.toMillis(7);       // 1 Week
+            case 11 -> TimeUnit.DAYS.toMillis(14);      // 2 Weeks
+            case 12 -> TimeUnit.DAYS.toMillis(30);      // ~1 Month
             default -> throw new IllegalArgumentException("Invalid time range");
         };
     }
