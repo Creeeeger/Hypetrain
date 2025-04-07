@@ -1,12 +1,6 @@
 TODO
 Version 1.0:
---Dip checker--
-- get time state saver and a shift for absolute dips to ensure we enter at the right time -> train DIPPER (GIGIDI) ML model -- sorry that had to be written down
-
---Rise checker--
-- add a rise in percentage to be used in case inference says no (add risk category)
-
-- fix evaluation of 3 section
+- fix evaluation of 2 section (spike and gap)
 
 DO ENHANCED EFFECTIVITY OF SECOND ANALYSIS
 Version 1.5:

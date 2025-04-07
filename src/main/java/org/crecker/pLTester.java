@@ -131,12 +131,14 @@ public class pLTester {
 
             lastProcessedEndTime = timeline.get(baseIndex + 5).getLocalDateTimeDate();
 
-            for (int offset = 0; offset <= 4; offset++) {
+            int totalMinutes = 5;
+            int offset = 0;
+            while (offset < totalMinutes) {
                 int currentIndex = baseIndex + offset;
                 StockUnit unit = timeline.get(currentIndex);
 
                 System.out.printf("\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n",
-                        offset + 1, 5,
+                        offset + 1, totalMinutes,
                         unit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                         unit.getClose(),
                         unit.getPercentageChange(),
@@ -144,7 +146,7 @@ public class pLTester {
 
                 notification.addDataPoint(unit);
 
-                System.out.print("Enter trade? (y/n/exit): ");
+                System.out.print("Enter trade? (y/n/l/exit): ");
                 String input = scanner.nextLine().trim().toLowerCase();
 
                 if (input.equals("y")) {
@@ -194,13 +196,15 @@ public class pLTester {
                         capital -= FEE;
                         System.out.printf("\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n", capital);
                     }
-                    break;
-                }
-
-                if (input.equalsIgnoreCase("exit")) {
+                    break; // Exit the while loop after entering a trade.
+                } else if (input.equalsIgnoreCase("exit")) {
                     earlyStop = true;
                     break;
+                } else if (input.equals("l")) {
+                    totalMinutes += 5; // Extend the trade entry window by 5 minutes.
+                    System.out.println("Extending the trade entry window by 5 minutes...");
                 }
+                offset++;
             }
 
             if (earlyStop) {
