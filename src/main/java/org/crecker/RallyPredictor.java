@@ -22,7 +22,7 @@ public class RallyPredictor implements AutoCloseable {
     private final Map<String, LinkedList<float[]>> symbolBuffers = new ConcurrentHashMap<>();
     private final ReentrantLock sizeAdjustmentLock = new ReentrantLock();
     private int dynamicBufferSize = 28;
-    private final int featureLength = mainDataHandler.INDICATOR_RANGE_MAP.size();
+    private final int featureLength = mainDataHandler.INDICATOR_KEYS.size();
 
     // Private constructor to prevent instantiation
     private RallyPredictor(String modelPath) throws OrtException {

@@ -26,34 +26,61 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.crecker.RallyPredictor.predict;
-import static org.crecker.mainUI.addNotification;
-import static org.crecker.mainUI.logTextArea;
+import static org.crecker.mainUI.*;
 import static org.crecker.pLTester.PLAnalysis;
+import static org.crecker.pLTester.SYMBOLS;
 
 public class mainDataHandler {
-    public static final Map<String, Map<String, Double>> INDICATOR_RANGE_MAP = new LinkedHashMap<>() {{
-        // Trend Following Indicators
-        put("SMA_CROSS", Map.of("min", -1.0, "max", 1.0));
-        put("TRIX", Map.of("min", -0.5, "max", 0.5));
+    private static final Map<String, Map<String, Map<String, Double>>> SYMBOL_INDICATOR_RANGES = new ConcurrentHashMap<>();
 
-        // Momentum Indicators
-        put("ROC", Map.of("min", -5.0, "max", 5.0));
+    public static final List<String> INDICATOR_KEYS = List.of(
+            "SMA_CROSS",              // 0
+            "TRIX",                   // 1
+            "ROC",                    // 2
+            "PLACEHOLDER",            // 3
+            "CUMULATIVE_PERCENTAGE",  // 4
+            "CUMULATIVE_THRESHOLD",   // 5
+            "KELTNER",                // 6
+            "ELDER_RAY"               // 7
+    );
 
-        put("PLACEHOLDER", Map.of("min", -3.0, "max", 3.0));
+    public static final Set<String> BINARY_INDICATORS = Set.of(
+            "KELTNER",
+            "CUMULATIVE_PERCENTAGE"
+    );
 
-        // Statistical Indicators
-        put("CUMULATIVE_PERCENTAGE", Map.of("min", 0.0, "max", 1.0));
-        put("CUMULATIVE_THRESHOLD", Map.of("min", -7.0, "max", 7.0));
-
-        // Advanced Indicators
-        put("KELTNER", Map.of("min", 0.0, "max", 1.0));
-        put("ELDER_RAY", Map.of("min", -3.0, "max", 3.0));
+    private static final Map<String, Double> CATEGORY_WEIGHTS = new HashMap<>() {{
+        /*
+          Category	Bull 	Bear 	High Volatility Scraper
+          TREND	    0.30	0.15	0.20            0.1
+          MOMENTUM	0.40	0.25	0.35            0.1
+          STATS     0.15    0.30	0.25            0.45
+          ADVANCED	0.15	0.30	0.20            0.35
+         */
+        put("TREND", 0.1);    // Features 0-1 (SMA, TRIX)
+        put("MOMENTUM", 0.1); // Feature 2 (ROC)
+        put("STATISTICAL", 0.45);// Features 4-5 (Spike, Cumulative)
+        put("ADVANCED", 0.35);  // Features 6-7 (Keltner, Elder)
     }};
+
+    private static final Map<Integer, String> FEATURE_CATEGORIES = new HashMap<>() {{
+        put(0, "TREND");
+        put(1, "TREND");
+        put(2, "MOMENTUM");
+        put(3, "NEUTRAL");
+        put(4, "STATISTICAL");
+        put(5, "STATISTICAL");
+        put(6, "ADVANCED");
+        put(7, "ADVANCED");
+    }};
+
     static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+    private static final Map<String, Double> historicalATRCache = new ConcurrentHashMap<>();
+    private static final int HISTORICAL_LOOK_BACK = 100;
     static int frameSize = 30; // Frame size for analysis
     public static final TimeSeries[] featureTimeSeriesArray = new TimeSeries[8];
     public static String[] stockSymbols = {
@@ -368,6 +395,27 @@ public class mainDataHandler {
             Thread.currentThread().interrupt();
         }
 
+        synchronized (symbolTimelines) {
+            symbolTimelines.forEach((symbol, timeline) -> {
+                if (timeline.size() < 2) {
+                    logTextArea.append("Not enough data for " + symbol + "\n");
+                    return;
+                }
+
+                for (int i = 1; i < timeline.size(); i++) {
+                    StockUnit current = timeline.get(i);
+                    StockUnit previous = timeline.get(i - 1);
+
+                    if (previous.getClose() > 0) {
+                        double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                        change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
+                        current.setPercentageChange(change);
+                    }
+                }
+            });
+        }
+
+        precomputeIndicatorRanges(true);
         calculateStockPercentageChange(false);
 
         while (!Thread.currentThread().isInterrupted()) {
@@ -511,15 +559,12 @@ public class mainDataHandler {
                 LocalDateTime endTime = timeline.get(timeline.size() - 1).getLocalDateTimeDate();
                 LocalDateTime startTime = endTime.minusMinutes(minutes);
 
-                List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
+                LinkedList<StockUnit> timeWindow = new LinkedList<>(getTimeWindow(timeline, startTime, endTime));
+                int startIndex = findTimeIndex(timeline, startTime);
 
-                if (timeWindow.size() < frameSize) {
-                    int end = findTimeIndex(timeline, endTime);
-                    try {
-                        timeWindow = timeline.subList(end - 30, end);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
+                while (timeWindow.size() < frameSize && startIndex > 0) {
+                    startIndex--;
+                    timeWindow.addFirst(timeline.get(startIndex));
                 }
 
                 if (timeWindow.size() >= frameSize) {
@@ -544,15 +589,14 @@ public class mainDataHandler {
             timeline.forEach(stockUnit -> { //parallel stream is better, but we can't use it since we need to keep the entries in order
                 LocalDateTime startTime = stockUnit.getLocalDateTimeDate();
                 LocalDateTime endTime = startTime.plusMinutes(minutes);
+                int startIndex = findTimeIndex(timeline, startTime);
 
                 List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
 
+                // Fallback if not enough data points
                 if (timeWindow.size() < frameSize) {
-                    int end = findTimeIndex(timeline, endTime);
-                    try {
-                        timeWindow = timeline.subList(end - 30, end);
-                    } catch (Exception Ignored) {
-                    }
+                    int fallbackEnd = Math.min(startIndex + frameSize, timeline.size());
+                    timeWindow = timeline.subList(startIndex, fallbackEnd);
                 }
 
                 if (timeWindow.size() >= frameSize) {
@@ -608,9 +652,77 @@ public class mainDataHandler {
         notifications.sort(Comparator.comparing(Notification::getLocalDateTime));
     }
 
-    public static double normalizeScore(String indicator, double rawValue) {
-        Map<String, Double> range = INDICATOR_RANGE_MAP.get(indicator);
-        if (range == null) return rawValue;
+    public static void precomputeIndicatorRanges(boolean realData) {
+        int maxRequiredPeriod = frameSize;
+
+        List<String> symbolList = new ArrayList<>();
+        if (realData) {
+            symbolList.addAll(symbolTimelines.keySet());
+        } else {
+            symbolList.addAll(Arrays.stream(SYMBOLS)
+                    .map(s -> s.toUpperCase().replace(".TXT", "")) // map returns transformed elements
+                    .toList());
+        }
+
+        for (String symbol : symbolList) {
+            List<StockUnit> timeline = symbolTimelines.get(symbol);
+            if (timeline.size() < maxRequiredPeriod) {
+                continue;
+            }
+
+            List<String> indicators = new ArrayList<>(INDICATOR_KEYS);
+            Map<String, List<Double>> indicatorValues = new HashMap<>();
+            indicators.forEach(ind -> indicatorValues.put(ind, new ArrayList<>()));
+
+            // Slide window and collect all feature values
+            for (int i = maxRequiredPeriod - 1; i < timeline.size(); i++) {
+                List<StockUnit> window = timeline.subList(i - maxRequiredPeriod + 1, i + 1);
+                double[] features = computeFeatures(window, symbol);
+
+                for (int j = 0; j < features.length; j++) {
+                    String indicator = indicators.get(j);
+                    indicatorValues.get(indicator).add(features[j]);
+                }
+            }
+
+            // Calculate robust min/max using percentiles
+            Map<String, Map<String, Double>> symbolRanges = new LinkedHashMap<>();
+
+            for (String indicator : indicators) {
+                if (BINARY_INDICATORS.contains(indicator)) {
+                    // Hardcoded min/max for binary indicators
+                    symbolRanges.put(indicator, Map.of("min", 0.0, "max", 1.0));
+                    continue;
+                }
+
+                if (indicator.equals("SMA_CROSS")) {
+                    // Hardcoded min/max for binary indicators
+                    symbolRanges.put(indicator, Map.of("min", -1.0, "max", 1.0));
+                    continue;
+                }
+
+                List<Double> values = indicatorValues.get(indicator);
+                values.sort(Double::compareTo);
+
+                int lowerIndex = (int) (values.size() * 0.01);
+                int upperIndex = (int) (values.size() * 0.99);
+
+                double min = values.get(lowerIndex);
+                double max = values.get(upperIndex);
+
+                symbolRanges.put(indicator, Map.of("min", min, "max", max));
+            }
+            SYMBOL_INDICATOR_RANGES.put(symbol, symbolRanges);
+        }
+    }
+
+    public static double normalizeScore(String indicator, double rawValue, String symbol) {
+        Map<String, Map<String, Double>> symbolRanges = SYMBOL_INDICATOR_RANGES.get(symbol);
+        Map<String, Double> range = symbolRanges.get(indicator);
+
+        if (range == null) {
+            throw new RuntimeException("Empty indicator");
+        }
 
         double min = range.get("min");
         double max = range.get("max");
@@ -620,13 +732,6 @@ public class mainDataHandler {
         return switch (indicator) {
             // Binary decision indicators
             case "SMA_CROSS", "KELTNER", "CUMULATIVE_PERCENTAGE" -> rawValue >= 0.5 ? 1.0 : 0.0;
-
-            // Standard continuous indicators with linear normalization
-            case "TRIX", "ROC", "ELDER_RAY", "CUMULATIVE_THRESHOLD" -> {
-                double normalized = (rawValue - min) / (max - min);
-                yield Math.max(0.0, Math.min(1.0, normalized));
-            }
-
             default -> {
                 double normalized = (rawValue - min) / (max - min);
                 yield Math.max(0.0, Math.min(1.0, normalized));
@@ -635,7 +740,7 @@ public class mainDataHandler {
     }
 
     private static double[] computeFeatures(List<StockUnit> stocks, String symbol) {
-        double[] features = new double[INDICATOR_RANGE_MAP.size()];
+        double[] features = new double[INDICATOR_KEYS.size()];
 
         // Trend Following Indicators
         features[0] = isSMACrossover(stocks, 9, 21, symbol); // 0
@@ -657,22 +762,39 @@ public class mainDataHandler {
         return features;
     }
 
-    private static float[] normalizeFeatures(double[] rawFeatures) {
+    private static float[] normalizeFeatures(double[] rawFeatures, String symbol) {
         float[] normalizedFeatures = new float[rawFeatures.length];
-        List<String> indicatorKeys = new ArrayList<>(INDICATOR_RANGE_MAP.keySet());
+        List<String> indicatorKeys = new ArrayList<>(INDICATOR_KEYS);
         for (int i = 0; i < rawFeatures.length; i++) {
-            normalizedFeatures[i] = (float) normalizeScore(indicatorKeys.get(i), rawFeatures[i]);
+            normalizedFeatures[i] = (float) normalizeScore(indicatorKeys.get(i), rawFeatures[i], symbol);
         }
         return normalizedFeatures;
     }
 
-    /**
-     * Generates notifications based on patterns and criteria within a frame of stock data.
-     *
-     * @param stocks The frame of stock data.
-     * @param symbol The name of the stock being analyzed.
-     * @return A list of notifications generated from the frame.
-     */
+    private static double calculateWeightedAggressiveness(float[] features, float baseAggressiveness) {
+        Map<String, Double> categoryScores = new HashMap<>();
+
+        // Calculate weighted activation score for each category
+        for (int i = 0; i < features.length; i++) {
+            String category = FEATURE_CATEGORIES.getOrDefault(i, "NEUTRAL");
+
+            // Dead feature check (very low or 0)
+            if (!category.equals("NEUTRAL")) {
+                double weight = CATEGORY_WEIGHTS.get(category);
+                double activation = features[i] * weight;
+                categoryScores.merge(category, activation, Double::sum);
+            }
+        }
+
+        // Sum all category scores
+        double weightedScore = categoryScores.values().stream()
+                .mapToDouble(Double::doubleValue)
+                .sum();
+
+        // Final aggressiveness scaling
+        return baseAggressiveness * (1 + weightedScore);
+    }
+
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
         TimeSeries timeSeries = new TimeSeries(symbol);
 
@@ -683,9 +805,10 @@ public class mainDataHandler {
 
         //raw features
         double[] features = computeFeatures(stocks, symbol);
+        float[] normalizedFeatures = normalizeFeatures(features, symbol);
 
         // feed normalized features and symbol
-        double prediction = predict(normalizeFeatures(features), symbol);
+        double prediction = predict(normalizedFeatures, symbol);
 
         synchronized (featureTimeSeriesArray) {
             for (int i = 0; i < features.length; i++) {
@@ -712,12 +835,12 @@ public class mainDataHandler {
             e.printStackTrace();
         }
 
-        return evaluateResult(timeSeries, prediction, stocks, symbol, features);
+        return evaluateResult(timeSeries, prediction, stocks, symbol, features, normalizedFeatures);
     }
 
     // Method for evaluating results
     private static List<Notification> evaluateResult(TimeSeries timeSeries, double prediction,
-                                                     List<StockUnit> stocks, String symbol, double[] features) {
+                                                     List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
         List<Notification> alertsList = new ArrayList<>();
 
         double changeUp = stocks.stream().skip(stocks.size() - 4).
@@ -731,206 +854,121 @@ public class mainDataHandler {
         // fill the gap
         fillTheGap(timeSeries, prediction, stocks, symbol, alertsList);
 
+        if (aggressiveness == 0.0) {
+            aggressiveness = 1.0F;
+        }
+
         // Spike & R-Line
-        spikeUp(timeSeries, prediction, stocks, symbol, features, changeUp, alertsList, nearRes);
+        spikeUp(timeSeries, prediction, stocks, symbol, features, changeUp, alertsList, nearRes, aggressiveness, normalizedFeatures);
 
         return alertsList;
     }
 
-    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features,
-                                double changeUp, List<Notification> alertsList, double nearRes) {
-        if (features[4] == 1) {
-            if (features[5] > 0.6 || true) {
-                if (prediction > 0.93) {
-                    if (features[6] == 1 || true) {
-                        if (nearRes == 0) {
-                            createNotification(symbol, changeUp, alertsList, timeSeries,
-                                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                                    prediction, 3);
-                        } else {
-                            createNotification(symbol, changeUp, alertsList, timeSeries,
-                                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                                    prediction, 2);
-                        }
-                    }
-                }
+    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features, double changeUp,
+                                List<Notification> alertsList, double nearRes, float manualAggressiveness, float[] normalizedFeatures) {
+
+        // Calculate dynamic aggressiveness
+        double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness);
+
+        // Adaptive thresholds based on weights
+        double cumulativeThreshold = 0.6 * dynamicAggro;
+
+        System.out.println(features[4] +
+                ", Mtm: " + String.format("%.3f", features[5]) +
+                ", Th: " + String.format("%.3f", cumulativeThreshold) +
+                ", Agg: " + String.format("%.3f", dynamicAggro) +
+                ", Pred: " + String.format("%.3f", prediction) +
+                ", FT6: " + features[6] +
+                ", CGU: " + String.format("%.3f", changeUp) +
+                " " + stocks.get(stocks.size() - 1).getDateDate());
+
+        if (features[4] == 1 &&
+                (features[5] > cumulativeThreshold || dynamicAggro > 2.5) &&
+                prediction > 0.9 &&
+                features[6] == 1) {
+
+            if (nearRes == 0) {
+                createNotification(symbol, changeUp, alertsList, timeSeries,
+                        stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                        prediction, 3);
+            } else {
+                createNotification(symbol, changeUp, alertsList, timeSeries,
+                        stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                        prediction, 2);
             }
         }
     }
 
-    private static void fillTheGap(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, List<Notification> alertsList) {
-        int smaPeriod = 10; // 15, 20
-        int atrPeriod = 14; //10, 14
-
-        if (stocks.size() >= smaPeriod) {
-            int endIndex = stocks.size();
-            int startIndex = endIndex - smaPeriod;
-
-            double sma20 = calculateSMA(stocks.subList(startIndex, endIndex));
-            double currentClose = stocks.get(stocks.size() - 1).getClose();
-            double deviation = currentClose - sma20;
-
-            // Trend: Combine EMA8 and SMA20 slope
-            double ema8 = calculateEMA(stocks, 8);
-            boolean uptrend = currentClose > ema8 && sma20 > calculateSMA(stocks.subList(startIndex - 1, endIndex - 1));
-
-            // Volatility-based multiplier
-            double atr = calculateATR(stocks.subList(endIndex - atrPeriod, endIndex), atrPeriod);
-            double multiplier = getVolatilityMultiplier(symbol, atr); // Historical analysis
-            double gapThreshold = -multiplier * atr;
-
-            // Volume spike check
-            double volumeMA = calculateVolumeMA(stocks, 25);
-            boolean highVolume = stocks.get(stocks.size() - 1).getVolume() > 2 * volumeMA;
-
-            // Oversold RSI
-            double rsi = calculateRSI(stocks, 14);
-            boolean oversold = rsi < 30;
-
-            // Sharp drop check
-            boolean sharpDrop = checkSharpDrop(stocks);
-
-            if ((uptrend || oversold || sharpDrop) && deviation < gapThreshold) {
-                if (highVolume) { // Prioritize volume-confirmed signals
-                    createNotification(symbol, deviation, alertsList, timeSeries,
-                            stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                            prediction, 1); // Use appropriate notification type code
-                }
-            }
-        }
-    }
-
-    private static double calculateRSI(List<StockUnit> stocks, int period) {
-        if (stocks.size() <= period || period < 1) return 50; // Neutral default
-
-        List<Double> changes = new ArrayList<>();
-        for (int i = 1; i <= period; i++) {
-            double change = stocks.get(i).getClose() - stocks.get(i - 1).getClose();
-            changes.add(change);
-        }
-
-        double avgGain = changes.stream().filter(c -> c > 0).mapToDouble(Double::doubleValue).average().orElse(0);
-        double avgLoss = Math.abs(changes.stream().filter(c -> c < 0).mapToDouble(Double::doubleValue).average().orElse(0));
-
-        if (avgLoss == 0) return 100; // Prevent division by zero
-        double rs = avgGain / avgLoss;
-        return 100 - (100 / (1 + rs));
-    }
-
-    private static double calculateVolumeMA(List<StockUnit> stocks, int period) {
-        if (stocks.size() < period || period < 1) return 0;
-
-        return stocks.stream()
-                .mapToDouble(StockUnit::getVolume)
-                .skip(stocks.size() - period)
-                .average()
-                .orElse(0);
-    }
-
-    private static final Map<String, Double> historicalATRCache = new ConcurrentHashMap<>();
-    private static final int HISTORICAL_LOOKBACK_DAYS = 100; // Adjust based on your needs
-
-    private static double getHistoricalATR(String symbol) {
-        // Return cached value if available
-        if (historicalATRCache.containsKey(symbol)) {
-            return historicalATRCache.get(symbol);
-        }
-
-        List<StockUnit> allStocks = symbolTimelines.get(symbol);
-        if (allStocks == null || allStocks.isEmpty()) {
-            return 1.0; // Fallback default
-        }
-
-        // Determine usable lookback period (min 14 days for meaningful ATR)
-        int availableDays = allStocks.size();
-        int calculatedLookback = Math.min(availableDays, HISTORICAL_LOOKBACK_DAYS);
-
-        if (calculatedLookback < 14) {
-            return 1.0; // Insufficient data for reliable calculation
-        }
-
-        // Extract relevant historical data
-        int startIndex = Math.max(0, availableDays - calculatedLookback);
-        List<StockUnit> historicalData = allStocks.subList(startIndex, availableDays);
-
-        // Calculate ATR using full lookback period
-        double atr = calculateATR(historicalData, calculatedLookback);
-
-        // Cache and return
-        historicalATRCache.put(symbol, atr);
-        return atr;
-    }
-
-    // 5. Volatility Multiplier (Example Implementation)
-    private static double getVolatilityMultiplier(String symbol, double currentATR) {
-        // Historical volatility analysis placeholder
-        double historicalATR = getHistoricalATR(symbol);
-        double ratio = currentATR / historicalATR;
-
-        // More volatile → smaller multiplier
-        return ratio > 1.5 ? 1.8 :
-                ratio > 1.2 ? 2.0 :
-                        2.2;
-    }
-
-    private static double calculateSMA(List<StockUnit> periodStocks) {
-        if (periodStocks.isEmpty()) return 0;
-        return periodStocks.stream()
-                .mapToDouble(StockUnit::getClose)
-                .average()
-                .orElse(0);
-    }
-
-    // 6. Sharp Drop Detection
-    private static boolean checkSharpDrop(List<StockUnit> stocks) {
-        int lookback = 3; // Check last 3 candles
-        if (stocks.size() < lookback + 1) return false;
-
-        double currentClose = stocks.get(stocks.size() - 1).getClose();
-
-        // Check for >50% drop in any of last 3 periods
-        for (int i = 1; i <= lookback; i++) {
-            double previousClose = stocks.get(stocks.size() - 1 - i).getClose();
-            if ((previousClose - currentClose) / previousClose > 0.5) {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    private static void fillTheGap1(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, List<Notification> alertsList) {
+    private static void fillTheGap(TimeSeries timeSeries, double prediction, List<StockUnit> stocks,
+                                   String symbol, List<Notification> alertsList) {
+        // Adaptive parameters
         int smaPeriod = 20;
         int atrPeriod = 14;
+        int rsiPeriod = 10;
+        int stochasticPeriod = 14;
+        int dropLookBack = 10;
+        int stochasticLimit = 5;
+        int rsiLimit = 32;
+        double sharpDropThreshold = 2.0;
+        double dipThreshold = -2.5;
 
         if (stocks.size() >= smaPeriod) {
             int endIndex = stocks.size();
             int startIndex = endIndex - smaPeriod;
 
-            // Calculate current SMA20
-            List<StockUnit> smaStocks = stocks.subList(startIndex, endIndex);
-            double sma20 = smaStocks.stream().mapToDouble(StockUnit::getClose).sum() / smaPeriod;
+            // 1. Enhanced Trend Detection
+            double sma = calculateSMA(stocks.subList(startIndex, endIndex));
+            double currentClose = stocks.get(endIndex - 1).getClose();
+            double deviation = currentClose - sma;
 
-            // Check if previous SMA20 exists for trend direction
-            if (startIndex >= 1) {
-                List<StockUnit> prevSmaStocks = stocks.subList(startIndex - 1, endIndex - 1);
-                double prevSma20 = prevSmaStocks.stream().mapToDouble(StockUnit::getClose).sum() / smaPeriod;
-                boolean uptrend = sma20 > prevSma20;
+            // 2. Dynamic Gap Threshold
+            double atr = calculateATR(stocks.subList(endIndex - atrPeriod, endIndex), atrPeriod);
+            double historicalATR = getHistoricalATR(symbol);
+            double volatilityRatio = atr / historicalATR;
 
-                double currentClose = stocks.get(stocks.size() - 1).getClose();
-                double deviationFromTrend = currentClose - sma20;
+            // Adaptive multiplier (more sensitive in high volatility)
+            double multiplier = Math.max(1.5, 3.0 - (volatilityRatio * 0.8));
+            double gapThreshold = -multiplier * atr;
 
-                // Calculate ATR using entire timeline's recent data
-                if (stocks.size() >= atrPeriod) {
-                    List<StockUnit> atrStocks = stocks.subList(endIndex - atrPeriod, endIndex);
-                    double atr = calculateATR(atrStocks, atrPeriod);
-                    double gapThreshold = -2 * atr; // Adjust multiplier based on historical analysis
+            // 4. Momentum Confirmation
+            double rsi = calculateRSI(stocks, rsiPeriod);
+            boolean oversold = rsi < rsiLimit;
+            double stochastic = calculateStochastic(stocks, stochasticPeriod);
+            boolean momentumDivergence = stochastic < stochasticLimit;
 
-                    if (uptrend && deviationFromTrend < gapThreshold) {
-                        createNotification(symbol, deviationFromTrend, alertsList, timeSeries,
-                                stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                                prediction, 1); // Use appropriate notification type code
-                    }
-                }
+            // 5. Enhanced Drop Detection
+            boolean sharpDrop = checkSharpDrop(stocks, dropLookBack, sharpDropThreshold);
+
+            // 6. Wide Gap Specific Checks
+            boolean isWideGap = deviation < (gapThreshold * 1.3);
+            boolean sustainedMove = checkSustainedMovement(stocks, dropLookBack, dipThreshold);
+
+            // Signal Generation Logic
+            boolean baseCondition =
+                    (deviation < gapThreshold || isWideGap) &&
+                            (sharpDrop || sustainedMove) &&
+                            (oversold || momentumDivergence);
+
+            System.out.println(
+                    " | Deviation: " + String.format("%.3f", deviation) +
+                            " | ATR: " + String.format("%.3f", atr) +
+                            " | VolatilityRatio: " + String.format("%.3f", volatilityRatio) +
+                            " | Multiplier: " + String.format("%.3f", multiplier) +
+                            " | GapThreshold: " + String.format("%.3f", gapThreshold) +
+                            " | RSI: " + String.format("%.3f", rsi) +
+                            " | Oversold: " + oversold +
+                            " | Stochastic: " + String.format("%.3f", stochastic) +
+                            " | MomentumDivergence: " + momentumDivergence +
+                            " | SharpDrop: " + sharpDrop +
+                            " | IsWideGap: " + isWideGap +
+                            " | SustainedMove: " + sustainedMove +
+                            " | base: " + baseCondition +
+                            " | Date: " + stocks.get(stocks.size() - 1).getDateDate());
+
+            if (baseCondition) {
+                createNotification(symbol, deviation, alertsList, timeSeries,
+                        stocks.get(endIndex - 1).getLocalDateTimeDate(),
+                        prediction, 1);
             }
         }
     }
@@ -1226,6 +1264,98 @@ public class mainDataHandler {
         }
 
         return atrSum / period;
+    }
+
+    private static double calculateRSI(List<StockUnit> stocks, int period) {
+        if (stocks.size() <= period || period < 1) return 50; // Neutral default
+
+        List<Double> changes = new ArrayList<>();
+        for (int i = 1; i <= period; i++) {
+            double change = stocks.get(i).getClose() - stocks.get(i - 1).getClose();
+            changes.add(change);
+        }
+
+        double avgGain = changes.stream().filter(c -> c > 0).mapToDouble(Double::doubleValue).average().orElse(0);
+        double avgLoss = Math.abs(changes.stream().filter(c -> c < 0).mapToDouble(Double::doubleValue).average().orElse(0));
+
+        if (avgLoss == 0) return 100; // Prevent division by zero
+        double rs = avgGain / avgLoss;
+        return 100 - (100 / (1 + rs));
+    }
+
+    private static double calculateSMA(List<StockUnit> periodStocks) {
+        if (periodStocks.isEmpty()) return 0;
+        return periodStocks.stream()
+                .mapToDouble(StockUnit::getClose)
+                .average()
+                .orElse(0);
+    }
+
+    private static double getHistoricalATR(String symbol) {
+        // Return cached value if available
+        if (historicalATRCache.containsKey(symbol)) {
+            return historicalATRCache.get(symbol);
+        }
+
+        List<StockUnit> allStocks = symbolTimelines.get(symbol);
+        if (allStocks == null || allStocks.isEmpty()) {
+            return 1.0; // Fallback default
+        }
+
+        int availableDays = allStocks.size();
+        int calculatedLookback = Math.min(availableDays, HISTORICAL_LOOK_BACK);
+
+        if (calculatedLookback < 14) {
+            return 1.0; // Insufficient data for reliable calculation
+        }
+
+        // Extract relevant historical data
+        int startIndex = Math.max(0, availableDays - calculatedLookback);
+        List<StockUnit> historicalData = allStocks.subList(startIndex, availableDays);
+
+        // Calculate ATR using full lookback period
+        double atr = calculateATR(historicalData, calculatedLookback);
+
+        // Cache and return
+        historicalATRCache.put(symbol, atr);
+        return atr;
+    }
+
+    private static boolean checkSharpDrop(List<StockUnit> stocks, int lookBack, double threshold) {
+        if (stocks.size() < lookBack + 1) return false;
+
+        double currentClose = stocks.get(stocks.size() - 1).getClose();
+
+        for (int i = 1; i <= lookBack; i++) {
+            double previousClose = stocks.get(stocks.size() - 1 - i).getClose();
+            if (((previousClose - currentClose) / previousClose) * 100 > threshold) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean checkSustainedMovement(List<StockUnit> stocks, int lookback, double threshold) {
+        if (stocks.size() < lookback) return false;
+
+        double totalMove = 0;
+        for (int i = 1; i <= lookback; i++) {
+            StockUnit current = stocks.get(stocks.size() - i);
+            StockUnit previous = stocks.get(stocks.size() - i - 1);
+            totalMove += (current.getClose() - previous.getClose()) / previous.getClose();
+        }
+        return totalMove * 100 < threshold;
+    }
+
+    private static double calculateStochastic(List<StockUnit> stocks, int period) {
+        // Implement stochastic oscillator
+        List<StockUnit> lookback = stocks.subList(stocks.size() - period, stocks.size());
+        double highestHigh = lookback.stream().mapToDouble(StockUnit::getHigh).max().orElse(0);
+        double lowestLow = lookback.stream().mapToDouble(StockUnit::getLow).min().orElse(0);
+        double lastClose = lookback.get(lookback.size() - 1).getClose();
+
+        if (highestHigh == lowestLow) return 50;
+        return 100 * (lastClose - lowestLow) / (highestHigh - lowestLow);
     }
 
     /**

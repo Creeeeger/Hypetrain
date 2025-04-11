@@ -40,15 +40,14 @@ import java.util.stream.Collectors;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
-import static org.crecker.mainUI.addNotification;
-import static org.crecker.mainUI.gui;
+import static org.crecker.mainUI.*;
 
 public class pLTester {
     // Index map for quick timestamp lookups
     private static final Map<String, Map<LocalDateTime, Integer>> symbolTimeIndex = new ConcurrentHashMap<>();
     static JLabel percentageChange;
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
-    static boolean tradeView = true;
+    static boolean tradeView = false;
     static int feature = 0;
     private static double point1X = Double.NaN;
     private static double point1Y = Double.NaN;
@@ -58,6 +57,7 @@ public class pLTester {
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
     private static boolean isAdjusting = false;
+    public final static String[] SYMBOLS = {"QBTS.txt"};
 
     public static void main(String[] args) {
         //updateStocks();
@@ -72,11 +72,10 @@ public class pLTester {
     }
 
     public static void PLAnalysis() {
-        final String[] SYMBOLS = {"PLTR.txt"};
         double INITIAL_CAPITAL = 130000;
         final int FEE = 0;
-        int cut = 900;
-        prepData(SYMBOLS, cut);
+        int cut = 30000;
+        prepData(cut);
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(symbol.replace(".txt", ""),
@@ -129,13 +128,12 @@ public class pLTester {
                 continue;
             }
 
-            lastProcessedEndTime = timeline.get(baseIndex + 5).getLocalDateTimeDate();
-
             int totalMinutes = 5;
             int offset = 0;
             while (offset < totalMinutes) {
                 int currentIndex = baseIndex + offset;
                 StockUnit unit = timeline.get(currentIndex);
+                lastProcessedEndTime = timeline.get(currentIndex).getLocalDateTimeDate();
 
                 System.out.printf("\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n",
                         offset + 1, totalMinutes,
@@ -257,9 +255,9 @@ public class pLTester {
         }
     }
 
-    private static void prepData(String[] fileNames, int cut) {
+    private static void prepData(int cut) {
         // Calculation of rallies, Process data for each file
-        Arrays.stream(fileNames).forEach(fileName -> {
+        Arrays.stream(pLTester.SYMBOLS).forEach(fileName -> {
             try {
                 processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), cut);
             } catch (IOException e) {
@@ -267,6 +265,27 @@ public class pLTester {
             }
         });
 
+        synchronized (symbolTimelines) {
+            symbolTimelines.forEach((symbol, timeline) -> {
+                if (timeline.size() < 2) {
+                    logTextArea.append("Not enough data for " + symbol + "\n");
+                    return;
+                }
+
+                for (int i = 1; i < timeline.size(); i++) {
+                    StockUnit current = timeline.get(i);
+                    StockUnit previous = timeline.get(i - 1);
+
+                    if (previous.getClose() > 0) {
+                        double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                        change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
+                        current.setPercentageChange(change);
+                    }
+                }
+            });
+        }
+
+        precomputeIndicatorRanges(false);
         dataTester.calculateStockPercentageChange();
         calculateSpikesInRally(frameSize, false);
     }

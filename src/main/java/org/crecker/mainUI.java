@@ -42,10 +42,13 @@ import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.crecker.configHandler.createConfig;
+
 public class mainUI extends JFrame {
     public static JTextArea logTextArea;
     public static mainUI gui;
     static int volume;
+    static float aggressiveness;
     static boolean shouldSort, useRealtime;
     static boolean globalByChange = false;
     static String symbols, apiKey;
@@ -116,12 +119,18 @@ public class mainUI extends JFrame {
     }
 
     public static void setValues() {
-        String[][] settingData = configHandler.loadConfig();
-        volume = Integer.parseInt(settingData[0][1]);
-        symbols = settingData[1][1];
-        shouldSort = Boolean.parseBoolean(settingData[2][1]);
-        apiKey = settingData[3][1];
-        useRealtime = Boolean.parseBoolean(settingData[4][1]);
+        try {
+            String[][] settingData = configHandler.loadConfig();
+            volume = Integer.parseInt(settingData[0][1]);
+            symbols = settingData[1][1];
+            shouldSort = Boolean.parseBoolean(settingData[2][1]);
+            apiKey = settingData[3][1];
+            useRealtime = Boolean.parseBoolean(settingData[4][1]);
+            aggressiveness = Float.parseFloat(settingData[5][1]);
+        } catch (Exception e) {
+            System.out.println("Config error - Create new config " + e.getMessage());
+            createConfig();
+        }
     }
 
     public static void main(String[] args) {
@@ -137,7 +146,7 @@ public class mainUI extends JFrame {
         Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
         File config = configPath.toFile();
         if (!config.exists()) {
-            configHandler.createConfig();
+            createConfig();
             setValues();
             loadTable(symbols);
 
@@ -147,7 +156,7 @@ public class mainUI extends JFrame {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime);
+            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness);
             guiSetting.setVisible(true);
             guiSetting.setSize(500, 500);
             guiSetting.setAlwaysOnTop(true);
@@ -272,6 +281,7 @@ public class mainUI extends JFrame {
                 {"sort", String.valueOf(shouldSort)},
                 {"key", apiKey},
                 {"realtime", String.valueOf(useRealtime)},
+                {"algo", String.valueOf(aggressiveness)}
         };
     }
 
@@ -1442,7 +1452,7 @@ public class mainUI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime);
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");
