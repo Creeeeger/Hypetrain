@@ -173,6 +173,10 @@ public class configHandler {
             realtime.appendChild(doc.createTextNode("false"));
             root.appendChild(realtime);
 
+            Element algo = doc.createElement("algo");
+            algo.appendChild(doc.createTextNode("1.0"));
+            root.appendChild(algo);
+
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
             // Use TransformerFactory to create a Transformer instance for converting the Document to XML format

@@ -10,20 +10,22 @@ import static org.crecker.mainUI.logTextArea;
 
 public class settingsHandler extends JFrame {
     public static JPanel settingsPanel;
-    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel;
-    static JTextField volumeText, keyText;
+    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel;
+    static JTextField volumeText, keyText, algoAggressivenessText;
     static JCheckBox sortCheckBox, realtimeBox;
     int vol;
+    float aggressiveness;
     String sym, key;
     boolean sort, realtime;
 
-    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime) {
+    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
         this.sym = sym;
         this.sort = sort;
         this.key = key;
         this.realtime = realtime;
+        this.aggressiveness = aggressiveness;
 
         // Create a panel to hold the settings components
         settingsPanel = new JPanel();
@@ -40,27 +42,32 @@ public class settingsHandler extends JFrame {
         // Add space between the label and the next component
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
-        volume = new JLabel("Volume:"); // Adding a label for clarity
+        volume = new JLabel("Volume in Euro/USD:"); // Adding a label for clarity
         volume.setAlignmentX(Component.LEFT_ALIGNMENT);
         volumeText = new JTextField(String.valueOf(vol), 15);
         volumeText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        sortLabel = new JLabel("Sort hype entries");
+        sortLabel = new JLabel("Sort hype entries by change automatically");
         sortLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         sortCheckBox = new JCheckBox();
         sortCheckBox.setSelected(sort);
         sortCheckBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        keyLabel = new JLabel("API key:");
+        keyLabel = new JLabel("API key (Premium Key for Hype Mode required):");
         keyLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         keyText = new JTextField(key);
         keyText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        realtimeLabel = new JLabel("Chart realtime");
+        realtimeLabel = new JLabel("Chart realtime updates (per second)");
         realtimeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
         realtimeBox = new JCheckBox();
         realtimeBox.setSelected(realtime);
         realtimeBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        algoLabel = new JLabel("<html>Hype aggressiveness<br>(lower number for more but less precise entries, vice versa)</html>");
+        algoLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        algoAggressivenessText = new JTextField(String.valueOf(aggressiveness));
+        algoAggressivenessText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
         // Add components to the settings panel with spacing
         settingsPanel.add(volume);
@@ -78,6 +85,10 @@ public class settingsHandler extends JFrame {
         settingsPanel.add(realtimeLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(realtimeBox);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(algoLabel);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(algoAggressivenessText);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
 
         // Create and configure the "Apply Settings" button
@@ -104,7 +115,8 @@ public class settingsHandler extends JFrame {
                         {"symbols", sym},
                         {"sort", String.valueOf(sortCheckBox.isSelected())},
                         {"key", keyText.getText()},
-                        {"realtime", String.valueOf(realtimeBox.isSelected())}
+                        {"realtime", String.valueOf(realtimeBox.isSelected())},
+                        {"algo", String.valueOf(algoAggressivenessText.getText())}
                 };
 
                 configHandler.saveConfig(values);
