@@ -1,3 +1,4 @@
 TODO
 Version 1.0:
 - squeeze everything out of the Gap-detector and spike
+- Improve speed of spike up percentage change by supportive second data

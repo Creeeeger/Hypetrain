@@ -76,13 +76,11 @@ public class mainDataHandler {
 
     static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
-    static final TimeSeries predictionTimeSeries = new TimeSeries("Predictions");
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     private static final Map<String, Double> historicalATRCache = new ConcurrentHashMap<>();
     private static final int HISTORICAL_LOOK_BACK = 100;
     static int frameSize = 30; // Frame size for analysis
-    public static final TimeSeries[] featureTimeSeriesArray = new TimeSeries[8];
     public static String[] stockSymbols = {
             "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
             , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
@@ -106,15 +104,6 @@ public class mainDataHandler {
             , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
             , "ZIM", "ZTO", "ZTS", "ВТВТ"
     };
-
-    static {
-        // Initialize feature TimeSeries, excluding index 3
-        for (int i = 0; i < featureTimeSeriesArray.length; i++) {
-            if (i != 3) {
-                featureTimeSeriesArray[i] = new TimeSeries("Feature " + i);
-            }
-        }
-    }
 
     public static void main(String[] args) {
         PLAnalysis();
@@ -810,23 +799,6 @@ public class mainDataHandler {
         // feed normalized features and symbol
         double prediction = predict(normalizedFeatures, symbol);
 
-        synchronized (featureTimeSeriesArray) {
-            for (int i = 0; i < features.length; i++) {
-                if (i == 3) continue;
-                featureTimeSeriesArray[i].addOrUpdate(
-                        new Second(stocks.get(stocks.size() - 1).getDateDate()),
-                        features[i]
-                );
-            }
-        }
-
-        synchronized (predictionTimeSeries) {
-            predictionTimeSeries.addOrUpdate(
-                    new Second(stocks.get(stocks.size() - 1).getDateDate()),
-                    prediction
-            );
-        }
-
         try {
             for (StockUnit stockUnit : stocks) {
                 timeSeries.addOrUpdate(new Second(stockUnit.getDateDate()), stockUnit.getClose());
@@ -838,18 +810,11 @@ public class mainDataHandler {
         return evaluateResult(timeSeries, prediction, stocks, symbol, features, normalizedFeatures);
     }
 
-    // Method for evaluating results
     private static List<Notification> evaluateResult(TimeSeries timeSeries, double prediction,
                                                      List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
         List<Notification> alertsList = new ArrayList<>();
 
-        double changeUp = stocks.stream().skip(stocks.size() - 4).
-                mapToDouble(StockUnit::getPercentageChange).sum();
-
         double nearRes = isNearResistance(stocks);
-
-        // Dip down
-        dipDown(timeSeries, prediction, stocks, symbol, changeUp, alertsList);
 
         // fill the gap
         fillTheGap(timeSeries, prediction, stocks, symbol, alertsList);
@@ -859,13 +824,15 @@ public class mainDataHandler {
         }
 
         // Spike & R-Line
-        spikeUp(timeSeries, prediction, stocks, symbol, features, changeUp, alertsList, nearRes, aggressiveness, normalizedFeatures);
+        spikeUp(timeSeries, prediction, stocks, symbol, features, alertsList, nearRes, aggressiveness, normalizedFeatures);
 
         return alertsList;
     }
 
-    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features, double changeUp,
+    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features,
                                 List<Notification> alertsList, double nearRes, float manualAggressiveness, float[] normalizedFeatures) {
+
+        double inverseAggressiveness = 1 / manualAggressiveness;
 
         // Calculate dynamic aggressiveness
         double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness);
@@ -873,26 +840,34 @@ public class mainDataHandler {
         // Adaptive thresholds based on weights
         double cumulativeThreshold = 0.6 * dynamicAggro;
 
-        System.out.println(features[4] +
-                ", Mtm: " + String.format("%.3f", features[5]) +
-                ", Th: " + String.format("%.3f", cumulativeThreshold) +
-                ", Agg: " + String.format("%.3f", dynamicAggro) +
-                ", Pred: " + String.format("%.3f", prediction) +
-                ", FT6: " + features[6] +
-                ", CGU: " + String.format("%.3f", changeUp) +
-                " " + stocks.get(stocks.size() - 1).getDateDate());
+        double changeUp2 = stocks.stream().skip(stocks.size() - 2).mapToDouble(StockUnit::getPercentageChange).sum();
+        double changeUp3 = stocks.stream().skip(stocks.size() - 3).mapToDouble(StockUnit::getPercentageChange).sum();
+        double changeUp4 = stocks.stream().skip(stocks.size() - 4).mapToDouble(StockUnit::getPercentageChange).sum();
+        double changeUp6 = stocks.stream().skip(stocks.size() - 6).mapToDouble(StockUnit::getPercentageChange).sum();
+
+        String istrue = "❌";
+
+        if (features[4] == 1 && features[5] > cumulativeThreshold && dynamicAggro > 2.5 && prediction > 0.9 && features[6] == 1
+                && (changeUp2 > 1.4 * inverseAggressiveness && changeUp3 > 1.4 * inverseAggressiveness)
+        ) {
+            istrue = "✅";
+        }
+
+        System.out.printf("4:%.2f 6:%.2f %s %s%n", changeUp4, changeUp6, istrue, stocks.get(stocks.size() - 1).getDateDate());
 
         if (features[4] == 1 &&
-                (features[5] > cumulativeThreshold || dynamicAggro > 2.5) &&
+                features[5] > cumulativeThreshold &&
+                dynamicAggro > 2.5 &&
                 prediction > 0.9 &&
-                features[6] == 1) {
-
+                features[6] == 1
+                && (changeUp2 > 1.4 * inverseAggressiveness && changeUp3 > 1.4 * inverseAggressiveness)
+        ) {
             if (nearRes == 0) {
-                createNotification(symbol, changeUp, alertsList, timeSeries,
+                createNotification(symbol, changeUp4, alertsList, timeSeries,
                         stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                         prediction, 3);
             } else {
-                createNotification(symbol, changeUp, alertsList, timeSeries,
+                createNotification(symbol, changeUp4, alertsList, timeSeries,
                         stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                         prediction, 2);
             }
@@ -996,60 +971,6 @@ public class mainDataHandler {
         double threshold = resistanceLevel * 0.995; // Within 0.5% below resistance
 
         return (currentClose >= threshold && currentClose <= resistanceLevel) ? 1.0 : 0.0;
-    }
-
-    private static void dipDown(TimeSeries timeSeries, double prediction, List<StockUnit> stocks,
-                                String symbol, double changeUp, List<Notification> alertsList) {
-        // Sensitivity Configuration
-        int windowSize = 8;      // Look at 5-day window for patterns
-        double atrMultiplier = 1.2;  // More sensitive threshold
-        double minDropPct = 4.0;    // Minimum total percentage drop
-        int minDownDays = 3;      // At least 3 down days in window
-
-        if (stocks.size() < windowSize + 1) return;
-
-        List<StockUnit> window = stocks.subList(stocks.size() - windowSize - 1, stocks.size());
-        double atr = calculateATR(window, 14);
-
-        // Track pattern characteristics
-        int downDays = 0;
-        double cumulativeDrop = 0;
-        double maxClose = Double.MIN_VALUE;
-        double minClose = Double.MAX_VALUE;
-
-        for (int i = 1; i < window.size(); i++) {
-            StockUnit current = window.get(i);
-            StockUnit previous = window.get(i - 1);
-
-            // Track price extremes
-            maxClose = Math.max(maxClose, previous.getClose());
-            minClose = Math.min(minClose, current.getClose());
-
-            if (current.getClose() < previous.getClose()) {
-                downDays++;
-                cumulativeDrop += (previous.getClose() - current.getClose());
-            }
-        }
-
-        // Calculate intensity metrics
-        double totalDropPct = ((maxClose - minClose) / maxClose) * 100;
-
-        // Recent bounce check (last 2 periods)
-        boolean hasBounce = window.get(window.size() - 1).getClose() >
-                window.get(window.size() - 2).getLow();
-
-        // Activation Conditions (all must be true)
-        boolean isSensitiveDip =
-                downDays >= minDownDays &&
-                        cumulativeDrop >= (atr * atrMultiplier) &&
-                        totalDropPct >= minDropPct &&
-                        hasBounce;
-
-        if (isSensitiveDip) {
-            createNotification(symbol, changeUp, alertsList, timeSeries,
-                    stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                    prediction, 0);
-        }
     }
 
     // 1. Simple Moving Average (SMA)

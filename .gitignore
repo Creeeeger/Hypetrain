@@ -39,4 +39,5 @@ build/
 *.txt
 *log
 !ToDO.txt
+!QBTS_TEST.txt
 config.xml
