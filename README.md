@@ -176,6 +176,11 @@ Obey the system — or be the exit liquidity.
 
 ---
 
+### Miscellaneous
+
+- To restore advanced charts, use commit [
+  `6b1ef75`](https://github.com/Creeeeger/Hypetrain/commit/6b1ef7522d2d5fb9324d92e6447ab9268cc39274).
+
 # Disclaimer
 
 The information provided by this program is intended solely for educational and informational purposes. By utilizing

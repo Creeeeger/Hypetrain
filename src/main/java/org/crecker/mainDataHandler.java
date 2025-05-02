@@ -848,19 +848,20 @@ public class mainDataHandler {
         String istrue = "❌";
 
         if (features[4] == 1 && features[5] > cumulativeThreshold && dynamicAggro > 2.5 && prediction > 0.9 && features[6] == 1
-                && (changeUp2 > 1.4 * inverseAggressiveness && changeUp3 > 1.4 * inverseAggressiveness)
+                && (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
         ) {
             istrue = "✅";
         }
 
-        System.out.printf("4:%.2f 6:%.2f %s %s%n", changeUp4, changeUp6, istrue, stocks.get(stocks.size() - 1).getDateDate());
+        System.out.printf("2:%.2f 3:%.2f 4:%.2f 6:%.2f %s %s %s%n", changeUp2, changeUp3, changeUp4, changeUp6,
+                stocks.get(stocks.size() - 1).getVolume(), istrue, stocks.get(stocks.size() - 1).getDateDate());
 
         if (features[4] == 1 &&
                 features[5] > cumulativeThreshold &&
                 dynamicAggro > 2.5 &&
                 prediction > 0.9 &&
                 features[6] == 1
-                && (changeUp2 > 1.4 * inverseAggressiveness && changeUp3 > 1.4 * inverseAggressiveness)
+                && (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
         ) {
             if (nearRes == 0) {
                 createNotification(symbol, changeUp4, alertsList, timeSeries,
@@ -919,26 +920,9 @@ public class mainDataHandler {
             boolean sustainedMove = checkSustainedMovement(stocks, dropLookBack, dipThreshold);
 
             // Signal Generation Logic
-            boolean baseCondition =
-                    (deviation < gapThreshold || isWideGap) &&
-                            (sharpDrop || sustainedMove) &&
+            boolean baseCondition = isWideGap && deviation < -0.15 &&
+                            sharpDrop && sustainedMove &&
                             (oversold || momentumDivergence);
-
-            System.out.println(
-                    " | Deviation: " + String.format("%.3f", deviation) +
-                            " | ATR: " + String.format("%.3f", atr) +
-                            " | VolatilityRatio: " + String.format("%.3f", volatilityRatio) +
-                            " | Multiplier: " + String.format("%.3f", multiplier) +
-                            " | GapThreshold: " + String.format("%.3f", gapThreshold) +
-                            " | RSI: " + String.format("%.3f", rsi) +
-                            " | Oversold: " + oversold +
-                            " | Stochastic: " + String.format("%.3f", stochastic) +
-                            " | MomentumDivergence: " + momentumDivergence +
-                            " | SharpDrop: " + sharpDrop +
-                            " | IsWideGap: " + isWideGap +
-                            " | SustainedMove: " + sustainedMove +
-                            " | base: " + baseCondition +
-                            " | Date: " + stocks.get(stocks.size() - 1).getDateDate());
 
             if (baseCondition) {
                 createNotification(symbol, deviation, alertsList, timeSeries,
