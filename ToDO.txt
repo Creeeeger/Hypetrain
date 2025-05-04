@@ -1,4 +1,5 @@
 TODO
 Version 1.0:
+- !!!! build pre cache registry for normalization values since its too much data to download!!!
 - squeeze everything out of spike
 - Improve speed of spike up percentage change by supportive second data
