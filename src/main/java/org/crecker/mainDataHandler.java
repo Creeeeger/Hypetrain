@@ -16,6 +16,8 @@ import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 
+import javax.swing.*;
+import java.awt.*;
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -24,6 +26,7 @@ import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
+import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
@@ -340,6 +343,16 @@ public class mainDataHandler {
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
 
+        // Create and show progress dialog
+        ProgressDialog progressDialog = new ProgressDialog((Frame) SwingUtilities.getWindowAncestor(logTextArea));
+        SwingUtilities.invokeLater(() -> progressDialog.setVisible(true));
+
+        // Update progress helper
+        Runnable updateProgress = () -> {
+            int current = symbols.size() - (int) countDownLatch.getCount();
+            progressDialog.updateProgress(current, symbols.size());
+        };
+
         for (String symbol : symbols) {
             String symbolUpper = symbol.toUpperCase();
             Path cachePath = Paths.get(CACHE_DIR, symbolUpper + ".txt");
@@ -350,10 +363,12 @@ public class mainDataHandler {
                     processStockDataFromFile(cachePath.toString(), symbolUpper, 10000);
                     countDownLatch.countDown();
                     logTextArea.append("Loaded cached data for " + symbolUpper + "\n");
+                    SwingUtilities.invokeLater(updateProgress);
                 } catch (IOException e) {
                     logTextArea.append("Error loading cache for " + symbolUpper + ": " + e.getMessage() + "\n");
                     e.printStackTrace();
                     countDownLatch.countDown();
+                    SwingUtilities.invokeLater(updateProgress);
                 }
             } else {
                 // Download data from API
@@ -382,26 +397,35 @@ public class mainDataHandler {
 
                                 countDownLatch.countDown();
                                 logTextArea.append("Downloaded and cached data for " + symbolUpper + "\n");
+                                SwingUtilities.invokeLater(updateProgress);
                             } catch (Exception ex) {
                                 logTextArea.append("Failed to process data for " + symbolUpper + ": " + ex.getMessage() + "\n");
                                 ex.printStackTrace();
                                 countDownLatch.countDown();
+                                SwingUtilities.invokeLater(updateProgress);
                             }
                         })
                         .onFailure(error -> {
                             mainDataHandler.handleFailure(error);
                             logTextArea.append("Failed to download data for " + symbolUpper + "\n");
                             countDownLatch.countDown();
+                            SwingUtilities.invokeLater(updateProgress);
                         })
                         .fetch();
             }
         }
 
-        try {
-            countDownLatch.await(1, TimeUnit.MINUTES);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-        }
+        new Thread(() -> {
+            try {
+                countDownLatch.await(1, TimeUnit.MINUTES);
+                SwingUtilities.invokeLater(() -> {
+                    progressDialog.dispose();
+                    logTextArea.append("Initial data loading completed\n");
+                });
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+        }).start();
 
         synchronized (symbolTimelines) {
             symbolTimelines.forEach((symbol, timeline) -> {
@@ -470,6 +494,32 @@ public class mainDataHandler {
                 logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
             }
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        }
+    }
+
+    static class ProgressDialog extends JDialog {
+        private final JProgressBar progressBar;
+        private final JLabel statusLabel;
+
+        public ProgressDialog(Frame parent) {
+            super(parent, "Fetching Data", true);
+            setSize(300, 100);
+            setLayout(new BorderLayout());
+            setLocationRelativeTo(parent);
+
+            progressBar = new JProgressBar(0, 100);
+            statusLabel = new JLabel("Initializing...", SwingConstants.CENTER);
+
+            add(statusLabel, BorderLayout.NORTH);
+            add(progressBar, BorderLayout.CENTER);
+        }
+
+        public void updateProgress(int current, int total) {
+            SwingUtilities.invokeLater(() -> {
+                int progress = (int) (((double) current / total) * 100);
+                progressBar.setValue(progress);
+                statusLabel.setText(String.format("Processed %d of %d symbols", current, total));
+            });
         }
     }
 
