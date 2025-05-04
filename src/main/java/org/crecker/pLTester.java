@@ -9,10 +9,14 @@ import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.CandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.xy.DefaultOHLCDataset;
+import org.jfree.data.xy.OHLCDataItem;
+import org.jfree.data.xy.OHLCDataset;
 
 import javax.swing.*;
 import java.awt.*;
@@ -49,7 +53,11 @@ public class pLTester {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
+
+    // Controls over trading
     public final static String[] SYMBOLS = {"QBTS.txt"};
+    private final static boolean useCandles = true;
+    private final static int cut = 30000;
 
     public static void main(String[] args) {
         //updateStocks();
@@ -64,10 +72,16 @@ public class pLTester {
     }
 
     public static void PLAnalysis() {
-        double INITIAL_CAPITAL = 130000;
-        final int FEE = 0;
-        int cut = 30000;
-        prepData(cut);
+        // ANSI colour codes for terminal output
+        final String RESET = "\u001B[0m";
+        final String RED = "\u001B[31m";
+        final String GREEN = "\u001B[32m";
+        final String YELLOW = "\u001B[33m";
+        final String CYAN = "\u001B[36m";
+        final String WHITE_BOLD = "\u001B[1;37m";
+
+        double INITIAL_CAPITAL = 100000;
+        prepData();
 
         // Preprocess indices during data loading
         Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(symbol.replace(".txt", ""),
@@ -102,14 +116,14 @@ public class pLTester {
             String symbol = notification.getSymbol();
             List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, mainDataHandler::getSymbolTimeline);
 
-            System.out.println("\n=== NEW TRADE OPPORTUNITY ===");
-            System.out.printf("Notification Time: %s%n", notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+            System.out.println(WHITE_BOLD + "\n=== NEW TRADE OPPORTUNITY ===" + RESET);
+            System.out.printf(YELLOW + "Notification Time: %s%n" + RESET, notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
             notification.showNotification();
 
             Integer baseIndex = getIndexForTime(symbol, notifyTime);
 
             if (baseIndex == null || baseIndex >= timeline.size() - 5) {
-                System.out.println("Invalid index for trading - insufficient data");
+                System.out.println(RED + "Invalid index for trading - insufficient data" + RESET);
                 continue;
             }
 
@@ -120,7 +134,7 @@ public class pLTester {
                 StockUnit unit = timeline.get(currentIndex);
                 lastProcessedEndTime = timeline.get(currentIndex).getLocalDateTimeDate();
 
-                System.out.printf("\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n",
+                System.out.printf(CYAN + "\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n" + RESET,
                         offset + 1, totalMinutes,
                         unit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                         unit.getClose(),
@@ -129,7 +143,7 @@ public class pLTester {
 
                 notification.addDataPoint(unit);
 
-                System.out.print("Enter trade? (y/n/l/exit): ");
+                System.out.print(YELLOW + "Enter trade? (y/n/l/exit): " + RESET);
                 String input = scanner.nextLine().trim().toLowerCase();
 
                 if (input.equals("y")) {
@@ -140,7 +154,7 @@ public class pLTester {
                     inTrade = true;
                     double totalChange = 0.0;
                     successfulCalls++;
-                    System.out.printf("\nENTERED TRADE AT %s WITH €%.2f%n",
+                    System.out.printf(GREEN + "\nENTERED TRADE AT %s WITH €%.2f%n" + RESET,
                             tradeEntryTime.format(DateTimeFormatter.ISO_LOCAL_TIME),
                             tradeEntryCapital);
 
@@ -148,7 +162,7 @@ public class pLTester {
                     for (int i = tradeEntryIndex + 1; i < timeline.size(); i++) {
                         StockUnit minuteUnit = timeline.get(i);
                         totalChange += minuteUnit.getPercentageChange();
-                        System.out.printf("\n[TRADE UPDATE] %s | Price: %.3f | Change: %.3f%% | Total Change %.3f%%%n",
+                        System.out.printf(CYAN + "\n[TRADE UPDATE] %s | Price: %.3f | Change: %.3f%% | Total Change %.3f%%%n" + RESET,
                                 minuteUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                                 minuteUnit.getClose(),
                                 minuteUnit.getPercentageChange(),
@@ -156,14 +170,13 @@ public class pLTester {
 
                         notification.addDataPoint(minuteUnit);
 
-                        System.out.print("Exit trade now? (y/n): ");
+                        System.out.print(RED + "Exit trade now? (y/n): " + RESET);
                         String exitChoice = scanner.nextLine().trim().toLowerCase();
 
                         if (exitChoice.equals("y")) {
                             capital = calculateTradeValue(timeline, tradeEntryIndex + 1, i, tradeEntryCapital);
-                            capital -= FEE;
                             inTrade = false;
-                            System.out.printf("\nEXITED TRADE AT %s | NEW CAPITAL: €%.2f%n",
+                            System.out.printf(GREEN + "\nEXITED TRADE AT %s | NEW CAPITAL: €%.2f%n" + RESET,
                                     minuteUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                                     capital);
 
@@ -176,8 +189,7 @@ public class pLTester {
                     if (inTrade) {
                         int finalIndex = timeline.size() - 1;
                         capital = calculateTradeValue(timeline, tradeEntryIndex + 1, finalIndex, tradeEntryCapital);
-                        capital -= FEE;
-                        System.out.printf("\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n", capital);
+                        System.out.printf(RED + "\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n" + RESET, capital);
                     }
                     break; // Exit the while loop after entering a trade.
                 } else if (input.equalsIgnoreCase("exit")) {
@@ -185,7 +197,7 @@ public class pLTester {
                     break;
                 } else if (input.equals("l")) {
                     totalMinutes += 5; // Extend the trade entry window by 5 minutes.
-                    System.out.println("Extending the trade entry window by 5 minutes...");
+                    System.out.println(YELLOW + "Extending the trade entry window by 5 minutes..." + RESET);
                 }
                 offset++;
             }
@@ -240,11 +252,11 @@ public class pLTester {
         }
     }
 
-    private static void prepData(int cut) {
+    private static void prepData() {
         // Calculation of rallies, Process data for each file
         Arrays.stream(pLTester.SYMBOLS).forEach(fileName -> {
             try {
-                processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), cut);
+                processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), pLTester.cut);
             } catch (IOException e) {
                 e.printStackTrace();
             }
@@ -410,34 +422,107 @@ public class pLTester {
                 return;
             }
 
-            // Create main price series
-            TimeSeries priceSeries = new TimeSeries(processedSymbol + " Price Timeline");
-            for (StockUnit unit : timeline) {
-                priceSeries.add(new Second(unit.getDateDate()), unit.getClose());
+            JFreeChart chart;
+            XYPlot plot;
+
+            if (pLTester.useCandles) {
+                // Create OHLC dataset for candlesticks
+                OHLCDataItem[] dataItems = new OHLCDataItem[timeline.size()];
+                for (int i = 0; i < timeline.size(); i++) {
+                    StockUnit unit = timeline.get(i);
+                    dataItems[i] = new OHLCDataItem(
+                            unit.getDateDate(),
+                            unit.getOpen(),
+                            unit.getHigh(),
+                            unit.getLow(),
+                            unit.getClose(),
+                            unit.getVolume()
+                    );
+                }
+
+                OHLCDataset ohlcDataset = new DefaultOHLCDataset(
+                        processedSymbol + " Candles",
+                        dataItems
+                );
+
+                // Create chart with OHLC dataset
+                chart = ChartFactory.createCandlestickChart(
+                        processedSymbol + " Candlestick Chart",
+                        "Time",
+                        "Price",
+                        ohlcDataset,
+                        true
+                );
+
+                // Get reference to the plot
+                plot = chart.getXYPlot();
+
+                // Configure candlestick renderer
+                CandlestickRenderer renderer = new CandlestickRenderer();
+                renderer.setAutoWidthMethod(CandlestickRenderer.WIDTHMETHOD_SMALLEST);
+                renderer.setUpPaint(Color.GREEN);    // Color for "up" candles (close >= open)
+                renderer.setDownPaint(Color.RED);    // Color for "down" candles (close < open)
+                renderer.setUseOutlinePaint(true);
+                renderer.setDrawVolume(true);
+                plot.setRenderer(renderer);
+
+            } else {
+                // Create main price series
+                TimeSeries closeSeries = new TimeSeries(processedSymbol + " Close");
+                TimeSeries openSeries = new TimeSeries(processedSymbol + " Open");
+                TimeSeries highSeries = new TimeSeries(processedSymbol + " High");
+                TimeSeries lowSeries = new TimeSeries(processedSymbol + " Low");
+
+                for (StockUnit unit : timeline) {
+                    closeSeries.add(new Second(unit.getDateDate()), unit.getClose());
+                    openSeries.add(new Second(unit.getDateDate()), unit.getOpen());
+                    lowSeries.add(new Second(unit.getDateDate()), unit.getLow());
+                    highSeries.add(new Second(unit.getDateDate()), unit.getHigh());
+                }
+
+                // Create datasets
+                TimeSeriesCollection priceDataset = new TimeSeriesCollection();
+                priceDataset.addSeries(closeSeries); // Index 0
+                priceDataset.addSeries(highSeries);  // Index 1
+                priceDataset.addSeries(lowSeries);   // Index 2
+                priceDataset.addSeries(openSeries);  // Index 3
+
+                // Create chart
+                chart = ChartFactory.createTimeSeriesChart(
+                        processedSymbol + " Analysis",
+                        "Time",
+                        "Price",
+                        priceDataset,
+                        true,
+                        true,
+                        false
+                );
+
+                plot = chart.getXYPlot();
+
+                // Configure main series renderer (solid black line without markers)
+                XYLineAndShapeRenderer renderer = (XYLineAndShapeRenderer) plot.getRenderer();
+
+                // Close - Black
+                renderer.setSeriesPaint(0, Color.BLACK);
+                renderer.setSeriesStroke(0, new BasicStroke(1f));
+                renderer.setSeriesShapesVisible(0, false);
+
+                // High - Red
+                renderer.setSeriesPaint(1, Color.RED);
+                renderer.setSeriesStroke(1, new BasicStroke(1f));
+                renderer.setSeriesShapesVisible(1, false);
+
+                // Low - Blue
+                renderer.setSeriesPaint(2, Color.BLUE);
+                renderer.setSeriesStroke(2, new BasicStroke(1f));
+                renderer.setSeriesShapesVisible(2, false);
+
+                // Open - Green
+                renderer.setSeriesPaint(3, Color.GREEN);
+                renderer.setSeriesStroke(3, new BasicStroke(1f));
+                renderer.setSeriesShapesVisible(3, false);
             }
-
-            // Create datasets
-            TimeSeriesCollection priceDataset = new TimeSeriesCollection();
-            priceDataset.addSeries(priceSeries);
-
-            // Create chart
-            JFreeChart chart = ChartFactory.createTimeSeriesChart(
-                    processedSymbol + " Analysis",
-                    "Time",
-                    "Price",
-                    priceDataset,
-                    true,
-                    true,
-                    false
-            );
-
-            XYPlot plot = chart.getXYPlot();
-
-            // Configure main series renderer (solid black line without markers)
-            XYLineAndShapeRenderer priceRenderer = (XYLineAndShapeRenderer) plot.getRenderer();
-            priceRenderer.setSeriesPaint(0, Color.BLACK);  // Solid black line
-            priceRenderer.setSeriesStroke(0, new BasicStroke(1f));
-            priceRenderer.setSeriesShapesVisible(0, false);
 
             // Set chart background to white for better visibility
             chart.setBackgroundPaint(Color.WHITE);

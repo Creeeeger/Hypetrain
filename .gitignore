@@ -40,4 +40,5 @@ build/
 *log
 !ToDO.txt
 !QBTS_TEST.txt
+!WOLF_TEST.txt
 config.xml
