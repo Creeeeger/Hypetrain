@@ -13,6 +13,7 @@ import java.io.FileWriter;
 import java.io.IOException;
 import java.util.Arrays;
 
+import static org.crecker.mainDataHandler.CACHE_DIR;
 import static org.crecker.mainDataHandler.symbolTimelines;
 
 public class dataTester {
@@ -54,7 +55,10 @@ public class dataTester {
     }
 
     private static BufferedWriter getBufferedWriter(TimeSeriesResponse response) throws IOException {
-        File data = new File(response.getMetaData().getSymbol().toUpperCase() + ".txt"); // Create output file
+        File cacheDir = new File(CACHE_DIR);
+        if (!cacheDir.exists()) cacheDir.mkdirs();
+
+        File data = new File(cacheDir, response.getMetaData().getSymbol().toUpperCase() + ".txt");
 
         // Check if the file already exists
         if (!data.exists()) {
@@ -117,7 +121,6 @@ public class dataTester {
                     current.setPercentageChange(change);
                 }
             }
-
         });
     }
 }
