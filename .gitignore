@@ -36,9 +36,5 @@ build/
 
 ### Mac OS ###
 .DS_Store
-*.txt
 *log
-!ToDO.txt
-!QBTS_TEST.txt
-!WOLF_TEST.txt
 config.xml

@@ -17,6 +17,9 @@ import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 
 import java.io.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
@@ -26,9 +29,9 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 
 import static org.crecker.RallyPredictor.predict;
+import static org.crecker.dataTester.handleSuccess;
 import static org.crecker.mainUI.*;
-import static org.crecker.pLTester.PLAnalysis;
-import static org.crecker.pLTester.SYMBOLS;
+import static org.crecker.pLTester.*;
 
 public class mainDataHandler {
     private static final Map<String, Map<String, Map<String, Double>>> SYMBOL_INDICATOR_RANGES = new ConcurrentHashMap<>();
@@ -74,6 +77,7 @@ public class mainDataHandler {
         put(7, "ADVANCED");
     }};
 
+    public static final String CACHE_DIR = Paths.get(System.getProperty("user.dir"), "cache").toString();
     static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
@@ -337,45 +341,60 @@ public class mainDataHandler {
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
 
         for (String symbol : symbols) {
-            AlphaVantage.api()
-                    .timeSeries()
-                    .intraday()
-                    .forSymbol(symbol)
-                    .interval(Interval.ONE_MIN)
-                    .outputSize(OutputSize.COMPACT)
-                    .onSuccess(e -> {
-                        try {
-                            TimeSeriesResponse response = (TimeSeriesResponse) e;
-                            List<StockUnit> units = response.getStockUnits();
+            String symbolUpper = symbol.toUpperCase();
+            Path cachePath = Paths.get(CACHE_DIR, symbolUpper + ".txt");
 
-                            units.forEach(stockUnit -> stockUnit.setSymbol(symbol));
+            if (Files.exists(cachePath)) {
+                // Load data from cache
+                try {
+                    processStockDataFromFile(cachePath.toString(), symbolUpper, 10000);
+                    countDownLatch.countDown();
+                    logTextArea.append("Loaded cached data for " + symbolUpper + "\n");
+                } catch (IOException e) {
+                    logTextArea.append("Error loading cache for " + symbolUpper + ": " + e.getMessage() + "\n");
+                    e.printStackTrace();
+                    countDownLatch.countDown();
+                }
+            } else {
+                // Download data from API
+                AlphaVantage.api()
+                        .timeSeries()
+                        .intraday()
+                        .forSymbol(symbol)
+                        .interval(Interval.ONE_MIN)
+                        .outputSize(OutputSize.FULL)
+                        .onSuccess(e -> {
+                            try {
+                                handleSuccess((TimeSeriesResponse) e);
 
-                            // Reverse the list to correct chronological order
-                            List<StockUnit> reversedUnits = new ArrayList<>(units);
-                            Collections.reverse(reversedUnits);
+                                TimeSeriesResponse response = (TimeSeriesResponse) e;
+                                List<StockUnit> units = response.getStockUnits();
+                                units.forEach(stockUnit -> stockUnit.setSymbol(symbolUpper));
 
-                            // Add reversed units to symbol timeline
-                            synchronized (symbolTimelines) {
-                                symbolTimelines.computeIfAbsent(symbol, k ->
-                                        Collections.synchronizedList(new ArrayList<>())
-                                ).addAll(reversedUnits);
+                                List<StockUnit> reversedUnits = new ArrayList<>(units);
+                                Collections.reverse(reversedUnits);
+
+                                synchronized (symbolTimelines) {
+                                    symbolTimelines.computeIfAbsent(symbolUpper, k ->
+                                            Collections.synchronizedList(new ArrayList<>())
+                                    ).addAll(reversedUnits);
+                                }
+
+                                countDownLatch.countDown();
+                                logTextArea.append("Downloaded and cached data for " + symbolUpper + "\n");
+                            } catch (Exception ex) {
+                                logTextArea.append("Failed to process data for " + symbolUpper + ": " + ex.getMessage() + "\n");
+                                ex.printStackTrace();
+                                countDownLatch.countDown();
                             }
-
-                            if (reversedUnits.isEmpty()) {
-                                System.out.println("Empty response for: " + symbol);
-                            }
-
+                        })
+                        .onFailure(error -> {
+                            mainDataHandler.handleFailure(error);
+                            logTextArea.append("Failed to download data for " + symbolUpper + "\n");
                             countDownLatch.countDown();
-                        } catch (Exception ex) {
-                            ex.printStackTrace();
-                            countDownLatch.countDown();
-                        }
-                    })
-                    .onFailure(error -> {
-                        mainDataHandler.handleFailure(error);
-                        countDownLatch.countDown();
-                    })
-                    .fetch();
+                        })
+                        .fetch();
+            }
         }
 
         try {
@@ -523,7 +542,9 @@ public class mainDataHandler {
             });
         }
 
-        calculateSpikesInRally(frameSize, realFrame);
+        if (realFrame) {
+            calculateSpikesInRally(frameSize, true);
+        }
     }
 
     public static void calculateSpikesInRally(int minutesPeriod, boolean realFrame) {
@@ -921,8 +942,8 @@ public class mainDataHandler {
 
             // Signal Generation Logic
             boolean baseCondition = isWideGap && deviation < -0.15 &&
-                            sharpDrop && sustainedMove &&
-                            (oversold || momentumDivergence);
+                    sharpDrop && sustainedMove &&
+                    (oversold || momentumDivergence);
 
             if (baseCondition) {
                 createNotification(symbol, deviation, alertsList, timeSeries,

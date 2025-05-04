@@ -55,7 +55,7 @@ public class pLTester {
     private static IntervalMarker shadedRegion = null;
 
     // Controls over trading
-    public final static String[] SYMBOLS = {"QBTS.txt"};
+    public final static String[] SYMBOLS = {"QBTS"};
     private final static boolean useCandles = true;
     private final static int cut = 30000;
 
@@ -253,10 +253,15 @@ public class pLTester {
     }
 
     private static void prepData() {
+        File cacheDir = new File(CACHE_DIR);
+        if (!cacheDir.exists()) cacheDir.mkdirs();
+
         // Calculation of rallies, Process data for each file
-        Arrays.stream(pLTester.SYMBOLS).forEach(fileName -> {
+        Arrays.stream(pLTester.SYMBOLS).forEach(symbol -> {
             try {
-                processStockDataFromFile(fileName, fileName.substring(0, fileName.indexOf(".")), pLTester.cut);
+                String fileName = symbol + ".txt";
+                String cachePath = Paths.get(CACHE_DIR, fileName).toString();
+                processStockDataFromFile(cachePath, symbol, pLTester.cut);
             } catch (IOException e) {
                 e.printStackTrace();
             }
