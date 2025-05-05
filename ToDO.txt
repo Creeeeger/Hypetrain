@@ -1,5 +1,4 @@
 TODO
 Version 1.0:
-- ensure new fetching works without overhang
 - squeeze everything out of spike
 - Improve speed of spike up percentage change by supportive second data

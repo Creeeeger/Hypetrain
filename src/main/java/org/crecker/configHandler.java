@@ -177,6 +177,10 @@ public class configHandler {
             algo.appendChild(doc.createTextNode("1.0"));
             root.appendChild(algo);
 
+            Element useCandles = doc.createElement("candle");
+            useCandles.appendChild(doc.createTextNode("false"));
+            root.appendChild(useCandles);
+
             // Additional elements can be added here as needed (by creating new tags and appending to root)
 
             // Use TransformerFactory to create a Transformer instance for converting the Document to XML format

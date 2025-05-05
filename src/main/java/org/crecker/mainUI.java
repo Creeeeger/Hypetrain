@@ -10,9 +10,13 @@ import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.CandlestickRenderer;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.time.ohlc.OHLCItem;
+import org.jfree.data.time.ohlc.OHLCSeries;
+import org.jfree.data.time.ohlc.OHLCSeriesCollection;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -43,12 +47,14 @@ import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
 import static org.crecker.configHandler.createConfig;
+import static org.crecker.mainDataHandler.CACHE_DIR;
 
 public class mainUI extends JFrame {
     public static JTextArea logTextArea;
     public static mainUI gui;
     static int volume;
     static float aggressiveness;
+    public static boolean useCandles;
     static boolean shouldSort, useRealtime;
     static boolean globalByChange = false;
     static String symbols, apiKey;
@@ -63,6 +69,10 @@ public class mainUI extends JFrame {
     static Map<String, Color> stockColors;
     static ChartPanel chartDisplay; // This will hold the chart
     static TimeSeries timeSeries;
+    static OHLCSeries ohlcSeries;
+    static JPanel chartPlaceholder;
+    static boolean modeCopy;
+    static int currentTimeRangeChoice;
 
     static JList<Notification> notificationList;
     static DefaultListModel<Notification> notificationListModel;
@@ -79,10 +89,9 @@ public class mainUI extends JFrame {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
-    private static Date startDate;
     private static mainUI instance;
     private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
-    private String currentStockSymbol = null; // Track the currently displayed stock symbol
+    private static String currentStockSymbol = null; // Track the currently displayed stock symbol
 
     public mainUI() {
         instance = this;
@@ -127,6 +136,7 @@ public class mainUI extends JFrame {
             apiKey = settingData[3][1];
             useRealtime = Boolean.parseBoolean(settingData[4][1]);
             aggressiveness = Float.parseFloat(settingData[5][1]);
+            useCandles = Boolean.parseBoolean(settingData[6][1]);
         } catch (Exception e) {
             System.out.println("Config error - Create new config " + e.getMessage());
             createConfig();
@@ -134,13 +144,8 @@ public class mainUI extends JFrame {
     }
 
     public static void main(String[] args) {
-        gui = new mainUI();
-        gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        gui.setSize(1900, 1000); // Width and height of the window
-        gui.setVisible(true);
-        gui.setTitle("Hype train");
-
-        updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the Stock data section
+        File cacheDir = new File(CACHE_DIR);
+        if (!cacheDir.exists()) cacheDir.mkdirs();
 
         // Dynamically construct the file path
         Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
@@ -148,6 +153,14 @@ public class mainUI extends JFrame {
         if (!config.exists()) {
             createConfig();
             setValues();
+            gui = new mainUI();
+            gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            gui.setSize(1900, 1000); // Width and height of the window
+            gui.setVisible(true);
+            gui.setTitle("Hype train");
+
+            updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the Stock data section
+
             loadTable(symbols);
 
             if (!apiKey.isEmpty()) {
@@ -156,7 +169,7 @@ public class mainUI extends JFrame {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
 
-            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness);
+            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness, useCandles);
             guiSetting.setVisible(true);
             guiSetting.setSize(500, 500);
             guiSetting.setAlwaysOnTop(true);
@@ -164,10 +177,18 @@ public class mainUI extends JFrame {
             logTextArea.append("New config created\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         } else {
+            setValues();
+
+            gui = new mainUI();
+            gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+            gui.setSize(1900, 1000); // Width and height of the window
+            gui.setVisible(true);
+            gui.setTitle("Hype train");
+
+            updateStockInfoLabels(0, 0, 0, 0, 0, 0, 0, 0, 0); //initially fill up the Stock data section
+
             logTextArea.append("Load config\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-
-            setValues();
 
             if (!apiKey.isEmpty()) {
                 mainDataHandler.InitAPi(apiKey);
@@ -179,6 +200,7 @@ public class mainUI extends JFrame {
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
+        refreshChartType(false);
     }
 
     // Utility method to refresh all components in a container
@@ -281,11 +303,12 @@ public class mainUI extends JFrame {
                 {"sort", String.valueOf(shouldSort)},
                 {"key", apiKey},
                 {"realtime", String.valueOf(useRealtime)},
-                {"algo", String.valueOf(aggressiveness)}
+                {"algo", String.valueOf(aggressiveness)},
+                {"candle", String.valueOf(useCandles)}
         };
     }
 
-    public static void addNotification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, int config) {
+    public static void addNotification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
         SwingUtilities.invokeLater(() -> {
             // Get current time
             LocalDateTime now = LocalDateTime.now();
@@ -301,7 +324,7 @@ public class mainUI extends JFrame {
             }
 
             // Add new notification
-            notificationListModel.addElement(new Notification(title, content, timeSeries,
+            notificationListModel.addElement(new Notification(title, content, stockUnitList,
                     localDateTime, symbol, change, config));
         });
 
@@ -495,7 +518,7 @@ public class mainUI extends JFrame {
                 // After processing, update on EDT
                 SwingUtilities.invokeLater(() -> {
                     stocks = values;
-                    refreshChartData(1);
+                    refreshChartData(9);
                 });
             });
 
@@ -601,7 +624,7 @@ public class mainUI extends JFrame {
                     // After processing, update on EDT
                     SwingUtilities.invokeLater(() -> {
                         stocks = values;
-                        refreshChartData(1);
+                        refreshChartData(9);
                     });
                 });
 
@@ -697,6 +720,8 @@ public class mainUI extends JFrame {
     }
 
     public void startRealTimeUpdates() {
+        final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(1);
+
         if (useRealtime) {
             executorService.scheduleAtFixedRate(() -> {
                 if (useRealtime) {
@@ -705,25 +730,44 @@ public class mainUI extends JFrame {
                         if (value != null) {
                             SwingUtilities.invokeLater(() -> {
                                 try {
-                                    if (!timeSeries.isEmpty()) {
-                                        Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+                                    Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
 
-                                        // Update axis properly for live updates
-                                        XYPlot plot = chartDisplay.getChart().getXYPlot();
-                                        DateAxis axis = (DateAxis) plot.getDomainAxis();
-                                        axis.setRange(startDate, date);
-                                        updateYAxisRange(plot, startDate, date);
+                                    // Update axis properly for live updates
+                                    XYPlot plot = chartDisplay.getChart().getXYPlot();
+                                    DateAxis xAxis = (DateAxis) plot.getDomainAxis();
+                                    long window = getDurationMillis(currentTimeRangeChoice); // e.g. 5 min
+                                    ValueAxis yAxis = plot.getRangeAxis();
 
-                                        // Get the latest closing price for the new data point
-                                        double latestClose = value.getClose();
-
-                                        // Update the time series with the new timestamp and closing price
-                                        timeSeries.addOrUpdate(new Second(date), latestClose);
-
-                                        chartPanel.repaint();
-                                    } else {
-                                        System.out.println("TimeSeries is empty.");
+                                    /* ----- X-axis: only scroll if the user hasn't zoomed ---------- */
+                                    if (xAxis.isAutoRange()) {               // user hasn't zoomed
+                                        xAxis.setAutoRange(true);            // (keeps autoRange = true)
+                                        xAxis.setFixedAutoRange(window);     // rolling window
                                     }
+
+                                    /* ----- Y-axis: respect manual zoom the same way --------------- */
+                                    if (yAxis.isAutoRange()) {
+                                        Date lower = new Date(date.getTime() - window);
+                                        updateYAxisRange(plot, lower, date);
+                                    }
+
+                                    // Get the latest closing price for the new data point
+                                    double latestClose = value.getClose();
+
+                                    // Update the time series with the new timestamp and closing price
+                                    timeSeries.addOrUpdate(new Second(date), latestClose);
+
+                                    try {
+                                        ohlcSeries.add(new OHLCItem(
+                                                new Second(date),
+                                                value.getOpen(),
+                                                value.getHigh(),
+                                                value.getLow(),
+                                                value.getClose()
+                                        ));
+                                    } catch (Exception ignored) {
+                                    }
+
+                                    chartPanel.repaint();
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                     logTextArea.append("Error updating chart: " + e.getMessage() + "\n");
@@ -735,6 +779,82 @@ public class mainUI extends JFrame {
                             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
                         }
                     });
+                }
+            }, 0, 1, TimeUnit.SECONDS);
+
+            scheduledExecutor.scheduleAtFixedRate(() -> {
+                try {
+                    if (!notificationListModel.isEmpty()) {
+                        for (int i = 0; i < notificationListModel.size(); i++) {
+                            Notification notification = notificationListModel.getElementAt(i);
+                            mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
+                                if (value == null) return;
+
+                                SwingUtilities.invokeLater(() -> {
+                                    try {
+                                        Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+                                        Second period = new Second(newDate);
+                                        Date start = notification.getTimeSeries().getDataItem(0).getPeriod().getStart();
+
+                                        OHLCSeries ohlcSeries = notification.getOHLCSeries();
+                                        if (ohlcSeries.getItemCount() == 0 || !ohlcSeries.getPeriod(ohlcSeries.getItemCount() - 1).equals(period)) {
+                                            ohlcSeries.add(new OHLCItem(
+                                                    period,
+                                                    value.getOpen(),
+                                                    value.getHigh(),
+                                                    value.getLow(),
+                                                    value.getClose()
+                                            ));
+                                        }
+
+                                        TimeSeries series = notification.getTimeSeries();
+                                        series.addOrUpdate(period, value.getClose());
+
+                                        // Only adjust UI if chart is visible
+                                        ChartPanel chartPanel = notification.getChartPanel();
+                                        if (chartPanel != null) {
+                                            XYPlot plot = chartPanel.getChart().getXYPlot();
+                                            DateAxis axis = (DateAxis) plot.getDomainAxis();
+                                            axis.setRange(start, newDate);
+
+                                            // Calculate Y-axis range
+                                            double minY = Double.MAX_VALUE;
+                                            double maxY = -Double.MAX_VALUE;
+                                            for (int j = 0; j < series.getItemCount(); j++) {
+                                                Date date = series.getTimePeriod(j).getEnd();
+                                                if (!date.before(start) && !date.after(newDate)) {
+                                                    double closeValue = series.getValue(j).doubleValue();
+                                                    minY = Math.min(minY, closeValue);
+                                                    maxY = Math.max(maxY, closeValue);
+                                                }
+                                            }
+
+                                            // Calculate min/max for OHLC data within the time range
+                                            for (int k = 0; k < ohlcSeries.getItemCount(); k++) {
+                                                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
+                                                Date itemDate = item.getPeriod().getEnd();
+                                                if (!itemDate.before(start) && !itemDate.after(newDate)) {
+                                                    minY = Math.min(minY, item.getLowValue());
+                                                    maxY = Math.max(maxY, item.getHighValue());
+                                                }
+                                            }
+
+                                            if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
+                                                ValueAxis yAxis = plot.getRangeAxis();
+                                                yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1 + 0.1);
+                                            }
+
+                                            chartPanel.repaint();
+                                        }
+                                    } catch (Exception ex) {
+                                        ex.printStackTrace();
+                                    }
+                                });
+                            });
+                        }
+                    }
+                } catch (Exception ex) {
+                    ex.printStackTrace();
                 }
             }, 0, 1, TimeUnit.SECONDS);
         }
@@ -814,20 +934,27 @@ public class mainUI extends JFrame {
         twoWeeksButton.addActionListener(e -> refreshChartData(11));
         oneMonthButton.addActionListener(e -> refreshChartData(12));
 
-        // Placeholder for JFreeChart (replace with actual chart code)
-        JPanel chartPlaceholder = new JPanel(new BorderLayout());
+        chartPlaceholder = new JPanel(new BorderLayout());
         chartPlaceholder.setBorder(BorderFactory.createLineBorder(Color.BLACK));
         chartPlaceholder.setPreferredSize(new Dimension(600, 400));
 
+        chartPlaceholder = new JPanel(new BorderLayout()) {
+            @Override
+            public Component add(Component comp) {
+                removeAll();
+                return super.add(comp);
+            }
+        };
+
         // Initialize the chart
         timeSeries = new TimeSeries(selectedStock + " price");
-        chartDisplay = createChart(timeSeries, selectedStock + " price Chart");
+        ohlcSeries = new OHLCSeries(selectedStock + " price");
+        chartDisplay = createChart(selectedStock + " price Chart");
 
         // Add a titled border to the chart panel
         chartPanel.setBorder(BorderFactory.createTitledBorder("Stock price Chart"));
         chartPanel.add(buttonPanel, BorderLayout.NORTH);
         chartPanel.add(chartPlaceholder, BorderLayout.CENTER);
-        chartPanel.add(chartDisplay);
 
         // Right side of the first row - Company News
         // Initialize the News list model
@@ -963,56 +1090,116 @@ public class mainUI extends JFrame {
         return new JScrollPane(NewsList);
     }
 
-    public void refreshChartData(int choice) {
+    public static void refreshChartType(boolean fill) {
+        SwingUtilities.invokeLater(() -> {
+            chartPlaceholder.removeAll();
+
+            chartDisplay = createChart(selectedStock + (useCandles ? " OHLC Chart" : " Price Chart"));
+            chartPlaceholder.add(chartDisplay, BorderLayout.CENTER);
+
+            chartPlaceholder.revalidate();
+            chartPlaceholder.repaint();
+
+            if (fill) {
+                mainDataHandler.getTimeline(selectedStock, values -> {
+                    // Extract original close values to avoid interference from concurrent modifications
+                    List<Double> originalCloses = new ArrayList<>(values.size());
+                    for (StockUnit stock : values) {
+                        originalCloses.add(stock.getClose());
+                    }
+
+                    // Process each element in parallel based on original data
+                    IntStream.range(1, values.size()).parallel().forEach(i -> {
+                        double currentOriginalClose = originalCloses.get(i);
+                        double previousOriginalClose = originalCloses.get(i - 1);
+                        if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
+                            values.get(i).setClose(previousOriginalClose);
+                        }
+                    });
+
+                    // After processing, update on EDT
+                    SwingUtilities.invokeLater(() -> {
+                        stocks = values;
+                        refreshChartData(9);
+                    });
+                });
+            }
+        });
+    }
+
+    public static void refreshChartData(int choice) {
+        currentTimeRangeChoice = choice;
+
         // Handle stock symbol change
-        if (!selectedStock.equals(currentStockSymbol)) {
+        if (!selectedStock.equals(currentStockSymbol) || modeCopy != useCandles) {
+            modeCopy = useCandles;
             currentStockSymbol = selectedStock;
+            ohlcSeries.clear();
             timeSeries.clear();
-            chartDisplay.getChart().setTitle(selectedStock + " price Chart"); // Update chart title
+
+            chartDisplay.getChart().setTitle(selectedStock + (useCandles ? " OHLC Chart" : " Price Chart"));
 
             try {
                 if (stocks != null) {
                     // Precompute the time zone to avoid repeated lookups
                     final ZoneId zone = ZoneId.systemDefault();
 
-                    // Process and filter data in parallel
-                    List<Map.Entry<Second, Double>> dataPoints = stocks.stream().map(stock -> {
-                        LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
-                        return new AbstractMap.SimpleEntry<>(
-                                new Second(ldt.getSecond(), ldt.getMinute(), ldt.getHour(), ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()),
-                                stock.getClose()
-                        );
-                    }).collect(Collectors.toList());
+                    if (useCandles) {
+                        // Process OHLC data without filtering
+                        stocks.forEach(stock -> {
+                            LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
+                            Second period = new Second(
+                                    ldt.getSecond(), ldt.getMinute(), ldt.getHour(),
+                                    ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()
+                            );
+                            ohlcSeries.add(new OHLCItem(
+                                    period,
+                                    stock.getOpen(),
+                                    stock.getHigh(),
+                                    stock.getLow(),
+                                    stock.getClose()
+                            ));
+                        });
+                    } else {
+                        // Process and filter TimeSeries data with 10% variance
+                        List<Map.Entry<Second, Double>> dataPoints = stocks.stream().map(stock -> {
+                            LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
+                            return new AbstractMap.SimpleEntry<>(
+                                    new Second(ldt.getSecond(), ldt.getMinute(), ldt.getHour(),
+                                            ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()),
+                                    stock.getClose()
+                            );
+                        }).collect(Collectors.toList());
 
-                    // Sort by time to ensure chronological processing
-                    dataPoints.sort(Map.Entry.comparingByKey());
+                        dataPoints.sort(Map.Entry.comparingByKey());
+                        List<Map.Entry<Second, Double>> filteredPoints = new ArrayList<>();
+                        Double previousClose = null;
 
-                    // Apply 10% variance filter
-                    List<Map.Entry<Second, Double>> filteredPoints = new ArrayList<>(dataPoints.size());
-                    Double previousClose = null;
-
-                    for (Map.Entry<Second, Double> entry : dataPoints) {
-                        double currentClose = entry.getValue();
-
-                        if (previousClose != null) {
-                            double variance = Math.abs((currentClose - previousClose) / previousClose);
-                            if (variance > 0.1) {
-                                currentClose = previousClose; // Use previous value if variance >10%
+                        for (Map.Entry<Second, Double> entry : dataPoints) {
+                            double currentClose = entry.getValue();
+                            if (previousClose != null) {
+                                double variance = Math.abs((currentClose - previousClose) / previousClose);
+                                if (variance > 0.1) currentClose = previousClose;
                             }
+                            previousClose = currentClose;
+                            filteredPoints.add(new AbstractMap.SimpleEntry<>(entry.getKey(), currentClose));
                         }
-                        previousClose = currentClose;
-                        filteredPoints.add(new AbstractMap.SimpleEntry<>(entry.getKey(), currentClose));
-                    }
 
-                    // Create new series with filtered data
-                    timeSeries = new TimeSeries(currentStockSymbol);
-                    filteredPoints.forEach(entry -> timeSeries.add(entry.getKey(), entry.getValue()));
+                        filteredPoints.forEach(entry -> timeSeries.add(entry.getKey(), entry.getValue()));
+                    }
 
                     // Update dataset
                     XYPlot plot = chartDisplay.getChart().getXYPlot();
-                    TimeSeriesCollection dataset = (TimeSeriesCollection) plot.getDataset();
-                    dataset.removeAllSeries();
-                    dataset.addSeries(timeSeries);
+
+                    if (useCandles) {
+                        OHLCSeriesCollection ohlcDataset = new OHLCSeriesCollection();
+                        ohlcDataset.addSeries(ohlcSeries);
+                        plot.setDataset(ohlcDataset);
+                    } else {
+                        TimeSeriesCollection tsDataset = new TimeSeriesCollection();
+                        tsDataset.addSeries(timeSeries);
+                        plot.setDataset(tsDataset);
+                    }
                 }
             } catch (Exception e) {
                 e.printStackTrace();
@@ -1022,10 +1209,17 @@ public class mainUI extends JFrame {
 
         // Calculate time range based on selection
         long duration = getDurationMillis(choice);
-        Date endDate = timeSeries.getItemCount() > 0
-                ? timeSeries.getTimePeriod(timeSeries.getItemCount() - 1).getEnd()
-                : new Date();
-        startDate = new Date(endDate.getTime() - duration);
+        Date endDate;
+        if (useCandles) {
+            endDate = ohlcSeries.getItemCount() > 0
+                    ? ohlcSeries.getPeriod(ohlcSeries.getItemCount() - 1).getEnd()
+                    : new Date();
+        } else {
+            endDate = timeSeries.getItemCount() > 0
+                    ? timeSeries.getTimePeriod(timeSeries.getItemCount() - 1).getEnd()
+                    : new Date();
+        }
+        Date startDate = new Date(endDate.getTime() - duration);
 
         // Update chart axis
         XYPlot plot = chartDisplay.getChart().getXYPlot();
@@ -1051,28 +1245,38 @@ public class mainUI extends JFrame {
     }
 
     // Method to update Y-axis dynamically based on data
-    private void updateYAxisRange(XYPlot plot, Date startDate, Date endDate) {
-        // Determine the min and max Y-values within the date range
+    private static void updateYAxisRange(XYPlot plot, Date start, Date end) {
+        ValueAxis yAxis = plot.getRangeAxis();
         double minY = Double.MAX_VALUE;
-        double maxY = -Double.MAX_VALUE;
+        double maxY = Double.MIN_VALUE;
+        if (useCandles) {
+            // Calculate min/max for OHLC data within the time range
+            for (int i = 0; i < ohlcSeries.getItemCount(); i++) {
+                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(i);
+                Date itemDate = item.getPeriod().getEnd();
+                if (itemDate.after(start) && itemDate.before(end)) {
+                    minY = Math.min(minY, item.getLowValue());
+                    maxY = Math.max(maxY, item.getHighValue());
+                }
+            }
+        } else {
+            // Existing logic for TimeSeries
 
-        for (int i = 0; i < timeSeries.getItemCount(); i++) {
-            Date date = timeSeries.getTimePeriod(i).getEnd();
-            if (!date.before(startDate) && !date.after(endDate)) {
-                double closeValue = timeSeries.getValue(i).doubleValue();
-                minY = Math.min(minY, closeValue);
-                maxY = Math.max(maxY, closeValue);
+            for (int i = 0; i < timeSeries.getItemCount(); i++) {
+                Date itemDate = timeSeries.getTimePeriod(i).getEnd();
+                if (itemDate.after(start) && itemDate.before(end)) {
+                    double value = timeSeries.getValue(i).doubleValue();
+                    minY = Math.min(minY, value);
+                    maxY = Math.max(maxY, value);
+                }
             }
         }
-
-        // Set the new range for the Y-axis
-        if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
-            ValueAxis yAxis = plot.getRangeAxis();
-            yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1 + 0.1); // Add a little margin + offset to avoid errors
+        if (minY != Double.MAX_VALUE && maxY != Double.MIN_VALUE) {
+            yAxis.setRange(minY * 0.99, maxY * 1.01); // Add 1% padding
         }
     }
 
-    private long getDurationMillis(int choice) {
+    private static long getDurationMillis(int choice) {
         return switch (choice) {
             case 1 -> TimeUnit.MINUTES.toMillis(1);     // 1 Minute
             case 2 -> TimeUnit.MINUTES.toMillis(3);     // 3 Minutes
@@ -1090,30 +1294,38 @@ public class mainUI extends JFrame {
         };
     }
 
-    private ChartPanel createChart(TimeSeries timeSeries, String chartName) {
-        // Wrap the TimeSeries in a TimeSeriesCollection
-        TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(timeSeries);
+    private static ChartPanel createChart(String title) {
+        OHLCSeriesCollection ohlcSeriesCollection = new OHLCSeriesCollection();
+        ohlcSeriesCollection.addSeries(ohlcSeries);
 
-        // Create the chart with the dataset
-        JFreeChart chart = ChartFactory.createTimeSeriesChart(
-                chartName, // Chart title
-                "Date",    // X-axis Label
-                "Price",   // Y-axis Label
-                dataset,   // The dataset
-                true,      // Show legend
-                true,      // Show tooltips
-                false      // Show URLs
-        );
+        TimeSeriesCollection timeSeriesCollection = new TimeSeriesCollection();
+        timeSeriesCollection.addSeries(timeSeries);
 
-        // Customize the plot
+        JFreeChart chart = useCandles
+                ? ChartFactory.createCandlestickChart(title, "Date", "Price", ohlcSeriesCollection, true)
+                : ChartFactory.createTimeSeriesChart(title, "Date", "Price", timeSeriesCollection, true, true, false);
+
         XYPlot plot = chart.getXYPlot();
-        plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
 
-        // Create the chart panel and enable zoom and pan features
-        ChartPanel chartPanel = new ChartPanel(chart);
+        if (useCandles) {
+            CandlestickRenderer r = new CandlestickRenderer();
+            r.setAutoWidthMethod(CandlestickRenderer.WIDTHMETHOD_SMALLEST);
+            r.setUpPaint(Color.GREEN);
+            r.setDownPaint(Color.RED);
+            r.setUseOutlinePaint(true);
+            r.setDrawVolume(true);
+            plot.setRenderer(r);
+        }
 
-        // Add mouse listener for marker placement and shaded region
+        plot.addRangeMarker(new IntervalMarker(0, Double.POSITIVE_INFINITY,
+                new Color(200, 255, 200, 50)));
+
+        ChartPanel panel = new ChartPanel(chart);
+        attachMouseMarker(panel, plot);
+        return panel;
+    }
+
+    private static void attachMouseMarker(ChartPanel chartPanel, XYPlot plot) {
         chartPanel.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
@@ -1144,8 +1356,6 @@ public class mainUI extends JFrame {
                 }
             }
         });
-
-        return chartPanel;
     }
 
     public JPanel createHypePanel() {
@@ -1376,7 +1586,6 @@ public class mainUI extends JFrame {
 
     public static class eventActivateHypeMode implements ActionListener {
         private static final ExecutorService executorService = Executors.newSingleThreadExecutor();
-        private static final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(1);
 
         @Override
         public void actionPerformed(ActionEvent e) {
@@ -1388,63 +1597,6 @@ public class mainUI extends JFrame {
                     ex.printStackTrace();
                 }
             });
-
-            scheduledExecutor.scheduleAtFixedRate(() -> {
-                try {
-                    if (!notificationListModel.isEmpty()) {
-                        for (int i = 0; i < notificationListModel.size(); i++) {
-                            Notification notification = notificationListModel.getElementAt(i);
-                            mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
-                                if (value != null) {
-                                    try {
-                                        Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
-
-                                        double latestClose = value.getClose();
-                                        TimeSeries series = notification.getTimeSeries();
-                                        Date start = series.getDataItem(0).getPeriod().getStart();
-
-                                        SwingUtilities.invokeLater(() -> {
-                                            // Update series data
-                                            series.addOrUpdate(new Second(newDate), latestClose);
-
-                                            // Only adjust UI if chart is visible
-                                            ChartPanel chartPanel = notification.getChartPanel();
-                                            if (chartPanel != null) {
-                                                XYPlot plot = chartPanel.getChart().getXYPlot();
-                                                DateAxis axis = (DateAxis) plot.getDomainAxis();
-                                                axis.setRange(start, newDate);
-
-                                                // Calculate Y-axis range
-                                                double minY = Double.MAX_VALUE;
-                                                double maxY = -Double.MAX_VALUE;
-                                                for (int j = 0; j < series.getItemCount(); j++) {
-                                                    Date date = series.getTimePeriod(j).getEnd();
-                                                    if (!date.before(start) && !date.after(newDate)) {
-                                                        double closeValue = series.getValue(j).doubleValue();
-                                                        minY = Math.min(minY, closeValue);
-                                                        maxY = Math.max(maxY, closeValue);
-                                                    }
-                                                }
-
-                                                if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
-                                                    ValueAxis yAxis = plot.getRangeAxis();
-                                                    yAxis.setRange(minY - (maxY - minY) * 0.1, maxY + (maxY - minY) * 0.1 + 0.1);
-                                                }
-
-                                                chartPanel.repaint();
-                                            }
-                                        });
-                                    } catch (Exception ex) {
-                                        ex.printStackTrace();
-                                    }
-                                }
-                            });
-                        }
-                    }
-                } catch (Exception ex) {
-                    ex.printStackTrace();
-                }
-            }, 0, 1, TimeUnit.SECONDS);
         }
     }
 
@@ -1452,7 +1604,7 @@ public class mainUI extends JFrame {
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness);
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness, useCandles);
             gui.setSize(500, 500);
             gui.setAlwaysOnTop(true);
             gui.setTitle("Config handler ");

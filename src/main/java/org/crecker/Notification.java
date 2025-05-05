@@ -1,16 +1,22 @@
 package org.crecker;
 
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
+import org.jfree.chart.renderer.xy.CandlestickRenderer;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.time.ohlc.OHLCItem;
+import org.jfree.data.time.ohlc.OHLCSeries;
+import org.jfree.data.time.ohlc.OHLCSeriesCollection;
 
 import javax.swing.*;
 import java.awt.*;
@@ -18,6 +24,9 @@ import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
 import java.time.LocalDateTime;
+import java.util.List;
+
+import static org.crecker.mainUI.useCandles;
 
 public class Notification {
     private static double point1X = Double.NaN;
@@ -29,20 +38,22 @@ public class Notification {
     private static IntervalMarker shadedRegion = null;
     private final String title;
     private final String content;
-    private final TimeSeries timeSeries;
+    private final List<StockUnit> stockUnitList;
     private final LocalDateTime localDateTime;
     private final String symbol;
     private final double change;
     private final int config;
     private final Color color;
+    private final TimeSeries timeSeries;
+    private final OHLCSeries ohlcSeries;
     JLabel percentageChange;
     private JFrame notificationFrame; // Frame for the notification
     private ChartPanel chartPanel;
 
-    public Notification(String title, String content, TimeSeries timeSeries, LocalDateTime localDateTime, String symbol, double change, int config) {
+    public Notification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
         this.title = title;
         this.content = content;
-        this.timeSeries = timeSeries;
+        this.stockUnitList = stockUnitList;
         this.localDateTime = localDateTime;
         this.symbol = symbol;
         this.change = change;
@@ -65,6 +76,12 @@ public class Notification {
         } else {
             this.color = new Color(128, 0, 128);       // Royal Purple
         }
+
+        this.ohlcSeries = new OHLCSeries(symbol + " OHLC");
+        processOHLCData(stockUnitList);
+
+        this.timeSeries = new TimeSeries(symbol + " Price");
+        processTimeSeriesData(stockUnitList);
     }
 
     private static void addFirstMarker(XYPlot plot, double xPosition) {
@@ -84,6 +101,21 @@ public class Notification {
         marker1.setPaint(Color.GREEN);  // First marker in green
         marker1.setStroke(new BasicStroke(2.5f));  // Customize thickness
         plot.addDomainMarker(marker1);
+    }
+
+    @NotNull
+    private static XYPlot getXyPlot(JFreeChart chart) {
+        XYPlot plot = chart.getXYPlot();
+
+        // Configure candlestick renderer
+        CandlestickRenderer renderer = new CandlestickRenderer();
+        renderer.setAutoWidthMethod(CandlestickRenderer.WIDTHMETHOD_SMALLEST);
+        renderer.setUpPaint(Color.GREEN);    // Color for "up" candles (close >= open)
+        renderer.setDownPaint(Color.RED);    // Color for "down" candles (close < open)
+        renderer.setUseOutlinePaint(true);
+        renderer.setDrawVolume(false); // Prevents forced 0 baseline
+        plot.setRenderer(renderer);
+        return plot;
     }
 
     public Color getColor() {
@@ -110,24 +142,60 @@ public class Notification {
         return content;
     }
 
-    public TimeSeries getTimeSeries() { //get the data chart (timeSeries)
-        return timeSeries;
+    public List<StockUnit> getStockUnitList() {
+        return stockUnitList;
     }
 
     public int getConfig() {
         return config;
     }
 
-    public void addDataPoint(StockUnit unit) {
-        if (unit.getLocalDateTimeDate().isAfter(this.localDateTime)) {
-            addDataPointToTimeSeries(unit);
-            updateUI();
+    public ChartPanel getChartPanel() {
+        return chartPanel;
+    }
+
+    public TimeSeries getTimeSeries() {
+        return timeSeries;
+    }
+
+    public OHLCSeries getOHLCSeries() {
+        return ohlcSeries;
+    }
+
+    private void processOHLCData(List<StockUnit> stockUnits) {
+        for (StockUnit unit : stockUnits) {
+            ohlcSeries.add(new OHLCItem(
+                    new Second(unit.getDateDate()),
+                    unit.getOpen(),
+                    unit.getHigh(),
+                    unit.getLow(),
+                    unit.getClose()
+            ));
         }
     }
 
-    private void addDataPointToTimeSeries(StockUnit unit) {
-        Second date = new Second(unit.getDateDate());
-        timeSeries.addOrUpdate(date, unit.getClose());
+    private void processTimeSeriesData(List<StockUnit> stockUnits) {
+        for (StockUnit unit : stockUnits) {
+            Second period = new Second(unit.getDateDate());
+            timeSeries.add(period, unit.getClose());
+        }
+    }
+
+    public void addDataPoint(StockUnit unit) {
+        if (unit.getLocalDateTimeDate().isAfter(this.localDateTime)) {
+            Second period = new Second(unit.getDateDate());
+
+            ohlcSeries.add(new OHLCItem(
+                    period,
+                    unit.getOpen(),
+                    unit.getHigh(),
+                    unit.getLow(),
+                    unit.getClose()
+            ));
+
+            timeSeries.addOrUpdate(period, unit.getClose());
+            updateUI();
+        }
     }
 
     private void updateUI() {
@@ -156,7 +224,7 @@ public class Notification {
         mainPanel.setLayout(new BorderLayout());
 
         // Enable zoom and pan features on the chart panel
-        chartPanel = createChart(timeSeries, symbol + " price Chart");
+        chartPanel = createChart();
         chartPanel.setPreferredSize(new Dimension(500, 300));
 
         // Create a panel to hold the percentage label and button
@@ -182,27 +250,93 @@ public class Notification {
         notificationFrame.setVisible(true);
     }
 
-    private ChartPanel createChart(TimeSeries timeSeries, String chartName) {
-        // Wrap the TimeSeries in a TimeSeriesCollection
-        TimeSeriesCollection dataset = new TimeSeriesCollection();
-        dataset.addSeries(timeSeries);
+    private ChartPanel createChart() {
+        if (useCandles) {
+            return createOHLCChart();
+        } else {
+            return createTimeSeriesChart();
+        }
+    }
 
-        // Create the chart with the dataset
+    private ChartPanel createTimeSeriesChart() {
+        TimeSeriesCollection dataset = new TimeSeriesCollection(timeSeries);
         JFreeChart chart = ChartFactory.createTimeSeriesChart(
-                chartName, // Chart title
-                "Date",    // X-axis Label
-                "Price",   // Y-axis Label
-                dataset,   // The dataset
-                true,      // Show legend
-                true,      // Show tooltips
-                false      // Show URLs
+                symbol + " Price Chart",
+                "Date",
+                "Price",
+                dataset,
+                true,
+                true,
+                false
         );
 
         // Customize the plot
         XYPlot plot = chart.getXYPlot();
+        plot.getDomainAxis().setAutoRange(true);
+        plot.getRangeAxis().setAutoRange(true);
         plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
 
         // Create the chart panel and enable zoom and pan features
+        ChartPanel chartPanel = new ChartPanel(chart);
+
+        // Add mouse listener for marker placement and shaded region
+        chartPanel.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                Point2D p = chartPanel.translateScreenToJava2D(e.getPoint());
+                ValueAxis xAxis = plot.getDomainAxis();
+                ValueAxis yAxis = plot.getRangeAxis();
+
+                // Convert mouse position to data coordinates
+                double x = xAxis.java2DToValue(p.getX(), chartPanel.getScreenDataArea(), plot.getDomainAxisEdge());
+                double y = yAxis.java2DToValue(p.getY(), chartPanel.getScreenDataArea(), plot.getRangeAxisEdge());
+
+                if (Double.isNaN(point1X)) {
+                    // First point selected, set the first marker
+                    point1X = x;
+                    point1Y = y;
+                    addFirstMarker(plot, point1X);
+                } else {
+                    // Second point selected, set the second marker and shaded region
+                    point2X = x;
+                    point2Y = y;
+                    addSecondMarkerAndShade(plot);
+
+                    // Reset points for next selection
+                    point1X = Double.NaN;
+                    point1Y = Double.NaN;
+                    point2X = Double.NaN;
+                    point2Y = Double.NaN;
+                }
+            }
+        });
+
+        return chartPanel;
+    }
+
+    private ChartPanel createOHLCChart() {
+        OHLCSeriesCollection dataset = new OHLCSeriesCollection();
+        dataset.addSeries(ohlcSeries);
+
+        JFreeChart chart = ChartFactory.createCandlestickChart(
+                symbol + " OHLC Chart",
+                "Date",
+                "Price",
+                dataset,
+                true
+        );
+
+        XYPlot plot = getXyPlot(chart);
+
+        // Set auto-range for axes and exclude zero from the range
+        plot.getDomainAxis().setAutoRange(true);
+        NumberAxis rangeAxis = (NumberAxis) plot.getRangeAxis();
+        rangeAxis.setAutoRange(true);
+        rangeAxis.setAutoRangeIncludesZero(false); // Exclude zero from auto-range
+        rangeAxis.configure(); // Force recalculation of the axis range
+
+        plot.addRangeMarker(new IntervalMarker(0.0, Double.POSITIVE_INFINITY, new Color(200, 255, 200, 100)));
+
         ChartPanel chartPanel = new ChartPanel(chart);
 
         // Add mouse listener for marker placement and shaded region
@@ -279,9 +413,5 @@ public class Notification {
     @Override
     public String toString() {
         return title; // Display the title in the list
-    }
-
-    public ChartPanel getChartPanel() {
-        return chartPanel;
     }
 }

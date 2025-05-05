@@ -5,6 +5,7 @@ import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
@@ -410,7 +411,7 @@ public class pLTester {
     private static void createNotification(Notification currentEvent) {
         try {
             addNotification(currentEvent.getTitle(), currentEvent.getContent(),
-                    currentEvent.getTimeSeries(), currentEvent.getLocalDateTime(),
+                    currentEvent.getStockUnitList(), currentEvent.getLocalDateTime(),
                     currentEvent.getSymbol(), currentEvent.getChange(), currentEvent.getConfig());
         } catch (Exception e) {
             e.printStackTrace();
@@ -461,6 +462,13 @@ public class pLTester {
 
                 // Get reference to the plot
                 plot = chart.getXYPlot();
+
+                // Set auto-range for axes and exclude zero from the range
+                plot.getDomainAxis().setAutoRange(true);
+                NumberAxis rangeAxis = (NumberAxis) plot.getRangeAxis();
+                rangeAxis.setAutoRange(true);
+                rangeAxis.setAutoRangeIncludesZero(false); // Exclude zero from auto-range
+                rangeAxis.configure(); // Force recalculation of the axis range
 
                 // Configure candlestick renderer
                 CandlestickRenderer renderer = new CandlestickRenderer();
