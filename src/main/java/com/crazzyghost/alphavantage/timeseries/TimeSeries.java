@@ -36,9 +36,11 @@ import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import okhttp3.Call;
 import okhttp3.Response;
 import okhttp3.ResponseBody;
+import org.jetbrains.annotations.NotNull;
 
 import java.io.IOException;
 import java.util.Map;
+import java.util.Objects;
 
 /**
  * Access to Stock Time Series Data
@@ -116,15 +118,15 @@ public final class TimeSeries implements Fetcher {
 
         config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new okhttp3.Callback() {
             @Override
-            public void onFailure(Call call, IOException e) {
+            public void onFailure(@NotNull Call call, @NotNull IOException e) {
                 if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException(e.getMessage()));
             }
 
             @Override
-            public void onResponse(Call call, Response response) throws IOException {
+            public void onResponse(@NotNull Call call, @NotNull Response response) throws IOException {
                 if (response.isSuccessful()) {
                     try (ResponseBody body = response.body()) {
-                        parseResponse(Parser.parseJSON(body.string()));
+                        parseResponse(Parser.parseJSON(Objects.requireNonNull(body).string()));
                     }
                 } else {
                     if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
@@ -155,7 +157,7 @@ public final class TimeSeries implements Fetcher {
         this.failureCallback = null;
         okhttp3.OkHttpClient client = config.getOkHttpClient();
         try (Response response = client.newCall(UrlExtractor.extract(builder.build(), config.getKey())).execute()) {
-            parseResponse(Parser.parseJSON(response.body().string()));
+            parseResponse(Parser.parseJSON(Objects.requireNonNull(response.body()).string()));
         } catch (IOException e) {
             throw new AlphaVantageException(e.getMessage());
         }
@@ -224,7 +226,6 @@ public final class TimeSeries implements Fetcher {
         }
     }
 
-
     /**
      * An abstract proxy for building requests. Adds the functionality of adding callbacks and a terminal method for
      * fetching data.
@@ -243,9 +244,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the symbol for the request
-         *
-         * @param symbol
-         * @return
          */
         public T forSymbol(String symbol) {
             this.builder.forSymbol(symbol);
@@ -256,7 +254,6 @@ public final class TimeSeries implements Fetcher {
          * Set the dataType for the request
          *
          * @param type the datatype {@link DataType}
-         * @return
          */
         public T dataType(DataType type) {
             this.builder.dataType(type);
@@ -265,9 +262,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the success callback during an async call
-         *
-         * @param callback
-         * @return
          */
         public T onSuccess(SuccessCallback<?> callback) {
             TimeSeries.this.successCallback = callback;
@@ -276,9 +270,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the failure callback during an async call
-         *
-         * @param callback
-         * @return
          */
         public T onFailure(FailureCallback callback) {
             TimeSeries.this.failureCallback = callback;
@@ -295,8 +286,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the reponse during a synchronous call
-         *
-         * @param response
          */
         public void setSyncResponse(U response) {
             this.syncResponse = response;
@@ -308,17 +297,15 @@ public final class TimeSeries implements Fetcher {
          * <p>When calling this method, any async callbacks will be overwritten</p>
          *
          * @return The api response
-         * @throws AlphaVantageException
          */
         public U fetchSync() throws AlphaVantageException {
-            SuccessCallback<U> callback = (e) -> setSyncResponse(e);
+            SuccessCallback<U> callback = this::setSyncResponse;
             TimeSeries.this.builder = this.builder;
             TimeSeries.this.fetchSync(callback);
             return this.syncResponse;
         }
 
     }
-
 
     /**
      * Proxy for building a {@link DailyRequest}
@@ -334,7 +321,6 @@ public final class TimeSeries implements Fetcher {
          * Set the output size of the request
          *
          * @param size {@link OutputSize}
-         * @return
          */
         public DailyRequestProxy outputSize(OutputSize size) {
             ((DailyRequest.Builder) this.builder).outputSize(size);
@@ -343,8 +329,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the time series function to adjusted
-         *
-         * @return
          */
         public DailyRequestProxy adjusted() {
             TimeSeries.this.adjusted = true;
@@ -368,7 +352,6 @@ public final class TimeSeries implements Fetcher {
          * Set the output size of the request
          *
          * @param size {@link OutputSize}
-         * @return
          */
         public IntraDayRequestProxy outputSize(OutputSize size) {
             ((IntraDayRequest.Builder) this.builder).outputSize(size);
@@ -379,7 +362,6 @@ public final class TimeSeries implements Fetcher {
          * Set the interval of the request
          *
          * @param interval {@link Interval}
-         * @return
          */
         public IntraDayRequestProxy interval(Interval interval) {
             ((IntraDayRequest.Builder) this.builder).interval(interval);
@@ -399,8 +381,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the request function to adjusted
-         *
-         * @return
          */
         public WeeklyRequestProxy adjusted() {
             TimeSeries.this.adjusted = true;
@@ -421,8 +401,6 @@ public final class TimeSeries implements Fetcher {
 
         /**
          * Set the request function to adjusted
-         *
-         * @return
          */
         public MonthlyRequestProxy adjusted() {
             TimeSeries.this.adjusted = true;
@@ -442,5 +420,4 @@ public final class TimeSeries implements Fetcher {
         }
 
     }
-
 }

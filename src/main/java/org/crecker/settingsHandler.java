@@ -5,20 +5,19 @@ import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 
-import static org.crecker.mainUI.gui;
-import static org.crecker.mainUI.logTextArea;
+import static org.crecker.mainUI.*;
 
 public class settingsHandler extends JFrame {
     public static JPanel settingsPanel;
-    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel;
+    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel, candleLabel;
     static JTextField volumeText, keyText, algoAggressivenessText;
-    static JCheckBox sortCheckBox, realtimeBox;
+    static JCheckBox sortCheckBox, realtimeBox, candleBox;
     int vol;
     float aggressiveness;
     String sym, key;
-    boolean sort, realtime;
+    boolean sort, realtime, useCandles;
 
-    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness) {
+    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness, boolean useCandles) {
         setLayout(new BorderLayout(10, 10));
         this.vol = vol;
         this.sym = sym;
@@ -26,6 +25,7 @@ public class settingsHandler extends JFrame {
         this.key = key;
         this.realtime = realtime;
         this.aggressiveness = aggressiveness;
+        this.useCandles = useCandles;
 
         // Create a panel to hold the settings components
         settingsPanel = new JPanel();
@@ -42,7 +42,7 @@ public class settingsHandler extends JFrame {
         // Add space between the label and the next component
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 10)));
 
-        volume = new JLabel("Volume in Euro/USD:"); // Adding a label for clarity
+        volume = new JLabel("Volume in USD:"); // Adding a label for clarity
         volume.setAlignmentX(Component.LEFT_ALIGNMENT);
         volumeText = new JTextField(String.valueOf(vol), 15);
         volumeText.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -69,6 +69,12 @@ public class settingsHandler extends JFrame {
         algoAggressivenessText = new JTextField(String.valueOf(aggressiveness));
         algoAggressivenessText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        candleLabel = new JLabel("Use candles instead of a line chart:");
+        candleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        candleBox = new JCheckBox();
+        candleBox.setSelected(useCandles);
+        candleBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+
         // Add components to the settings panel with spacing
         settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5))); // Space between description and input field
@@ -89,6 +95,10 @@ public class settingsHandler extends JFrame {
         settingsPanel.add(algoLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(algoAggressivenessText);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(candleLabel);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(candleBox);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
 
         // Create and configure the "Apply Settings" button
@@ -116,10 +126,15 @@ public class settingsHandler extends JFrame {
                         {"sort", String.valueOf(sortCheckBox.isSelected())},
                         {"key", keyText.getText()},
                         {"realtime", String.valueOf(realtimeBox.isSelected())},
-                        {"algo", String.valueOf(algoAggressivenessText.getText())}
+                        {"algo", String.valueOf(algoAggressivenessText.getText())},
+                        {"candle", String.valueOf(candleBox.isSelected())}
                 };
 
                 configHandler.saveConfig(values);
+                if (mainUI.useCandles != candleBox.isSelected()) {
+                    mainUI.useCandles = candleBox.isSelected();
+                    refreshChartType(true);
+                }
 
                 logTextArea.append("Data saved successfully to config\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());

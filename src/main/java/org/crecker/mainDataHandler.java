@@ -13,8 +13,6 @@ import com.crazzyghost.alphavantage.stock.response.StockResponse;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
-import org.jfree.data.time.Second;
-import org.jfree.data.time.TimeSeries;
 
 import javax.swing.*;
 import java.awt.*;
@@ -92,7 +90,7 @@ public class mainDataHandler {
             "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
             , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
             , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
-            , "BN", "BNS", "BNTX", "BP", "BRK/B", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
+            , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
             , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
             , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
             , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
@@ -285,6 +283,11 @@ public class mainDataHandler {
         List<String> actualSymbols = new CopyOnWriteArrayList<>();
         AtomicInteger remaining = new AtomicInteger(possibleSymbols.length);
 
+        // Thresholds (adjust these values as needed)
+        final double MARKET_CAP_PERCENTAGE = 0.05; // 5% of market cap
+        final double AVG_VOLUME_PERCENTAGE = 0.20; // 20% of average volume
+        final double SHARES_OUTSTANDING_PERCENTAGE = 0.01; // 1% of shares outstanding
+
         for (String symbol : possibleSymbols) {
             AlphaVantage.api()
                     .fundamentalData()
@@ -302,17 +305,37 @@ public class mainDataHandler {
                                 .outputSize(OutputSize.COMPACT)
                                 .onSuccess(tsResponse -> {
                                     TimeSeriesResponse ts = (TimeSeriesResponse) tsResponse;
-                                    if (ts.getStockUnits().isEmpty()) {
+                                    List<StockUnit> stockUnits = ts.getStockUnits();
+
+                                    if (stockUnits.isEmpty()) {
                                         checkCompletion(remaining, actualSymbols, callback);
                                         return;
                                     }
 
-                                    double close = ts.getStockUnits().get(0).getClose();
-                                    double volume = ts.getStockUnits().get(0).getVolume();
+                                    double close = stockUnits.get(0).getClose();
+                                    if (close <= 0) {
+                                        checkCompletion(remaining, actualSymbols, callback);
+                                        return;
+                                    }
 
-                                    if (tradeVolume < marketCapitalization
-                                            && ((double) tradeVolume / close) < volume
-                                            && ((long) (tradeVolume / close) < sharesOutstanding)) {
+                                    // Calculate shares to trade
+                                    double sharesToTrade = tradeVolume / close;
+
+                                    // Calculate 30-day average volume
+                                    int daysToConsider = Math.min(30, stockUnits.size());
+                                    double totalVolume = 0;
+                                    for (int i = 0; i < daysToConsider; i++) {
+                                        totalVolume += stockUnits.get(i).getVolume();
+                                    }
+
+                                    double averageVolume = daysToConsider > 0 ? totalVolume / daysToConsider : 0;
+
+                                    // Liquidity checks
+                                    boolean validMarketCap = (double) tradeVolume <= MARKET_CAP_PERCENTAGE * marketCapitalization;
+                                    boolean validVolume = sharesToTrade <= AVG_VOLUME_PERCENTAGE * averageVolume;
+                                    boolean validSharesOutstanding = sharesToTrade <= SHARES_OUTSTANDING_PERCENTAGE * sharesOutstanding;
+
+                                    if (validMarketCap && validVolume && validSharesOutstanding) {
                                         actualSymbols.add(symbol);
                                     }
 
@@ -417,110 +440,84 @@ public class mainDataHandler {
 
         new Thread(() -> {
             try {
-                countDownLatch.await(1, TimeUnit.MINUTES);
+                countDownLatch.await();
                 SwingUtilities.invokeLater(() -> {
                     progressDialog.dispose();
                     logTextArea.append("Initial data loading completed\n");
                 });
+
+                synchronized (symbolTimelines) {
+                    symbolTimelines.forEach((symbol, timeline) -> {
+                        if (timeline.size() < 2) {
+                            logTextArea.append("Not enough data for " + symbol + "\n");
+                            return;
+                        }
+
+                        for (int i = 1; i < timeline.size(); i++) {
+                            StockUnit current = timeline.get(i);
+                            StockUnit previous = timeline.get(i - 1);
+
+                            if (previous.getClose() > 0) {
+                                double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                                change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
+                                current.setPercentageChange(change);
+                            }
+                        }
+                    });
+                }
+
+                precomputeIndicatorRanges(true);
+                calculateStockPercentageChange(false);
+
+                while (!Thread.currentThread().isInterrupted()) {
+                    List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
+                    try {
+                        int totalBatches = (int) Math.ceil(symbols.size() / 100.0);
+                        CountDownLatch latch = new CountDownLatch(totalBatches);
+
+                        for (int i = 0; i < totalBatches; i++) {
+                            List<String> batchSymbols = symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()));
+                            String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
+                            AlphaVantage.api()
+                                    .Realtime()
+                                    .setSymbols(symbolsBatch)
+                                    .onSuccess(response -> {
+                                        matches.addAll(response.getMatches());
+                                        latch.countDown();
+                                    })
+                                    .onFailure(e -> {
+                                        handleFailure(e);
+                                        latch.countDown(); // Ensure latch is counted down on failure
+                                    })
+                                    .fetch();
+                        }
+
+                        // Wait with timeout to prevent hanging
+                        if (!latch.await(25, TimeUnit.SECONDS)) {
+                            logTextArea.append("Warning: Timed out waiting for data\n");
+                        }
+
+                        processStockData(matches);
+
+                        // wait 1 Minute
+                        Thread.sleep(60000);
+
+                    } catch (InterruptedException e) {
+                        e.printStackTrace();
+                        Thread.currentThread().interrupt();
+                        logTextArea.append("Data pull interrupted\n");
+                        break;
+                    } catch (Exception e) {
+                        e.printStackTrace();
+                        logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
+                    }
+                    logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
             }
         }).start();
-
-        synchronized (symbolTimelines) {
-            symbolTimelines.forEach((symbol, timeline) -> {
-                if (timeline.size() < 2) {
-                    logTextArea.append("Not enough data for " + symbol + "\n");
-                    return;
-                }
-
-                for (int i = 1; i < timeline.size(); i++) {
-                    StockUnit current = timeline.get(i);
-                    StockUnit previous = timeline.get(i - 1);
-
-                    if (previous.getClose() > 0) {
-                        double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
-                        change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
-                        current.setPercentageChange(change);
-                    }
-                }
-            });
-        }
-
-        precomputeIndicatorRanges(true);
-        calculateStockPercentageChange(false);
-
-        while (!Thread.currentThread().isInterrupted()) {
-            List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
-            try {
-                int totalBatches = (int) Math.ceil(symbols.size() / 100.0);
-                CountDownLatch latch = new CountDownLatch(totalBatches);
-
-                for (int i = 0; i < totalBatches; i++) {
-                    List<String> batchSymbols = symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()));
-                    String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
-
-                    AlphaVantage.api()
-                            .Realtime()
-                            .setSymbols(symbolsBatch)
-                            .onSuccess(response -> {
-                                matches.addAll(response.getMatches());
-                                latch.countDown();
-                            })
-                            .onFailure(e -> {
-                                handleFailure(e);
-                                latch.countDown(); // Ensure latch is counted down on failure
-                            })
-                            .fetch();
-                }
-
-                // Wait with timeout to prevent hanging
-                if (!latch.await(5, TimeUnit.SECONDS)) {
-                    logTextArea.append("Warning: Timed out waiting for data\n");
-                }
-
-                processStockData(matches);
-
-                // wait 1 Minute
-                Thread.sleep(60000);
-
-            } catch (InterruptedException e) {
-                e.printStackTrace();
-                Thread.currentThread().interrupt();
-                logTextArea.append("Data pull interrupted\n");
-                break;
-            } catch (Exception e) {
-                e.printStackTrace();
-                logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
-            }
-            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        }
-    }
-
-    static class ProgressDialog extends JDialog {
-        private final JProgressBar progressBar;
-        private final JLabel statusLabel;
-
-        public ProgressDialog(Frame parent) {
-            super(parent, "Fetching Data", true);
-            setSize(300, 100);
-            setLayout(new BorderLayout());
-            setLocationRelativeTo(parent);
-
-            progressBar = new JProgressBar(0, 100);
-            statusLabel = new JLabel("Initializing...", SwingConstants.CENTER);
-
-            add(statusLabel, BorderLayout.NORTH);
-            add(progressBar, BorderLayout.CENTER);
-        }
-
-        public void updateProgress(int current, int total) {
-            SwingUtilities.invokeLater(() -> {
-                int progress = (int) (((double) current / total) * 100);
-                progressBar.setValue(progress);
-                statusLabel.setText(String.format("Processed %d of %d symbols", current, total));
-            });
-        }
     }
 
     public static void getRealTimeUpdate(String symbol, RealTimeCallback callback) {
@@ -635,7 +632,7 @@ public class mainDataHandler {
                         // Add notifications to UI
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
-                                addNotification(notification.getTitle(), notification.getContent(), notification.getTimeSeries(),
+                                addNotification(notification.getTitle(), notification.getContent(), notification.getStockUnitList(),
                                         notification.getLocalDateTime(), notification.getSymbol(), notification.getChange(), notification.getConfig());
                             }
                         }
@@ -856,7 +853,6 @@ public class mainDataHandler {
     }
 
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
-        TimeSeries timeSeries = new TimeSeries(symbol);
 
         // Prevent notifications if time frame spans over the weekend (Friday to Monday)
         if (isWeekendSpan(stocks)) {
@@ -870,37 +866,28 @@ public class mainDataHandler {
         // feed normalized features and symbol
         double prediction = predict(normalizedFeatures, symbol);
 
-        try {
-            for (StockUnit stockUnit : stocks) {
-                timeSeries.addOrUpdate(new Second(stockUnit.getDateDate()), stockUnit.getClose());
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
-
-        return evaluateResult(timeSeries, prediction, stocks, symbol, features, normalizedFeatures);
+        return evaluateResult(prediction, stocks, symbol, features, normalizedFeatures);
     }
 
-    private static List<Notification> evaluateResult(TimeSeries timeSeries, double prediction,
-                                                     List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
+    private static List<Notification> evaluateResult(double prediction, List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
         List<Notification> alertsList = new ArrayList<>();
 
         double nearRes = isNearResistance(stocks);
 
         // fill the gap
-        fillTheGap(timeSeries, prediction, stocks, symbol, alertsList);
+        fillTheGap(prediction, stocks, symbol, alertsList);
 
         if (aggressiveness == 0.0) {
             aggressiveness = 1.0F;
         }
 
         // Spike & R-Line
-        spikeUp(timeSeries, prediction, stocks, symbol, features, alertsList, nearRes, aggressiveness, normalizedFeatures);
+        spikeUp(prediction, stocks, symbol, features, alertsList, nearRes, aggressiveness, normalizedFeatures);
 
         return alertsList;
     }
 
-    private static void spikeUp(TimeSeries timeSeries, double prediction, List<StockUnit> stocks, String symbol, double[] features,
+    private static void spikeUp(double prediction, List<StockUnit> stocks, String symbol, double[] features,
                                 List<Notification> alertsList, double nearRes, float manualAggressiveness, float[] normalizedFeatures) {
 
         double inverseAggressiveness = 1 / manualAggressiveness;
@@ -935,19 +922,18 @@ public class mainDataHandler {
                 && (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
         ) {
             if (nearRes == 0) {
-                createNotification(symbol, changeUp4, alertsList, timeSeries,
+                createNotification(symbol, changeUp4, alertsList, stocks,
                         stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                         prediction, 3);
             } else {
-                createNotification(symbol, changeUp4, alertsList, timeSeries,
+                createNotification(symbol, changeUp4, alertsList, stocks,
                         stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
                         prediction, 2);
             }
         }
     }
 
-    private static void fillTheGap(TimeSeries timeSeries, double prediction, List<StockUnit> stocks,
-                                   String symbol, List<Notification> alertsList) {
+    private static void fillTheGap(double prediction, List<StockUnit> stocks, String symbol, List<Notification> alertsList) {
         // Adaptive parameters
         int smaPeriod = 20;
         int atrPeriod = 14;
@@ -996,7 +982,7 @@ public class mainDataHandler {
                     (oversold || momentumDivergence);
 
             if (baseCondition) {
-                createNotification(symbol, deviation, alertsList, timeSeries,
+                createNotification(symbol, deviation, alertsList, stocks,
                         stocks.get(endIndex - 1).getLocalDateTimeDate(),
                         prediction, 1);
             }
@@ -1364,27 +1350,27 @@ public class mainDataHandler {
      * @param symbol      The name of the stock.
      * @param totalChange The total percentage change triggering the notification.
      * @param alertsList  The list to store the notification.
-     * @param timeSeries  The time series for graphical representation.
+     * @param stockUnitList  The time series for graphical representation.
      * @param date        The date of the event.
      */
     private static void createNotification(String symbol, double totalChange, List<
-            Notification> alertsList, TimeSeries timeSeries, LocalDateTime date, double prediction, int config) {
+            Notification> alertsList, List<StockUnit> stockUnitList, LocalDateTime date, double prediction, int config) {
         if (config == 0) {
             alertsList.add(new Notification(String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Decreased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    timeSeries, date, symbol, totalChange, 0));
+                    stockUnitList, date, symbol, totalChange, 0));
         } else if (config == 1) {
             alertsList.add(new Notification(String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Will fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    timeSeries, date, symbol, totalChange, 1));
+                    stockUnitList, date, symbol, totalChange, 1));
         } else if (config == 2) {
             alertsList.add(new Notification(String.format("%.3f%% %s R-Line %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("R-Line Spike Proceed with caution by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    timeSeries, date, symbol, totalChange, 2));
+                    stockUnitList, date, symbol, totalChange, 2));
         } else if (config == 3) {
             alertsList.add(new Notification(String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    timeSeries, date, symbol, totalChange, 3));
+                    stockUnitList, date, symbol, totalChange, 3));
         }
     }
 
@@ -1434,6 +1420,32 @@ public class mainDataHandler {
                 System.err.println("Error writing to file: " + e.getMessage());
             }
         }), 0, 1, TimeUnit.SECONDS);
+    }
+
+    static class ProgressDialog extends JDialog {
+        private final JProgressBar progressBar;
+        private final JLabel statusLabel;
+
+        public ProgressDialog(Frame parent) {
+            super(parent, "Fetching Data", true);
+            setSize(300, 100);
+            setLayout(new BorderLayout());
+            setLocationRelativeTo(parent);
+
+            progressBar = new JProgressBar(0, 100);
+            statusLabel = new JLabel("Initializing...", SwingConstants.CENTER);
+
+            add(statusLabel, BorderLayout.NORTH);
+            add(progressBar, BorderLayout.CENTER);
+        }
+
+        public void updateProgress(int current, int total) {
+            SwingUtilities.invokeLater(() -> {
+                int progress = (int) (((double) current / total) * 100);
+                progressBar.setValue(progress);
+                statusLabel.setText(String.format("Processed %d of %d symbols", current, total));
+            });
+        }
     }
 
     //Interfaces
