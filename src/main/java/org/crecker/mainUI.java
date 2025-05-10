@@ -210,7 +210,7 @@ public class mainUI extends JFrame {
         }
 
         refreshChartType(false);
-      //  fetchTickerMap();
+        fetchTickerMap();
     }
 
     // Utility method to refresh all components in a container

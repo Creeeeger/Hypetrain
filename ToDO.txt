@@ -1,4 +1,9 @@
 TODO
 Version 1.0:
-- squeeze everything out of spike
-- Improve speed of spike up percentage change by supportive second data
+- squeeze everything out of spike and improve precision
+
+Version 1.5:
+- Improve speed of spike up percentage change detection by supportive second data framework
+
+Version 2.0:
+- Add Institutional purchase Hunter
