@@ -77,24 +77,148 @@ Discipline is alpha.
 Obey the system — or be the exit liquidity.
 ---
 
-- Get notified when the next hype comes in
-- Hop onto the hype Train
-- damn boy make that cash
-- Donate 1% of your earnings to me
-- Now new without OOP models but hashmaps for insane performance
+# 📈 Stock Tracker – Feature Overview
 
+A fully-featured real-time and historical stock analytics tool built for fast, intelligent market monitoring.
 
-- search for symbols
-- check percentage change
-- receive the latest news about a stock
-- Time history about a stock
-- Add your custom symbols to your watch list
-- Have an insight into the stock before you buy over the notification window
-- Re-use the config when using on another machine (import / export config)
-- get notified when the hype comes in
-- set in settings your volume to only check for stocks where you can buy full volume to make maximum profit
-- pre-defined set of stocks for volumes of 200-300k €
-- Use of custom Trained AI for additional support for prediction
+---
+
+## 🔍 Symbol Search & Management
+
+- **Live Symbol Search** – real-time suggestions via API
+- **Watchlist Control** – add or remove tracked symbols
+- **Pre-defined & Custom Watchlists** – e.g., “Volume > 90,000 €” with ability to create your own sets
+
+---
+
+## 📊 Real-Time & Historical Data
+
+- **Multiple Time Ranges**:
+    - `1 min`, `3 min`, `5 min`, `10 min`, `30 min`, `1 h`, `4 h`, `1 day`, `3 days`, `1 week`, `2 weeks`, `1 month`
+- **Chart Types** – Toggle between:
+    - Candlestick (OHLC)
+    - Line Chart
+- **Auto Refresh** – 1-second interval updates for live data
+
+---
+
+## 📈 Price Analytics
+
+- **Percentage Change Calculator** – select any two points on the chart (with shaded region)
+- **Key Metrics Displayed**:
+    - Volume
+    - P/E Ratio
+    - P/E/G Ratio
+    - 52-Week High/Low
+    - Market Cap
+
+---
+
+## 📰 News & Company Overview
+
+- **Live Company News** – with two-line previews
+- **Quick Article Access** – double-click to open full articles
+- **Company Overview Dialog** – summary of the selected company
+
+---
+
+## 🔔 Notifications & “Hype” Alerts
+
+- **In-App Notifications** – auto-expire after 20 minutes or duplicate
+- **System Notifications** – support for macOS & Windows
+- **Hype Mode** – scan for rallying stocks
+- **Check for Rallies** – open a popup with potential candidates
+- **Notification Sorting** – by date or % change
+
+---
+
+## ⚙️ Configuration Management
+
+- **Settings Import/Export** – via XML
+- **Persisted Preferences**:
+    - Volume threshold
+    - Symbol list
+    - Sort preferences
+    - API key
+    - Real-time toggle
+    - Aggressiveness level
+    - Candle view toggle
+- **Cross-Device Config Reuse** – port settings easily between machines
+
+---
+
+## 🔎 Volume Filtering & Customization
+
+- **Volume Filter** – only track stocks where full volume is open
+- **High-Volume Stock Filters** – pre-defined threshold (> 90,000 €)
+
+---
+
+## 🧠 Custom AI Support
+
+- **AI Hook** – integrate your own trained prediction engine
+
+---
+
+## 🖥️ UI & Usability
+
+- **Responsive Swing UI** – with three panels:
+    - Symbols
+    - Chart
+    - Hype
+- **Visual Features**:
+    - Color-coded symbol entries
+    - Rounded and resizable titled borders
+    - Clean layout and menu actions for all core features
+
+---
+
+## 🎯 Interactive Chart & Annotation Tools
+
+- **Two-Point %-Change Measurement** – click any two spots to drop start/end markers, shade the interval, and instantly
+  compute percentage change.
+- **Custom Markers & Shading** – first marker in green; second marker colored by direction (green/up, red/down);
+  translucent region fill.
+- **Ad-hoc Analysis Mode** – markers reset automatically after each measurement so you can experiment freely.
+
+---
+
+## 🔄 Live Data Streaming & UI Refresh
+
+- **Real-Time Tick Ingestion** – new ticks after the notification timestamp are auto-appended to both OHLC and line
+  series.
+- **Auto-Repaint Swing UI** – chart panel repaints on the Event Dispatch Thread to ensure lag-free updates.
+
+---
+
+## 🔔 Enhanced Notification Window
+
+- **Always-On-Top Popup** – stays above all other windows; disposes automatically after timeout or via manual close.
+- **Rich Scrollable Content Pane** – word-wrapped text area for arbitrary message lengths.
+- **Quick-Action Buttons**
+    - “Open in Web Portal” → launches your trading-platform URL
+    - “Open in Realtime SuperChart” → jumps back to main UI for deeper drill-downs
+
+---
+
+## 🌈 Configurable Alert Styling
+
+- **Color-Coded Alert Types** –
+    - Dips: Bright Red
+    - Gap-Fillers: Deep Orange
+    - R-Line Spikes: Sky Blue
+    - Big Spikes: Leaf Green
+    - Default Catch-All: Royal Purple
+- **Threshold-Driven Hype Alerts** – tie each config to custom volatility/volume thresholds so only meaningful events
+  trigger.
+
+---
+
+## 🚀 Performance & Threading
+
+- **Efficient Updates** – `ScheduledExecutorService` for periodic refresh
+- **Async API Calls** – non-blocking background threads
+- **Data Caching** – faster chart redraws via cached aggregations
 
 ## Indicators in use
 
@@ -109,10 +233,10 @@ Obey the system — or be the exit liquidity.
 ## Python env. instructions
 
 - Open project in pycharm
-- Install dependencies which throw errors
+- Install dependencies which throw errors or dependency install command inside the file
 - Run main.py
 
-## Model knowledge
+## Model knowledge & research
 
 ### Buffer size
 
@@ -175,6 +299,21 @@ Obey the system — or be the exit liquidity.
 - 💀 ~40% whipsaw rate without Level 2 data
 
 ---
+
+### 📈 Different Times Require Different Measures
+
+To let **HypeTrain** operate effectively under varying market conditions, I've implemented a preset weighting table.  
+These weightings adapt HypeTrain's behavior to match different environments like Bull/Bear Markets or during high
+volatility phases.
+
+| **Category** | **Bull Market** | **Bear Market** | **High Volatility** | **Scraper Mode** |
+|--------------|:---------------:|:---------------:|:-------------------:|:----------------:|
+| **TREND**    |      0.30       |      0.15       |        0.20         |       0.10       |
+| **MOMENTUM** |      0.40       |      0.25       |        0.35         |       0.10       |
+| **STATS**    |      0.15       |      0.30       |        0.25         |       0.45       |
+| **ADVANCED** |      0.15       |      0.30       |        0.20         |       0.35       |
+
+> 🛠️ *These dynamic weight adjustments allow HypeTrain to stay sharp across all market terrains.*
 
 ### Miscellaneous
 
