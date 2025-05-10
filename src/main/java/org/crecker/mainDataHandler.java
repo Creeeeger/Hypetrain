@@ -20,9 +20,9 @@ import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.DayOfWeek;
-import java.time.LocalDateTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
@@ -109,6 +109,18 @@ public class mainDataHandler {
             , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
             , "ZIM", "ZTO", "ZTS", "ВТВТ"
     };
+
+    // Rally pipeline variables
+    private static final int MINUTES = 120;     // bar length
+    private static final int DAYS = 12;  // look-back
+    private static final int W = DAYS * 8;   // ≈ 8 bars per day
+    private static final double SLOPE_MIN = 0.1;    // % per bar
+    private static final double WIDTH_MAX = 0.06;   // 6 % channel width
+    private static final int[] DAYS_OPTIONS = {4, 6, 8, 10, 14};  // Different day ranges to check
+    private static final double R2_MIN = 0.6;
+    private static final double TOLERANCE_PCT = 0.03;
+    private static final LocalTime MARKET_OPEN = LocalTime.of(4, 0);
+    private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
 
     public static void main(String[] args) {
         PLAnalysis();
@@ -223,7 +235,7 @@ public class mainDataHandler {
 
         List<String> possibleSymbols = new ArrayList<>(); //get the symbols based on the config
 
-        if (tradeVolume > 300000) {
+        if (tradeVolume > 90000) {
             File file = new File(tradeVolume + ".txt");
 
             if (file.exists()) {
@@ -264,7 +276,7 @@ public class mainDataHandler {
                 });
             }
         } else {
-            // For tradeVolume <= 300000, directly copy symbols to the list and process
+            // For tradeVolume <= 90000, directly copy symbols to the list and process
             possibleSymbols.addAll(Arrays.asList(stockSymbols));
 
             logTextArea.append("Use pre set symbols\n");
@@ -335,7 +347,24 @@ public class mainDataHandler {
                                     boolean validVolume = sharesToTrade <= AVG_VOLUME_PERCENTAGE * averageVolume;
                                     boolean validSharesOutstanding = sharesToTrade <= SHARES_OUTSTANDING_PERCENTAGE * sharesOutstanding;
 
-                                    if (validMarketCap && validVolume && validSharesOutstanding) {
+                                    TickerData data = nameToData.get(symbol);
+                                    boolean canBuyEnough = data != null && sharesToTrade <= data.maxOpenQuantity();
+
+                                    System.out.println("===== Liquidity Check for: " + symbol + " =====");
+                                    System.out.println("Trade Volume ($): " + tradeVolume);
+                                    System.out.println("Close Price: " + close);
+                                    System.out.println("Shares to Trade: " + sharesToTrade);
+                                    System.out.println("Market Cap: " + marketCapitalization);
+                                    System.out.println("Average Volume (30-day): " + averageVolume);
+                                    System.out.println("Shares Outstanding: " + sharesOutstanding);
+                                    System.out.println("Max Open Quantity: " + (data != null ? data.maxOpenQuantity() : "N/A"));
+                                    System.out.println("Valid Market Cap? " + validMarketCap);
+                                    System.out.println("Valid Volume? " + validVolume);
+                                    System.out.println("Valid Shares Outstanding? " + validSharesOutstanding);
+                                    System.out.println("Can Buy Enough? " + canBuyEnough);
+                                    System.out.println("=====================================");
+
+                                    if (validMarketCap && validVolume && validSharesOutstanding && canBuyEnough) {
                                         actualSymbols.add(symbol);
                                     }
 
@@ -869,6 +898,304 @@ public class mainDataHandler {
         return evaluateResult(prediction, stocks, symbol, features, normalizedFeatures);
     }
 
+    public static List<String> checkForRallies() throws InterruptedException {
+        List<String> stockList = new ArrayList<>(List.of(stockSymbols));
+        Map<String, List<StockUnit>> timelines = new ConcurrentHashMap<>();
+        CountDownLatch latch = new CountDownLatch(stockList.size());
+
+        logTextArea.append("Started pulling data from server\n");
+        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
+        //Create and show progress dialog
+        ProgressDialog progressDialog = new ProgressDialog((Frame) SwingUtilities.getWindowAncestor(logTextArea));
+        SwingUtilities.invokeLater(() -> progressDialog.setVisible(true));
+
+        // Update progress helper
+        Runnable updateProgress = () -> {
+            int current = stockList.size() - (int) latch.getCount();
+            progressDialog.updateProgress(current, stockList.size());
+        };
+
+        for (String symbol : stockList) {
+            String symbolUpper = symbol.toUpperCase();
+
+            AlphaVantage.api()
+                    .timeSeries()
+                    .intraday()
+                    .forSymbol(symbol)
+                    .interval(Interval.ONE_MIN)
+                    .outputSize(OutputSize.FULL)
+                    .onSuccess(r -> {
+                        try {
+                            handleSuccess((TimeSeriesResponse) r);
+                            List<StockUnit> units = ((TimeSeriesResponse) r).getStockUnits();
+                            units.forEach(u -> u.setSymbol(symbolUpper));
+
+                            Collections.reverse(units);
+                            timelines.computeIfAbsent(symbolUpper, k -> new ArrayList<>()).addAll(units);
+                        } catch (IOException e) {
+                            throw new RuntimeException(e);
+                        } finally {
+                            latch.countDown();
+                            SwingUtilities.invokeLater(updateProgress);
+                        }
+                    })
+                    .onFailure(err -> {
+                        mainDataHandler.handleFailure(err);
+                        latch.countDown();
+                        SwingUtilities.invokeLater(updateProgress);
+                    })
+                    .fetch();
+        }
+
+        latch.await();
+        SwingUtilities.invokeLater(() -> {
+            progressDialog.dispose();
+            logTextArea.append("Initial data loading completed\n");
+        });
+
+        timelines.forEach((symbol, timeline) -> {
+            for (int i = 1; i < timeline.size(); i++) {
+                StockUnit cur = timeline.get(i);
+                StockUnit prev = timeline.get(i - 1);
+                if (prev.getClose() > 0) {
+                    double pct = ((cur.getClose() - prev.getClose()) / prev.getClose()) * 100;
+                    cur.setPercentageChange(Math.abs(pct) >= 14 ? prev.getPercentageChange() : pct);
+                }
+            }
+        });
+
+        return calculateIfRally(timelines);
+    }
+
+    private static List<String> calculateIfRally(Map<String, List<StockUnit>> timelines) {
+        StringBuilder summary = new StringBuilder();
+        List<String> rallies = new ArrayList<>();
+
+        timelines.forEach((symbol, minuteBars) -> {
+            summary.append("\n=====================================\n");
+            summary.append("📈 Analyzing: ").append(symbol).append(" 📊\n");
+
+            List<StockUnit> minuteBarsClean = tradingMinutesOnly(minuteBars);
+            List<StockUnit> series = compress(minuteBarsClean);
+            if (series.size() < W) {
+                summary.append("⚠️ Skipped: not enough compressed data (").append(series.size()).append(" < ").append(W).append(")\n");
+                return;
+            }
+
+            List<StockUnit> rallyWindowFull = series.subList(series.size() - W, series.size());
+            List<StockUnit> secondHalf = rallyWindowFull.subList(W / 2, W);
+
+            boolean isRally = true;
+
+            // Check multiple day ranges for consistent uptrend
+            int validDayRanges = 0;
+            int checkedDayRanges = 0;
+            for (int days : DAYS_OPTIONS) {
+                int w = days * 8;
+                if (series.size() < w) continue;
+
+                checkedDayRanges++;
+                List<StockUnit> window = series.subList(series.size() - w, series.size());
+                LR reg = linReg(window);
+
+                summary.append(String.format("🔎 Days: %d | Slope: %.4f | R²: %.4f | Size: %s%n", days, reg.slopePct, reg.r2, window.size()));
+
+                if (reg.slopePct >= SLOPE_MIN && reg.r2 >= R2_MIN) {
+                    validDayRanges++;
+                }
+            }
+
+            summary.append(String.format("✅ Valid Day Ranges: %d / %d%n", validDayRanges, checkedDayRanges));
+            if (checkedDayRanges > 0 && validDayRanges < 2) {
+                isRally = false;
+                summary.append("❌ Failed: Not enough valid uptrend periods\n");
+            }
+
+            // Second half regression
+            LR secondHalfRegLine = linReg(secondHalf);
+            summary.append(String.format("📊 Second Half | Slope: %.4f | R²: %.4f%n", secondHalfRegLine.slopePct, secondHalfRegLine.r2));
+            if (secondHalfRegLine.slopePct < SLOPE_MIN && secondHalfRegLine.r2 < R2_MIN) {
+                isRally = false;
+                summary.append("❌ Failed: Second half regression too weak\n");
+            }
+
+            // Channel width check
+            double width = channelWidth(secondHalf, secondHalfRegLine);
+            summary.append(String.format("📏 Second Half Channel Width: %.4f%n", width));
+            if (width > WIDTH_MAX) {
+                isRally = false;
+                summary.append("❌ Failed: Channel width too wide\n");
+            }
+
+            // Trend continuation to present
+            if (!trendUpToPresent(secondHalf, secondHalfRegLine)) {
+                isRally = false;
+                summary.append("❌ Failed: Trend not continuing to present\n");
+            }
+
+            // Compare recent trend vs full series
+            LR fullSeriesRegLine = linReg(series);
+            LR fullWindowRegLine = linReg(rallyWindowFull);
+            summary.append(String.format("📉 Full Series Slope: %.4f | Full Window Slope: %.4f%n", fullSeriesRegLine.slopePct, fullWindowRegLine.slopePct));
+            if (fullWindowRegLine.slopePct * 1.5 < fullSeriesRegLine.slopePct) {
+                isRally = false;
+                summary.append("❌ Failed: Recent trend weaker than historical\n");
+            }
+
+            if (isRally) {
+                rallies.add(symbol);
+                summary.append("🚀 ==> RALLY DETECTED\n");
+            }
+        });
+
+        summary.append("=====================================\n");
+        System.out.println(summary);
+
+        return rallies;
+    }
+
+    private static List<StockUnit> tradingMinutesOnly(List<StockUnit> bars) {
+        return bars.stream()
+                .filter(u -> {
+                    LocalDateTime ts = u.getLocalDateTimeDate();
+                    DayOfWeek dow = ts.getDayOfWeek();
+                    LocalTime tod = ts.toLocalTime();
+                    boolean weekday = dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY;
+                    boolean mktHours = !tod.isBefore(MARKET_OPEN) && !tod.isAfter(MARKET_CLOSE);
+                    return weekday && mktHours;          // drop weekends + out-of-hours
+                })
+                .sorted(Comparator.comparing(StockUnit::getLocalDateTimeDate))
+                .toList();
+    }
+
+    private static double channelWidth(List<StockUnit> win, LR lr) {
+        double maxResidual = 0.0;
+        for (int i = 0; i < win.size(); i++) {
+            double pred = predictSlope(lr, i);
+            maxResidual = Math.max(maxResidual, Math.abs(win.get(i).getClose() - pred) / pred);
+        }
+        return maxResidual;
+    }
+
+    private static boolean trendUpToPresent(List<StockUnit> win, LR lr) {
+        int checkBars = 8; // look at the last 8 compressed bars (≈ one trading day)
+        int aligned = 0;
+
+        for (int i = win.size() - checkBars; i < win.size(); i++) {
+            double predicted = predictSlope(lr, i);
+            double price = win.get(i).getClose();
+
+            double lower = predicted * (1 - TOLERANCE_PCT);
+            double upper = predicted * (1 + TOLERANCE_PCT);
+
+            if (price >= lower && price <= upper) {
+                aligned++;
+            }
+        }
+
+        return aligned >= (int) Math.ceil(0.75 * checkBars);
+    }
+
+    private static LR linReg(List<StockUnit> bars) {
+        int n = bars.size();
+        double sx = 0, sy = 0, sxx = 0, sxy = 0;
+        for (int i = 0; i < n; i++) {
+            double y = bars.get(i).getClose();
+            sx += i;
+            sy += y;
+            sxx += i * (double) i;
+            sxy += i * y;
+        }
+        double denom = n * sxx - sx * sx;
+        if (denom == 0) return new LR(0, 0, 0, 0, 0); // degenerate case
+
+        double slopePpu = (n * sxy - sx * sy) / denom; // price units / bar
+        double xBar = sx / n;
+        double yBar = sy / n;
+        double slopePct = slopePpu / yBar * 100.0;     // % / bar
+
+        double ssTot = 0, ssRes = 0;
+        for (int i = 0; i < n; i++) {
+            double y = bars.get(i).getClose();
+            double yPred = yBar + slopePpu * (i - xBar);
+            ssTot += (y - yBar) * (y - yBar);
+            ssRes += (y - yPred) * (y - yPred);
+        }
+        double r2 = ssTot == 0 ? 0 : 1 - ssRes / ssTot;
+
+        return new LR(slopePct, slopePpu, r2, yBar, xBar);
+    }
+
+    private static double predictSlope(LR lr, int i) {
+        return lr.yBar + lr.slopePpu * (i - lr.xBar);
+    }
+
+    private static List<StockUnit> compress(List<StockUnit> src) {
+
+        List<StockUnit> data = src.stream()
+                .filter(u -> {
+                    DayOfWeek d = u.getLocalDateTimeDate().getDayOfWeek();
+                    return d != DayOfWeek.SATURDAY && d != DayOfWeek.SUNDAY;
+                })
+                .sorted(Comparator.comparing(StockUnit::getLocalDateTimeDate))
+                .toList();
+
+        List<StockUnit> out = new ArrayList<>();
+        if (data.isEmpty()) return out;
+
+        ZonedDateTime bucketStart = data.get(0).getLocalDateTimeDate()
+                .truncatedTo(ChronoUnit.MINUTES)
+                .atZone(ZoneId.systemDefault());
+
+        StockUnit agg = null;
+
+        for (StockUnit stockUnit : data) {
+            ZonedDateTime t = stockUnit.getLocalDateTimeDate()
+                    .truncatedTo(ChronoUnit.MINUTES)
+                    .atZone(ZoneId.systemDefault());
+
+            if (agg == null) {
+                agg = new StockUnit.Builder()
+                        .open(stockUnit.getOpen())
+                        .high(stockUnit.getHigh())
+                        .low(stockUnit.getLow())
+                        .close(stockUnit.getClose())
+                        .adjustedClose(stockUnit.getClose())
+                        .volume(stockUnit.getVolume())
+                        .dividendAmount(0)
+                        .splitCoefficient(0)
+                        .time(stockUnit.dateTime)
+                        .build();
+                continue;
+            }
+
+            if (ChronoUnit.MINUTES.between(bucketStart, t) < mainDataHandler.MINUTES) {
+                // still in this bucket – update OHLCV
+                agg.setHigh(Math.max(agg.getHigh(), stockUnit.getHigh()));
+                agg.setLow(Math.min(agg.getLow(), stockUnit.getLow()));
+                agg.setClose(stockUnit.getClose());
+                agg.setVolume(agg.getVolume() + stockUnit.getVolume());
+            } else {
+                out.add(agg);
+                bucketStart = t.truncatedTo(ChronoUnit.MINUTES);
+                agg = new StockUnit.Builder()
+                        .open(stockUnit.getOpen())
+                        .high(stockUnit.getHigh())
+                        .low(stockUnit.getLow())
+                        .close(stockUnit.getClose())
+                        .adjustedClose(stockUnit.getClose())
+                        .volume(stockUnit.getVolume())
+                        .dividendAmount(stockUnit.getDividendAmount())
+                        .splitCoefficient(stockUnit.getSplitCoefficient())
+                        .time(stockUnit.dateTime)
+                        .build();
+            }
+        }
+        if (agg != null) out.add(agg);
+        return out;
+    }
+
     private static List<Notification> evaluateResult(double prediction, List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
         List<Notification> alertsList = new ArrayList<>();
 
@@ -1347,11 +1674,11 @@ public class mainDataHandler {
      * config 2 R-line spike
      * config 3 spike
      *
-     * @param symbol      The name of the stock.
-     * @param totalChange The total percentage change triggering the notification.
-     * @param alertsList  The list to store the notification.
-     * @param stockUnitList  The time series for graphical representation.
-     * @param date        The date of the event.
+     * @param symbol        The name of the stock.
+     * @param totalChange   The total percentage change triggering the notification.
+     * @param alertsList    The list to store the notification.
+     * @param stockUnitList The time series for graphical representation.
+     * @param date          The date of the event.
      */
     private static void createNotification(String symbol, double totalChange, List<
             Notification> alertsList, List<StockUnit> stockUnitList, LocalDateTime date, double prediction, int config) {
@@ -1446,6 +1773,9 @@ public class mainDataHandler {
                 statusLabel.setText(String.format("Processed %d of %d symbols", current, total));
             });
         }
+    }
+
+    private record LR(double slopePct, double slopePpu, double r2, double yBar, double xBar) {
     }
 
     //Interfaces

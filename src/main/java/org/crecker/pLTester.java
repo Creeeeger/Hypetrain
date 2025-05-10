@@ -80,6 +80,7 @@ public class pLTester {
         final String YELLOW = "\u001B[33m";
         final String CYAN = "\u001B[36m";
         final String WHITE_BOLD = "\u001B[1;37m";
+        mainUI.useCandles = useCandles;
 
         double INITIAL_CAPITAL = 100000;
         prepData();
