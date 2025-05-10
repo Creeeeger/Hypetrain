@@ -23,9 +23,11 @@ import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
+import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.List;
 
+import static org.crecker.mainUI.getTicker;
 import static org.crecker.mainUI.useCandles;
 
 public class Notification {
@@ -205,7 +207,7 @@ public class Notification {
     public void showNotification() {
         // Create the notification window
         notificationFrame = new JFrame(title);
-        notificationFrame.setSize(600, 400); // Adjust the size for both text and chart
+        notificationFrame.setSize(700, 500); // Increased size
         notificationFrame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         notificationFrame.setLocationRelativeTo(null);
         notificationFrame.setAlwaysOnTop(true);
@@ -213,33 +215,57 @@ public class Notification {
         // Create the text area with content, enable line wrapping
         JTextArea textArea = new JTextArea(content);
         textArea.setEditable(false);
-        textArea.setLineWrap(true);         // Enable line wrapping
-        textArea.setWrapStyleWord(true);    // Wrap at word boundaries
+        textArea.setLineWrap(true);
+        textArea.setWrapStyleWord(true);
 
         // Add the text area to a scroll pane
         JScrollPane scrollPane = new JScrollPane(textArea);
 
-        // Create the panel to hold both text and chart
-        JPanel mainPanel = new JPanel();
-        mainPanel.setLayout(new BorderLayout());
+        // Main panel to hold everything
+        JPanel mainPanel = new JPanel(new BorderLayout());
 
-        // Enable zoom and pan features on the chart panel
+        // Chart panel setup
         chartPanel = createChart();
-        chartPanel.setPreferredSize(new Dimension(500, 300));
+        chartPanel.setPreferredSize(new Dimension(600, 320)); // Slightly larger chart
 
-        // Create a panel to hold the percentage label and button
-        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER)); // Centers elements
+        // Bottom panel with extra features
+        JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+
         percentageChange = new JLabel("Percentage Change");
+
+        // Open in-app chart
         JButton openRealTime = new JButton("Open in Realtime SuperChart");
 
         openRealTime.addActionListener(e -> mainUI.getInstance().handleStockSelection(this.symbol));
 
+        // Hidden link shown as button
+        String tickerCode = getTicker(symbol);
+        String url = "https://app.trading212.com/?lang=de&ticker=" + tickerCode;
+
+        JButton openWebPortal = new JButton("Open in Web Portal");
+        openWebPortal.setForeground(Color.BLUE);
+        openWebPortal.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        openWebPortal.setFocusPainted(false);
+        openWebPortal.setBorderPainted(false);
+        openWebPortal.setContentAreaFilled(false);
+
+        openWebPortal.addActionListener(e -> {
+            try {
+                Desktop.getDesktop().browse(new URI(url));
+            } catch (Exception ex) {
+                ex.printStackTrace();
+            }
+        });
+
+        // Add buttons/labels
+        bottomPanel.add(openWebPortal);
         bottomPanel.add(percentageChange);
         bottomPanel.add(openRealTime);
 
+        // Assemble final layout
         mainPanel.add(scrollPane, BorderLayout.NORTH);
         mainPanel.add(chartPanel, BorderLayout.CENTER);
-        mainPanel.add(bottomPanel, BorderLayout.SOUTH); // The bottom panel now holds both elements
+        mainPanel.add(bottomPanel, BorderLayout.SOUTH);
 
         // Add the main panel to the notification window
         notificationFrame.add(mainPanel);

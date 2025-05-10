@@ -11,12 +11,12 @@ import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.CandlestickRenderer;
-import org.jfree.data.time.Second;
-import org.jfree.data.time.TimeSeries;
-import org.jfree.data.time.TimeSeriesCollection;
+import org.jfree.data.time.*;
 import org.jfree.data.time.ohlc.OHLCItem;
 import org.jfree.data.time.ohlc.OHLCSeries;
 import org.jfree.data.time.ohlc.OHLCSeriesCollection;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
@@ -29,20 +29,24 @@ import java.awt.event.MouseEvent;
 import java.awt.geom.Point2D;
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.SimpleDateFormat;
+import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
+import java.time.temporal.TemporalUnit;
 import java.util.*;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.ScheduledExecutorService;
-import java.util.concurrent.TimeUnit;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
@@ -50,6 +54,7 @@ import static org.crecker.configHandler.createConfig;
 import static org.crecker.mainDataHandler.CACHE_DIR;
 
 public class mainUI extends JFrame {
+    static String token = "..."; // Your Trading212 API key
     public static JTextArea logTextArea;
     public static mainUI gui;
     static int volume;
@@ -72,7 +77,7 @@ public class mainUI extends JFrame {
     static OHLCSeries ohlcSeries;
     static JPanel chartPlaceholder;
     static boolean modeCopy;
-    static int currentTimeRangeChoice;
+    static int currentTimeRangeChoice = 9;
 
     static JList<Notification> notificationList;
     static DefaultListModel<Notification> notificationListModel;
@@ -81,7 +86,7 @@ public class mainUI extends JFrame {
     static DefaultListModel<News> NewsListModel;
     static News CurrentNews;
 
-    static List<StockUnit> stocks;
+    private static List<StockUnit> stocks = Collections.synchronizedList(new ArrayList<>());
     private static double point1X = Double.NaN;
     private static double point1Y = Double.NaN;
     private static double point2X = Double.NaN;
@@ -90,8 +95,11 @@ public class mainUI extends JFrame {
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
     private static mainUI instance;
-    private final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+    private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
     private static String currentStockSymbol = null; // Track the currently displayed stock symbol
+    private static int lastChoice = -1;   // remember the previous range
+    private static final Map<String, Map<RegularTimePeriod, AggregatedStockData>> aggregationCache = new ConcurrentHashMap<>();
+    public static final Map<String, TickerData> nameToData = new TreeMap<>();
 
     public mainUI() {
         instance = this;
@@ -143,7 +151,7 @@ public class mainUI extends JFrame {
         }
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws Exception {
         File cacheDir = new File(CACHE_DIR);
         if (!cacheDir.exists()) cacheDir.mkdirs();
 
@@ -200,7 +208,9 @@ public class mainUI extends JFrame {
             logTextArea.append("Config loaded\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
         }
+
         refreshChartType(false);
+      //  fetchTickerMap();
     }
 
     // Utility method to refresh all components in a container
@@ -728,6 +738,17 @@ public class mainUI extends JFrame {
                     // Asynchronous fetching of real-time stock data
                     mainDataHandler.getRealTimeUpdate(selectedStock, value -> {
                         if (value != null) {
+                            stocks.add(0, new StockUnit.Builder()
+                                    .open(value.getOpen())
+                                    .high(value.getHigh())
+                                    .low(value.getLow())
+                                    .close(value.getClose())
+                                    .adjustedClose(value.getClose())
+                                    .volume(value.getVolume())
+                                    .dividendAmount(0)
+                                    .splitCoefficient(0)
+                                    .time(value.getTimestamp())
+                                    .build());
                             SwingUtilities.invokeLater(() -> {
                                 try {
                                     Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
@@ -736,16 +757,11 @@ public class mainUI extends JFrame {
                                     XYPlot plot = chartDisplay.getChart().getXYPlot();
                                     DateAxis xAxis = (DateAxis) plot.getDomainAxis();
                                     long window = getDurationMillis(currentTimeRangeChoice); // e.g. 5 min
-                                    ValueAxis yAxis = plot.getRangeAxis();
 
                                     /* ----- X-axis: only scroll if the user hasn't zoomed ---------- */
                                     if (xAxis.isAutoRange()) {               // user hasn't zoomed
                                         xAxis.setAutoRange(true);            // (keeps autoRange = true)
                                         xAxis.setFixedAutoRange(window);     // rolling window
-                                    }
-
-                                    /* ----- Y-axis: respect manual zoom the same way --------------- */
-                                    if (yAxis.isAutoRange()) {
                                         Date lower = new Date(date.getTime() - window);
                                         updateYAxisRange(plot, lower, date);
                                     }
@@ -860,7 +876,7 @@ public class mainUI extends JFrame {
         }
     }
 
-    private Color generateRandomColor() {
+    private static Color generateRandomColor() {
         Random rand = new Random();
         int red = rand.nextInt(128) + 128;   // Ensures red is between 128 and 255
         int green = rand.nextInt(128) + 128; // Ensures green is between 128 and 255
@@ -1100,7 +1116,7 @@ public class mainUI extends JFrame {
             chartPlaceholder.revalidate();
             chartPlaceholder.repaint();
 
-            if (fill) {
+            if (fill && !selectedStock.contains("lect a Stock")) {
                 mainDataHandler.getTimeline(selectedStock, values -> {
                     // Extract original close values to avoid interference from concurrent modifications
                     List<Double> originalCloses = new ArrayList<>(values.size());
@@ -1130,12 +1146,18 @@ public class mainUI extends JFrame {
     public static void refreshChartData(int choice) {
         currentTimeRangeChoice = choice;
 
+        boolean needReaggregate =
+                !selectedStock.equals(currentStockSymbol)   // ticker changed
+                        || modeCopy != useCandles                     // price ↔ candles toggle
+                        || (useCandles && choice != lastChoice);      // same mode, new window
+
         // Handle stock symbol change
-        if (!selectedStock.equals(currentStockSymbol) || modeCopy != useCandles) {
+        if (needReaggregate) {
             modeCopy = useCandles;
             currentStockSymbol = selectedStock;
             ohlcSeries.clear();
             timeSeries.clear();
+            lastChoice = choice;
 
             chartDisplay.getChart().setTitle(selectedStock + (useCandles ? " OHLC Chart" : " Price Chart"));
 
@@ -1145,21 +1167,30 @@ public class mainUI extends JFrame {
                     final ZoneId zone = ZoneId.systemDefault();
 
                     if (useCandles) {
-                        // Process OHLC data without filtering
-                        stocks.forEach(stock -> {
-                            LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
-                            Second period = new Second(
-                                    ldt.getSecond(), ldt.getMinute(), ldt.getHour(),
-                                    ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()
-                            );
-                            ohlcSeries.add(new OHLCItem(
-                                    period,
-                                    stock.getOpen(),
-                                    stock.getHigh(),
-                                    stock.getLow(),
-                                    stock.getClose()
-                            ));
-                        });
+                        // Determine aggregation interval based on time range
+                        Class<? extends RegularTimePeriod> periodClass = determineAggregationPeriod(choice);
+
+                        long duration = getDurationMillis(choice);
+                        Date endDate = stocks.get(0).getDateDate();
+                        Date startDate = new Date(endDate.getTime() - duration);
+
+                        // Add caching structures
+                        String cacheKey = periodClass.getName() + "_" + endDate.getTime();
+
+                        Map<RegularTimePeriod, AggregatedStockData> aggregatedData = aggregationCache.get(cacheKey);
+                        if (aggregatedData == null) {
+                            aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
+                            aggregationCache.put(cacheKey, aggregatedData);
+                        }
+
+                        aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
+
+                        // Clear and repopulate OHLC series with aggregated data
+                        ohlcSeries.clear();
+                        for (Map.Entry<RegularTimePeriod, AggregatedStockData> e : aggregatedData.entrySet()) {
+                            AggregatedStockData a = e.getValue();
+                            ohlcSeries.add(e.getKey(), a.open, a.high, a.low, a.close);
+                        }
                     } else {
                         // Process and filter TimeSeries data with 10% variance
                         List<Map.Entry<Second, Double>> dataPoints = stocks.stream().map(stock -> {
@@ -1185,7 +1216,7 @@ public class mainUI extends JFrame {
                             filteredPoints.add(new AbstractMap.SimpleEntry<>(entry.getKey(), currentClose));
                         }
 
-                        filteredPoints.forEach(entry -> timeSeries.add(entry.getKey(), entry.getValue()));
+                        filteredPoints.forEach(entry -> timeSeries.addOrUpdate(entry.getKey(), entry.getValue()));
                     }
 
                     // Update dataset
@@ -1244,6 +1275,88 @@ public class mainUI extends JFrame {
         oneMonthButton.setEnabled(true);
     }
 
+    // Helper method to determine aggregation interval
+    private static Class<? extends RegularTimePeriod> determineAggregationPeriod(int choice) {
+        long duration = getDurationMillis(choice);
+        if (duration >= TimeUnit.DAYS.toMillis(5)) { //  ≥ 3 days
+            return Hour.class;
+        } else {
+            return Second.class;
+        }
+    }
+
+    // Helper class for aggregated data
+    private static class AggregatedStockData {
+        double open, high, low, close;
+    }
+
+    // Data aggregation logic
+    private static Map<RegularTimePeriod, AggregatedStockData> aggregateData(
+            List<StockUnit> stockUnitList,
+            Class<? extends RegularTimePeriod> periodClass, ZoneId zone, Date startDate) {
+
+        List<StockUnit> filteredStocks = stockUnitList
+                .stream()
+                .filter(stock -> stock.getDateDate().after(startDate))
+                .toList();
+
+        // Determine the temporal unit based on the period class
+        TemporalUnit unit = (periodClass == Day.class) ? ChronoUnit.DAYS
+                : (periodClass == Hour.class) ? ChronoUnit.HOURS
+                : ChronoUnit.MINUTES;
+
+        // Precompute time zone and locale for RegularTimePeriod creation
+        TimeZone timeZone = TimeZone.getTimeZone(zone);
+        Locale locale = Locale.getDefault();
+
+        // Use a temporary map with Long keys to avoid repeated RegularTimePeriod creation
+        Map<Long, AggregatedStockData> tempMap = new HashMap<>(filteredStocks.size() / 4);
+
+        for (StockUnit stockUnit : filteredStocks) {
+            // Efficiently get timestamp from Date
+            long timestamp = stockUnit.getDateDate().getTime();
+            // Convert to ZonedDateTime in the specified time zone
+            ZonedDateTime zdt = Instant.ofEpochMilli(timestamp).atZone(zone);
+            // Truncate to the specified unit in the correct time zone
+            ZonedDateTime truncatedZdt = zdt.truncatedTo(unit);
+            long bucketStart = truncatedZdt.toInstant().toEpochMilli();
+
+            // Get or create the aggregated data for this bucket
+            AggregatedStockData agg = tempMap.get(bucketStart);
+            if (agg == null) {
+                agg = new AggregatedStockData();
+                agg.open = stockUnit.getOpen();
+                agg.high = stockUnit.getHigh();
+                agg.low = stockUnit.getLow();
+                tempMap.put(bucketStart, agg);
+            } else {
+                // Update high and low
+                if (stockUnit.getHigh() > agg.high) {
+                    agg.high = stockUnit.getHigh();
+                }
+                if (stockUnit.getLow() < agg.low) {
+                    agg.low = stockUnit.getLow();
+                }
+            }
+            // Always update the closing price to the latest one in the bucket
+            agg.close = stockUnit.getClose();
+        }
+
+        // Convert the temporary map to a sorted TreeMap with RegularTimePeriod keys
+        Map<RegularTimePeriod, AggregatedStockData> aggregatedMap = new TreeMap<>();
+        // Extract and sort the bucket start times
+        List<Long> sortedBucketStarts = new ArrayList<>(tempMap.keySet());
+        Collections.sort(sortedBucketStarts);
+
+        for (Long bucketStart : sortedBucketStarts) {
+            Date date = new Date(bucketStart);
+            RegularTimePeriod period = RegularTimePeriod.createInstance(periodClass, date, timeZone, locale);
+            aggregatedMap.put(period, tempMap.get(bucketStart));
+        }
+
+        return aggregatedMap;
+    }
+
     // Method to update Y-axis dynamically based on data
     private static void updateYAxisRange(XYPlot plot, Date start, Date end) {
         ValueAxis yAxis = plot.getRangeAxis();
@@ -1261,7 +1374,6 @@ public class mainUI extends JFrame {
             }
         } else {
             // Existing logic for TimeSeries
-
             for (int i = 0; i < timeSeries.getItemCount(); i++) {
                 Date itemDate = timeSeries.getTimePeriod(i).getEnd();
                 if (itemDate.after(start) && itemDate.before(end)) {
@@ -1483,6 +1595,7 @@ public class mainUI extends JFrame {
         JMenuItem settingHandler = new JMenuItem("Open settings");
 
         //Hype mode
+        JMenuItem checkForRallies = new JMenuItem("Check market for current Rally's");
         JMenuItem activateHypeMode = new JMenuItem("Activate hype mode");
 
         //Notifications
@@ -1501,6 +1614,7 @@ public class mainUI extends JFrame {
         settings.add(settingHandler);
 
         //HypeMode
+        hypeModeMenu.add(checkForRallies);
         hypeModeMenu.add(activateHypeMode);
 
         //Notifications
@@ -1520,6 +1634,7 @@ public class mainUI extends JFrame {
         importC.addActionListener(new eventImport());
         exportC.addActionListener(new eventExport());
         settingHandler.addActionListener(new eventSettings());
+        checkForRallies.addActionListener(new checkForRallies());
         activateHypeMode.addActionListener(new eventActivateHypeMode());
         clear.addActionListener(e -> notificationListModel.clear());
         sortChange.addActionListener(new eventSortNotifications(true));
@@ -1598,6 +1713,73 @@ public class mainUI extends JFrame {
                 }
             });
         }
+    }
+
+    public class checkForRallies implements ActionListener {
+        private static final ExecutorService executorService = Executors.newSingleThreadExecutor();
+
+        @Override
+        public void actionPerformed(ActionEvent e) {
+            executorService.submit(() -> {
+                try {
+                    List<String> rallyStocks = mainDataHandler.checkForRallies();
+
+                    // Create the popup window on the EDT
+                    SwingUtilities.invokeLater(() -> showRallyWindow(rallyStocks));
+
+                } catch (Exception ex) {
+                    ex.printStackTrace();
+                }
+            });
+        }
+
+        private void showRallyWindow(List<String> rallyStocks) {
+            JFrame frame = new JFrame("Rally Candidates");
+            frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
+            frame.setSize(500, Math.min(600, rallyStocks.size() * 60 + 100));
+            frame.setLocationRelativeTo(null);
+
+            JPanel content = new JPanel();
+            content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
+            content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+            for (String symbol : rallyStocks) {
+                JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT));
+
+                JLabel label = new JLabel(symbol);
+                label.setPreferredSize(new Dimension(100, 25));
+
+                JButton viewButton = new JButton("View Stock");
+                viewButton.addActionListener(ev -> handleStockSelection(symbol));
+
+                JButton watchlistButton = mainUI.getJButton(symbol, frame);
+
+                row.add(label);
+                row.add(viewButton);
+                row.add(watchlistButton);
+                content.add(row);
+            }
+
+            JScrollPane scroll = new JScrollPane(content);
+            scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_ALWAYS);
+            frame.setContentPane(scroll);
+            frame.setVisible(true);
+        }
+    }
+
+    @NotNull
+    private static JButton getJButton(String symbol, JFrame frame) {
+        JButton watchlistButton = new JButton("Add to Watchlist");
+        watchlistButton.addActionListener(ev -> {
+            if (symbol != null && !stockListModel.contains(symbol)) {
+                // Add the selected symbol to the Stock list
+                stockListModel.addElement(symbol);
+                stockColors.put(symbol, generateRandomColor()); // Assign a random color or use another logic
+                symbols = createSymArray();
+            }
+            JOptionPane.showMessageDialog(frame, symbol + " added to watchlist.");
+        });
+        return watchlistButton;
     }
 
     public static class eventSettings implements ActionListener {
@@ -1683,5 +1865,41 @@ public class mainUI extends JFrame {
         public void actionPerformed(ActionEvent e) {
             sortNotifications(byChange);
         }
+    }
+
+    public static void fetchTickerMap() throws Exception {
+        var httpClient = HttpClient.newBuilder().build();
+        var url = "https://live.trading212.com/api/v0/equity/metadata/instruments";
+
+        var request = HttpRequest.newBuilder()
+                .uri(URI.create(url))
+                .header("Authorization", token)
+                .GET()
+                .build();
+
+        String body = httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
+        JSONArray instruments = new JSONArray(body);
+
+        for (int i = 0; i < instruments.length(); i++) {
+            JSONObject obj = instruments.getJSONObject(i);
+            String shortName = obj.optString("shortName");
+            String ticker = obj.optString("ticker");
+            int maxOpenQuantity = obj.optInt("maxOpenQuantity");
+
+            if (!shortName.isEmpty() && !ticker.isEmpty()) {
+                nameToData.put(shortName, new TickerData(ticker, maxOpenQuantity));
+            }
+        }
+    }
+
+    public static TickerData getTickerData(String name) {
+        return nameToData.getOrDefault(name, new TickerData(name, Integer.MAX_VALUE));
+    }
+
+    public static String getTicker(String name) {
+        return getTickerData(name).ticker;
+    }
+
+    public record TickerData(String ticker, int maxOpenQuantity) {
     }
 }

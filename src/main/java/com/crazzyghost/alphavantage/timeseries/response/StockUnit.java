@@ -11,19 +11,19 @@ import java.util.Date;
 public class StockUnit {
 
     private final double open;
-    private final double high;
-    private final double low;
+    private double high;
+    private double low;
     private final double adjustedClose;
-    private final double volume;
+    private double volume;
     private final double dividendAmount;
     private final double splitCoefficient;
-    private final String dateTime;
+    public final String dateTime;
     private String symbol;
     private double percentageChange;
     private double close;
     private int target;
 
-    private StockUnit(Builder builder) {
+    public StockUnit(Builder builder) {
         this.open = builder.open;
         this.high = builder.high;
         this.low = builder.low;
@@ -56,6 +56,18 @@ public class StockUnit {
 
     public void setClose(double close) {
         this.close = close;
+    }
+
+    public void setHigh(double high) {
+        this.high = high;
+    }
+
+    public void setLow(double low) {
+        this.low = low;
+    }
+
+    public void setVolume(double volume) {
+        this.volume = volume;
     }
 
     public double getAdjustedClose() {
