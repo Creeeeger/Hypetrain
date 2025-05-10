@@ -61,10 +61,10 @@ public class mainDataHandler {
           STATS     0.15    0.30	0.25            0.45
           ADVANCED	0.15	0.30	0.20            0.35
          */
-        put("TREND", 0.1);    // Features 0-1 (SMA, TRIX)
-        put("MOMENTUM", 0.1); // Feature 2 (ROC)
+        put("TREND", 0.1);       // Features 0-1 (SMA, TRIX)
+        put("MOMENTUM", 0.1);    // Feature 2 (ROC)
         put("STATISTICAL", 0.45);// Features 4-5 (Spike, Cumulative)
-        put("ADVANCED", 0.35);  // Features 6-7 (Keltner, Elder)
+        put("ADVANCED", 0.35);   // Features 6-7 (Keltner, Elder)
     }};
 
     private static final Map<Integer, String> FEATURE_CATEGORIES = new HashMap<>() {{
