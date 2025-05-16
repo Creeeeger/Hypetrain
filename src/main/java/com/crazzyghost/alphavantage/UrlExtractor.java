@@ -76,8 +76,7 @@ public class UrlExtractor {
      * Build an http request with the parameters and the api key
      *
      * @param request any endpoint request object
-     * @param apiKey  Alphavantage API key
-     * @return
+     * @param apiKey  Alpha vantage API key
      */
     public static Request extract(Object request, String apiKey) {
         System.out.println(Config.BASE_URL + UrlExtractor.extract(request) + apiKey + " debug: URL");

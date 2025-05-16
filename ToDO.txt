@@ -1,6 +1,8 @@
 TODO
 Version 1.0:
 - squeeze everything out of spike and improve precision
+- send notifications to phone
+- comment the rest
 
 Version 1.5:
 - Improve speed of spike up percentage change detection by supportive second data framework
