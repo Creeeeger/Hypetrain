@@ -73,6 +73,11 @@ import static org.crecker.mainDataHandler.CACHE_DIR;
  * synchronization for all major components such as the stock list, log window, and selected stock data.
  */
 public class mainUI extends JFrame {
+    /**
+     * Trading212 authentication token (API key) & PushCut API token required for secure API requests.
+     */
+    static String token = ""; // Your Trading212 API key (insert your own)
+    private static final String ENDPOINT = ""; // PushCut url notification String
 
     /**
      * Mapping from company short names to TickerData (symbol, max position size). Used for search and symbol lookup.
@@ -104,11 +109,6 @@ public class mainUI extends JFrame {
      * Flag indicating whether the candlestick chart view is enabled (true for OHLC, false for line chart).
      */
     public static boolean useCandles;
-
-    /**
-     * Trading212 authentication token (API key) required for secure API requests.
-     */
-    static String token = ""; // Your Trading212 API key (insert your own)
 
     /**
      * Current volume parameter for algorithms (user-configurable).
@@ -625,6 +625,94 @@ public class mainUI extends JFrame {
         else {
             System.out.println("Can't create notification.");
         }
+
+        // Send push notifications to mobile device in order to notify user
+        sendPushNotification(title, notificationContent);
+    }
+
+    /**
+     * Fires a Pushcut notification by spawning a {@code curl} process.
+     *
+     * @param title the notification title shown in the push banner; must not be {@code null}
+     * @param body  the body text below the title; must not be {@code null}
+     * @throws NullPointerException if {@code title} or {@code body} is {@code null}
+     */
+    public static void sendPushNotification(String title, String body) {
+        // Validate arguments early to fail fast.
+        if (title == null || body == null) {
+            throw new NullPointerException("title and body must not be null");
+        }
+
+        /*
+         * Build the JSON payload that PushCut expects.
+         * We escape user‑supplied strings to guarantee valid JSON even if the
+         * caller passes quotes, backslashes, or line breaks.
+         */
+        String json = String.format(
+                "{\"title\":\"%s\",\"text\":\"%s\"}",
+                escapeJson(title),
+                escapeJson(body));
+
+        /*
+         * Construct the {@link ProcessBuilder} that will invoke curl:
+         *
+         *   curl -sS -X POST -H "Content-Type: application/json" -d <json> <endpoint>
+         *
+         * Options explained:
+         *   -sS  : run silently but still print errors
+         *   -X   : HTTP method (POST)
+         *   -H   : HTTP header
+         *   -d   : request body
+         */
+        ProcessBuilder pb = new ProcessBuilder(
+                "curl", "-sS",
+                "-X", "POST",
+                "-H", "Content-Type: application/json",
+                "-d", json,
+                ENDPOINT);
+
+        // Forward curl’s standard output and error to our own process so it is visible in the console.
+        pb.inheritIO();
+
+        try {
+            // Start the process (this call is asynchronous)…
+            Process process = pb.start();
+
+            // …then wait synchronously for it to finish so we can inspect the exit code.
+            if (process.waitFor() != 0) {
+                System.err.println("PushCut curl exited with " + process.exitValue());
+            }
+        } catch (IOException e) {
+            // Thrown if the process could not be started (e.g. curl not found).
+            System.err.println("Failed to start curl: " + e.getMessage());
+        } catch (InterruptedException e) {
+            // Restore the interrupted status and record the failure.
+            Thread.currentThread().interrupt();
+            System.err.println("Waiting for curl was interrupted: " + e.getMessage());
+        }
+    }
+
+    /**
+     * Escapes special characters so that the resulting string can be safely embedded in JSON
+     * string literals.
+     *
+     * @param s the raw, unescaped string
+     * @return the escaped version ready for inclusion in a JSON document
+     */
+    private static String escapeJson(String s) {
+        /*
+         * The replacements are applied in an order that avoids double‑escaping.
+         *
+         * 1. Backslash       → double backslash
+         * 2. Double quote    → backslash‑escaped quote
+         * 3. Line feed (LF)  → \n
+         * 4. Carriage return → (strip) – optional optimisation for Windows CRLF
+         */
+        return s
+                .replace("\\", "\\\\")
+                .replace("\"", "\\\"")
+                .replace("\n", "\\n")
+                .replace("\r", "");
     }
 
     /**
