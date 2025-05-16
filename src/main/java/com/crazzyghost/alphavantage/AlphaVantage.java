@@ -45,16 +45,29 @@ import com.crazzyghost.alphavantage.timeseries.TimeSeries;
  */
 public class AlphaVantage {
 
+    /**
+     * Singleton instance of AlphaVantage client.
+     */
     private static AlphaVantage INSTANCE;
+
+    /**
+     * API configuration holding API key and network settings.
+     */
     private Config config;
 
+    /**
+     * Private constructor for singleton pattern.
+     * Use {@link #api()} to get the instance.
+     */
     private AlphaVantage() {
     }
 
     /**
-     * Access the client interface
+     * Returns the singleton instance of AlphaVantage client interface.
+     * <p>
+     * Use this method to access the API client. The instance should be initialized with {@link #init(Config)} before making requests.
      *
-     * @return Singleton instance of {@link AlphaVantage}
+     * @return Singleton {@link AlphaVantage} instance.
      */
     public static AlphaVantage api() {
         if (INSTANCE == null) {
@@ -64,55 +77,67 @@ public class AlphaVantage {
     }
 
     /**
-     * Initialize the client with a {@link Config} instance
+     * Initializes the client with the given configuration.
+     * <p>
+     * This should be called before using any API methods to ensure API key and settings are set.
+     *
+     * @param config {@link Config} object containing API key and settings.
      */
     public void init(Config config) {
         this.config = config;
     }
 
     /**
-     * Access to Time Series Data. All requests associated with Stock Time Series is accessed through this method.
+     * Provides access to Stock Time Series endpoints.
+     * <p>
+     * Use this method to make requests for daily, weekly, monthly prices, and intraday time series data.
      *
-     * @return A {@link TimeSeries} instance for access to Time Series Data
+     * @return {@link TimeSeries} instance for time series requests.
      */
     public TimeSeries timeSeries() {
         return new TimeSeries(config);
     }
 
     /**
-     * Access to Foreign Exchange Data. All requests associated with Foreign Exchange (FX) is accessed through this method.
+     * Provides access to Foreign Exchange (Forex/FX) endpoints.
+     * <p>
+     * Use this method to get real-time and historical FX rates.
      *
-     * @return A {@link Forex} instance for access to FX data
+     * @return {@link Forex} instance for FX requests.
      */
     public Forex forex() {
         return new Forex(config);
     }
 
-
     /**
-     * Access to Digital/Physical Exchange Rates.
+     * Provides access to digital/physical exchange rate endpoints.
+     * <p>
+     * Use this to retrieve conversion rates between digital currencies and/or fiat currencies.
      *
-     * @return An {@link ExchangeRate} instance for access to Exchange Rate Data
+     * @return {@link ExchangeRate} instance for exchange rate requests.
      */
     public ExchangeRate exchangeRate() {
         return new ExchangeRate(config);
     }
 
-
     /**
-     * Access to Digital Currencies.
+     * Provides access to digital currency (cryptocurrency) endpoints.
+     * <p>
+     * Use this to retrieve crypto prices, market cap, and more.
      *
-     * @return A {@link Crypto} instance for access to Digital Currency Data
+     * @return {@link Crypto} instance for cryptocurrency requests.
      */
     public Crypto crypto() {
         return new Crypto(config);
     }
 
     /**
-     * @return A {@link Indicator} instance for access to Technical Indicator Data
-     * @deprecated <p>use {@link AlphaVantage#technicalIndicator()} instead </p>
+     * (Deprecated) Provides access to legacy technical indicator endpoints.
      * <p>
-     * Access to Technical Indicators.
+     * Prefer using {@link #technicalIndicator()} for updated endpoints.
+     *
+     * @return {@link Indicator} instance for legacy indicator requests.
+     * @deprecated Use {@link #technicalIndicator()} instead.
      */
     @Deprecated
     public Indicator indicator() {
@@ -120,53 +145,78 @@ public class AlphaVantage {
     }
 
     /**
-     * Access to Technical Indicators.
+     * Provides access to technical indicator endpoints.
+     * <p>
+     * Use this to retrieve moving averages, RSI, MACD, and other technical indicators.
      *
-     * @return A {@link TechnicalIndicator} instance for access to Technical
-     * Indicator Data
+     * @return {@link TechnicalIndicator} instance for technical indicator requests.
      */
     public TechnicalIndicator technicalIndicator() {
         return new TechnicalIndicator(config);
     }
 
     /**
-     * Access to Sector Performances.
+     * Provides access to sector performance endpoints.
+     * <p>
+     * Use this to retrieve performance data across different market sectors.
      *
-     * @return A {@link Sector} instance for access to Sector Performance Data
+     * @return {@link Sector} instance for sector performance requests.
      */
     public Sector sector() {
         return new Sector(config);
     }
 
     /**
-     * Access to Fundamental Data.
+     * Provides access to company fundamental data endpoints.
+     * <p>
+     * Use this to retrieve earnings, balance sheet, income statements, and other fundamental metrics.
      *
-     * @return A {@link FundamentalData} instance for access to Fundamental Data
+     * @return {@link FundamentalData} instance for fundamental data requests.
      */
     public FundamentalData fundamentalData() {
         return new FundamentalData(config);
     }
 
     /**
-     * Access to Economic Indicators.
+     * Provides access to economic indicator endpoints.
+     * <p>
+     * Use this to retrieve GDP, unemployment, CPI, and other macroeconomic indicators.
      *
-     * @return A {@link EconomicIndicator} instance for access to Economic Indicators
+     * @return {@link EconomicIndicator} instance for economic indicator requests.
      */
     public EconomicIndicator economicIndicator() {
         return new EconomicIndicator(config);
     }
 
-    //Stock symbols
+    /**
+     * Provides access to stock search and symbol lookup endpoints.
+     * <p>
+     * Use this to search for companies or stock symbols.
+     *
+     * @return {@link Stock} instance for stock symbol search and lookup.
+     */
     public Stock Stocks() {
         return new Stock(config);
     }
 
-    //News symbols
+    /**
+     * Provides access to news endpoints.
+     * <p>
+     * Use this to retrieve the latest market news and articles.
+     *
+     * @return {@link News} instance for news requests.
+     */
     public News News() {
         return new News(config);
     }
 
-    //RealTime symbol
+    /**
+     * Provides access to real-time bulk quote endpoints.
+     * <p>
+     * Use this to get live prices and market data.
+     *
+     * @return {@link RealTime} instance for real-time quote requests.
+     */
     public RealTime Realtime() {
         return new RealTime(config);
     }

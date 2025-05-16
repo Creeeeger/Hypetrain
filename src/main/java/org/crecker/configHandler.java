@@ -16,49 +16,64 @@ import java.io.File;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 
+/**
+ * <h1>configHandler</h1>
+ * Utility class for managing the configuration file (config.xml).
+ * Handles reading, writing, and initializing the application's configuration
+ * settings using XML as the persistent storage format.
+ * <p>
+ * Provides methods to:
+ * <ul>
+ *     <li>Load configuration settings from the XML file.</li>
+ *     <li>Save updated configuration settings to the XML file.</li>
+ *     <li>Create a default configuration file with preset settings.</li>
+ * </ul>
+ * The configuration is stored as key-value pairs, supporting dynamic and extensible settings.
+ */
 public class configHandler {
+
+    /**
+     * Loads configuration settings from the config.xml file.
+     * If the file does not exist or is corrupted, creates a default config and reloads.
+     *
+     * @return a 2D String array containing key-value pairs of config settings.
+     */
     public static String[][] loadConfig() {
-        // Method for loading the configuration data from the config.xml file
-        // It returns a 2D array where [index][0] is the key and [index][1] is the value
         try {
-            // Create a new File instance pointing to the config.xml file
+            // Construct the file path for the config.xml in the current working directory
             Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
             File inputFile = configPath.toFile();
 
-            // Create a DocumentBuilderFactory instance which is used to create a DocumentBuilder
+            // Create the document builder and parse the XML file into a DOM Document object
             DocumentBuilderFactory dbFactory = DocumentBuilderFactory.newInstance();
-            // Create a DocumentBuilder from the factory to parse XML files
             DocumentBuilder dBuilder = dbFactory.newDocumentBuilder();
+            Document doc = dBuilder.parse(inputFile);
 
-            // Parse the config.xml file and create an in-memory representation of the XML document
-            org.w3c.dom.Document doc = dBuilder.parse(inputFile);
-
-            // Normalize the XML structure (helpful in combining adjacent text nodes)
+            // Normalize the XML document to standardize structure (combines adjacent text nodes)
             doc.getDocumentElement().normalize();
 
-            // Get all child nodes of the <config> root element
+            // Get the list of all child nodes under the <config> root element
             NodeList nodeList = doc.getDocumentElement().getChildNodes();
 
-            // Count the number of valid element nodes (ignoring other node types like text or comments)
+            // First, count only ELEMENT_NODEs to know how many config entries exist
             int numEntries = 0;
             for (int i = 0; i < nodeList.getLength(); i++) {
                 if (nodeList.item(i).getNodeType() == Node.ELEMENT_NODE) {
-                    numEntries++; // count the element nodes so we can create the array with the correct size
+                    numEntries++;
                 }
             }
 
-            // Initialize a 2D array to store the keys and values from the XML file
-            String[][] values = new String[numEntries][2]; // Each entry will hold the key-value pair
+            // Prepare the result array for key-value pairs
+            String[][] values = new String[numEntries][2];
 
-            // Load data from the XML into the array
+            // Iterate again, this time extracting key (tag) and value (text) from each element
             int entryIndex = 0;
             for (int i = 0; i < nodeList.getLength(); i++) {
-                Node node = nodeList.item(i); // Get the current node
+                Node node = nodeList.item(i);
                 if (node.getNodeType() == Node.ELEMENT_NODE) {
-                    // If the node is an element, store its name (key) and text content (value)
-                    values[entryIndex][0] = node.getNodeName(); // Store the name of the element as key
-                    values[entryIndex][1] = node.getTextContent(); // Store the text content of the element as value
-                    entryIndex++; // Move to the next array index
+                    values[entryIndex][0] = node.getNodeName();      // The element name acts as the key
+                    values[entryIndex][1] = node.getTextContent();   // Text content as the value
+                    entryIndex++;
                 }
             }
 
@@ -66,62 +81,54 @@ public class configHandler {
             return values;
 
         } catch (Exception e) {
-            // Handle any exceptions that occur during XML processing
+            // If parsing fails (file missing, corrupted, or invalid), print the error and create a new config
             e.printStackTrace();
-
-            // If an error occurs, it's because the config file does not exist or is corrupted.
-            // Call createConfig() to generate a new default configuration file
             createConfig();
-
-            // Reload the configuration using the newly created config file
+            // Retry loading after creating the default config file
             return loadConfig();
         }
     }
 
+    /**
+     * Saves the provided key-value settings into config.xml, replacing its contents.
+     *
+     * @param values 2D String array containing [key][value] pairs to write to the config file.
+     * @throws RuntimeException if any IO or XML error occurs during save.
+     */
     public static void saveConfig(String[][] values) {
         try {
-            // Create an instance of DocumentBuilderFactory, which provides a way to obtain a DocumentBuilder
-            // This factory enables the creation of XML documents
+            // Prepare to build a new XML Document
             DocumentBuilderFactory documentFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder documentBuilder = documentFactory.newDocumentBuilder();
 
             // Create a new Document, which is the base representation of an XML document
             Document document = documentBuilder.newDocument();
 
-            // Create the root element of the XML (in this case, <config>) and append it to the document
-            // This will serve as the container for all configuration settings
+            // Create and append the <config> root element
             Element rootElement = document.createElement("config");
             document.appendChild(rootElement);
 
-            // Iterate through the provided values to create child elements for each configuration setting
-            // Each setting is represented as a pair where the first element is the tag name, and the second is its value
+            // Add each configuration entry as a child element under <config>
             for (String[] entry : values) {
-                String name = entry[0];  // Get the element name from the provided values
-                String content = entry[1];  // Get the content/value for the element
+                String name = entry[0];    // Key/tag name
+                String content = entry[1]; // Associated value
 
-                // Create a new element for each configuration entry using the specified name
-                Element element = document.createElement(name);
-                // Set the content of the element to the value provided
-                element.appendChild(document.createTextNode(content));
-                // Append this new element to the root element of the XML document
-                rootElement.appendChild(element);
+                Element element = document.createElement(name); // Create element for the key
+                element.appendChild(document.createTextNode(content)); // Set the text content
+                rootElement.appendChild(element); // Attach to root
             }
 
-            // Set up a TransformerFactory and Transformer, which will be used to convert the XML Document into a file
+            // Prepare a Transformer to write the DOM Document back to an XML file with pretty print
             TransformerFactory transformerFactory = TransformerFactory.newInstance();
             Transformer transformer = transformerFactory.newTransformer();
-
-            // Configure the Transformer to output the XML in a readable (indented) format
             transformer.setOutputProperty(OutputKeys.INDENT, "yes");
 
-            // Define the source (the document we created) and the destination (the output file)
-            DOMSource domSource = new DOMSource(document);
-
-            // Get the path dynamically
+            // Set up the file path for output
             Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
             File configFile = configPath.toFile();
 
-            // Use the file in StreamResult
+            // Write the DOM Document to the file as XML
+            DOMSource domSource = new DOMSource(document);
             StreamResult streamResult = new StreamResult(configFile);
 
             // Perform the transformation from the Document to an XML file
@@ -131,83 +138,99 @@ public class configHandler {
             System.out.println("Config file saved successfully!");
 
         } catch (Exception e) {
-            // Handle any exceptions that occur during the process by throwing a RuntimeException
-            // This ensures any errors are clearly reported back to the user
+            // Print the error for debugging and throw a runtime exception to propagate failure
             e.printStackTrace();
             throw new RuntimeException(e);
         }
     }
 
-    public static void createConfig() { //method for creating a new config file
+    /**
+     * Creates a new default configuration file (config.xml) in the current directory.
+     * Overwrites any existing config.xml. Called automatically if the config file is missing/corrupted.
+     * <p>
+     * Default values are set for all expected keys.
+     *
+     * @throws RuntimeException if file creation or XML operations fail.
+     */
+    public static void createConfig() {
         try {
-            // Create a DocumentBuilderFactory instance to produce a DocumentBuilder
-            // The DocumentBuilderFactory provides a way to obtain a DocumentBuilder instance
+            // Create the XML Document and <config> root
             DocumentBuilderFactory builderFactory = DocumentBuilderFactory.newInstance();
             DocumentBuilder builder = builderFactory.newDocumentBuilder();
-
-            // Create a new Document, which is a blank XML document
             Document doc = builder.newDocument();
 
-            // Create the root element of the XML file, called <config>, and append it to the document
             // This is the main container for all the configuration elements that will be added later
             Element root = doc.createElement("config");
             doc.appendChild(root);
 
+            // Create and add all required config settings with default values:
+
+            // Example: Default volume setting
             Element volume = doc.createElement("volume");
             volume.appendChild(doc.createTextNode("1000"));
             root.appendChild(volume);
 
+            // Example: Symbols list with associated colours (as a string)
             Element symbols = doc.createElement("symbols");
-            symbols.appendChild(doc.createTextNode("[MSFT,java.awt.Color[r=221,g=160,b=221]],[NVDA,java.awt.Color[r=102,g=205,b=170]],[GOOGL,java.awt.Color[r=255,g=182,b=193]],[AAPL,java.awt.Color[r=135,g=206,b=250]],[TSLA,java.awt.Color[r=240,g=230,b=140]]"));
+            symbols.appendChild(doc.createTextNode(
+                    "[MSFT,java.awt.Color[r=221,g=160,b=221]]," +
+                            "[NVDA,java.awt.Color[r=102,g=205,b=170]]," +
+                            "[GOOGL,java.awt.Color[r=255,g=182,b=193]]," +
+                            "[AAPL,java.awt.Color[r=135,g=206,b=250]]," +
+                            "[TSLA,java.awt.Color[r=240,g=230,b=140]]"
+            ));
             root.appendChild(symbols);
 
+            // Example: Sorting setting
             Element sort = doc.createElement("sort");
             sort.appendChild(doc.createTextNode("false"));
             root.appendChild(sort);
 
+            // Example: API key setting (public/free API)
             Element key = doc.createElement("key");
-            key.appendChild(doc.createTextNode("0988PSIKXZ50IP2T")); // Free API key
+            key.appendChild(doc.createTextNode("0988PSIKXZ50IP2T"));
             root.appendChild(key);
 
+            // Example: Real-time data fetch toggle
             Element realtime = doc.createElement("realtime");
             realtime.appendChild(doc.createTextNode("false"));
             root.appendChild(realtime);
 
+            // Example: Algorithm version used for data processing
             Element algo = doc.createElement("algo");
             algo.appendChild(doc.createTextNode("1.0"));
             root.appendChild(algo);
 
+            // Example: Whether to use candlestick charts or not
             Element useCandles = doc.createElement("candle");
             useCandles.appendChild(doc.createTextNode("false"));
             root.appendChild(useCandles);
 
-            // Additional elements can be added here as needed (by creating new tags and appending to root)
+            // Add any additional default settings below as needed for the application
 
-            // Use TransformerFactory to create a Transformer instance for converting the Document to XML format
+            // Prepare to write the DOM Document to XML file with indentation (pretty print)
             TransformerFactory transformerFactory = TransformerFactory.newInstance();
             Transformer transformer = transformerFactory.newTransformer();
 
             // Configure the Transformer for making the output readable
             transformer.setOutputProperty(OutputKeys.INDENT, "yes");
-            transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4"); // Setting the indent to 4 spaces for better formatting
+            transformer.setOutputProperty("{http://xml.apache.org/xslt}indent-amount", "4");
 
-            // Set up the input source (the document) and output target (the config.xml file)
-            DOMSource domSource = new DOMSource(doc);
-            // Get the path dynamically
+            // Specify the destination file path
             Path configPath = Paths.get(System.getProperty("user.dir"), "config.xml");
             File configFile = configPath.toFile();
 
-            // Use the file in StreamResult
+            // Write the Document to the file
+            DOMSource domSource = new DOMSource(doc);
             StreamResult result = new StreamResult(configFile);
 
             // Transform the XML Document into an XML file on disk
             transformer.transform(domSource, result);
 
-            // Print a message indicating that the XML configuration file was created successfully
             System.out.println("Config file created successfully!");
 
         } catch (Exception e) {
-            // Handle any exception that may occur by throwing a RuntimeException
+            // Print and rethrow the error as a runtime exception for debugging/handling upstream
             e.printStackTrace();
             throw new RuntimeException(e);
         }

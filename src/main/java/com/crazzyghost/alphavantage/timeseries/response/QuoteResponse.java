@@ -1,10 +1,10 @@
 package com.crazzyghost.alphavantage.timeseries.response;
 
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class QuoteResponse {
     private String symbol;
@@ -21,16 +21,16 @@ public class QuoteResponse {
     private String errorMessage;
 
     public QuoteResponse(
-        String symbol,
-        double open,
-        double high,
-        double low,
-        double price,
-        double volume,
-        String latestTradingDay,
-        double previousClose,
-        double change,
-        double changePercent
+            String symbol,
+            double open,
+            double high,
+            double low,
+            double price,
+            double volume,
+            String latestTradingDay,
+            double previousClose,
+            double change,
+            double changePercent
     ) {
         this.symbol = symbol;
         this.open = open;
@@ -90,20 +90,20 @@ public class QuoteResponse {
     }
 
 
-    public QuoteResponse(String errorMessage){
+    public QuoteResponse(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
-    public static QuoteResponse of(Map<String, Object> stringObjectMap){
+    public static QuoteResponse of(Map<String, Object> stringObjectMap) {
         Parser<QuoteResponse> parser = new QuoteParser();
         return parser.parse(stringObjectMap);
     }
 
-    public static class QuoteParser extends Parser<QuoteResponse>{
+    public static class QuoteParser extends Parser<QuoteResponse> {
 
         @SuppressWarnings("unchecked")
         @Override
-        public QuoteResponse parse(Map<String, Object> stringObjectMap){
+        public QuoteResponse parse(Map<String, Object> stringObjectMap) {
             List<String> keys = new ArrayList<>(stringObjectMap.keySet());
             if (keys.isEmpty()) {
                 return onParseError("Empty JSON returned by the API, the symbol might not be supported.");

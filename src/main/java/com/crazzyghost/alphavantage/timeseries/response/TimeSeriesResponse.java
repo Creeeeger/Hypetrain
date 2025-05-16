@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.timeseries.response;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class TimeSeriesResponse {
 
@@ -19,13 +19,13 @@ public class TimeSeriesResponse {
         this.errorMessage = null;
     }
 
-    private TimeSeriesResponse(String errorMessage){
+    private TimeSeriesResponse(String errorMessage) {
         this.errorMessage = errorMessage;
         this.stockUnits = new ArrayList<>();
         this.metaData = MetaData.empty();
     }
 
-    public static TimeSeriesResponse of(Map<String, Object> stringObjectMap, boolean adjusted){
+    public static TimeSeriesResponse of(Map<String, Object> stringObjectMap, boolean adjusted) {
         Parser<TimeSeriesResponse> parser = new TimeSeriesParser(adjusted);
         return parser.parse(stringObjectMap);
     }
@@ -46,13 +46,13 @@ public class TimeSeriesResponse {
 
         private boolean adjusted;
 
-        public TimeSeriesParser(boolean adjusted){
+        public TimeSeriesParser(boolean adjusted) {
             this.adjusted = adjusted;
         }
-    
+
         @Override
         public TimeSeriesResponse parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> dataMap) {
-    
+
             MetaData metaData;
             String information = metaDataMap.get("1. Information");
             String symbol = metaDataMap.get("2. Symbol");
@@ -61,21 +61,21 @@ public class TimeSeriesResponse {
             String outputSize = null;
             String timeZone;
 
-            if(metaDataMap.get("4. Interval") == null && metaDataMap.get("4. Output Size") == null){
+            if (metaDataMap.get("4. Interval") == null && metaDataMap.get("4. Output Size") == null) {
                 timeZone = metaDataMap.get("4. timeZone");
-            }else if(metaDataMap.get("4. Interval") == null && metaDataMap.get("4. Output Size") != null){
+            } else if (metaDataMap.get("4. Interval") == null && metaDataMap.get("4. Output Size") != null) {
                 outputSize = metaDataMap.get("4. Output Size");
                 timeZone = metaDataMap.get("5. Output Size");
-            }else {
+            } else {
                 interval = metaDataMap.get("4. Interval");
                 outputSize = metaDataMap.get("5. Output Size");
                 timeZone = metaDataMap.get("6. Time Zone");
             }
 
             metaData = new MetaData(information, symbol, lastRefreshed, interval, outputSize, timeZone);
-            
-            List<StockUnit> stockUnits =  new ArrayList<>();
-    
+
+            List<StockUnit> stockUnits = new ArrayList<>();
+
             for (Map.Entry<String, Map<String, String>> e : dataMap.entrySet()) {
                 Map<String, String> m = e.getValue();
                 StockUnit.Builder stockUnit = new StockUnit.Builder();
@@ -90,13 +90,13 @@ public class TimeSeriesResponse {
                     stockUnit.adjustedClose(Double.parseDouble(m.get("5. adjusted close")));
                     stockUnit.volume(Long.parseLong(m.get("6. volume")));
                     stockUnit.dividendAmount(Double.parseDouble(m.get("7. dividend amount")));
-                    if (m.get("8. split coefficient") != null){
+                    if (m.get("8. split coefficient") != null) {
                         stockUnit.splitCoefficient(Double.parseDouble(m.get("8. split coefficient")));
                     }
                 }
                 stockUnits.add(stockUnit.build());
             }
-            return  new TimeSeriesResponse(metaData, stockUnits);
+            return new TimeSeriesResponse(metaData, stockUnits);
         }
 
         @Override
