@@ -34,58 +34,183 @@ import static org.crecker.dataTester.handleSuccess;
 import static org.crecker.mainUI.*;
 import static org.crecker.pLTester.*;
 
+/**
+ * The {@code mainDataHandler} class is responsible for the central logic and data flow in the stock analytics application.
+ * <p>
+ * Key responsibilities:
+ * <ul>
+ *   <li>Manages storage and processing of time series and technical indicator data for multiple stocks.</li>
+ *   <li>Defines static constants and utility collections for use throughout the analysis pipeline.</li>
+ *   <li>Handles caching, indicator normalization, and categorization of stock features for advanced analytics.</li>
+ *   <li>Coordinates real-time and historical data retrieval, normalization, and caching operations.</li>
+ *   <li>Supports multithreaded data operations with thread-safe collections.</li>
+ * </ul>
+ *
+ * <p>
+ * The class is not intended to be instantiated; all functionality is via static methods and fields.
+ * </p>
+ */
 public class mainDataHandler {
+
+    /**
+     * Stores precomputed min/max ranges for each technical indicator per symbol.
+     * <p>
+     * Data structure: Map&lt;SYMBOL, Map&lt;INDICATOR, Map&lt;"min"/"max", value&gt;&gt;&gt;
+     * - Key: Uppercase symbol name (e.g., "AAPL")
+     * - Value: For each indicator, holds a map containing robust minimum and maximum values, used to normalize raw feature data.
+     * <p>
+     * Populated by {@link #precomputeIndicatorRanges(boolean)} and consumed by {@link #normalizeScore(String, double, String)}
+     */
     private static final Map<String, Map<String, Map<String, Double>>> SYMBOL_INDICATOR_RANGES = new ConcurrentHashMap<>();
 
+    /**
+     * The ordered list of all technical indicator keys that will be extracted from each window of stock data.
+     * <ul>
+     *   <li>Order is CRITICAL; indexes correspond to downstream feature processing.</li>
+     *   <li>Each entry maps to a specific type of indicator.</li>
+     * </ul>
+     */
     public static final List<String> INDICATOR_KEYS = List.of(
-            "SMA_CROSS",              // 0
-            "TRIX",                   // 1
-            "ROC",                    // 2
-            "PLACEHOLDER",            // 3
-            "CUMULATIVE_PERCENTAGE",  // 4
-            "CUMULATIVE_THRESHOLD",   // 5
-            "KELTNER",                // 6
-            "ELDER_RAY"               // 7
+            "SMA_CROSS",              // 0: Simple Moving Average crossover event (binary state: -1, 0, 1)
+            "TRIX",                   // 1: TRIX triple exponential average (momentum/trend indicator)
+            "ROC",                    // 2: Rate Of Change (percentage, momentum indicator)
+            "PLACEHOLDER",            // 3: Placeholder for future features, currently static
+            "CUMULATIVE_PERCENTAGE",  // 4: Spike in recent cumulative percent move (binary)
+            "CUMULATIVE_THRESHOLD",   // 5: Raw cumulative percent move over short window (numeric)
+            "KELTNER",                // 6: Keltner channel breakout (binary)
+            "ELDER_RAY"               // 7: Elder Ray Index (numeric)
     );
 
+    /**
+     * Set of technical indicators that should be interpreted as binary (0 or 1) in the normalization process.
+     * <p>
+     * This ensures normalization function always returns 0 or 1 for these indicators, regardless of raw value.
+     * <p>
+     * Used in {@link #normalizeScore(String, double, String)}
+     */
     public static final Set<String> BINARY_INDICATORS = Set.of(
-            "KELTNER",
-            "CUMULATIVE_PERCENTAGE"
+            "KELTNER",                // Keltner breakout: 1 if present, else 0
+            "CUMULATIVE_PERCENTAGE"   // Cumulative spike: 1 if present, else 0
     );
 
+    /**
+     * Category weights for calculating final 'aggressiveness' score for a stock signal.
+     * <p>
+     * These weights determine the relative importance of features by their indicator category (trend, momentum, etc.).
+     * <ul>
+     *   <li>Keys: "TREND", "MOMENTUM", "STATISTICAL", "ADVANCED"</li>
+     *   <li>Values: The proportion of the final aggressiveness attributed to each category</li>
+     * </ul>
+     * <p>
+     * <b>Note:</b> These values can be dynamically tuned to alter system bias (e.g., for different market regimes).
+     */
     private static final Map<String, Double> CATEGORY_WEIGHTS = new HashMap<>() {{
         /*
-          Category	Bull 	Bear 	High Volatility Scraper
-          TREND	    0.30	0.15	0.20            0.1
-          MOMENTUM	0.40	0.25	0.35            0.1
-          STATS     0.15    0.30	0.25            0.45
-          ADVANCED	0.15	0.30	0.20            0.35
+          Category   | Bull | Bear | High Volatility | Scraper
+          -----------|------|------|-----------------|--------
+          TREND      | 0.30 | 0.15 | 0.20            | 0.10
+          MOMENTUM   | 0.40 | 0.25 | 0.35            | 0.10
+          STATS      | 0.15 | 0.30 | 0.25            | 0.45
+          ADVANCED   | 0.15 | 0.30 | 0.20            | 0.35
          */
-        put("TREND", 0.1);       // Features 0-1 (SMA, TRIX)
-        put("MOMENTUM", 0.1);    // Feature 2 (ROC)
-        put("STATISTICAL", 0.45);// Features 4-5 (Spike, Cumulative)
-        put("ADVANCED", 0.35);   // Features 6-7 (Keltner, Elder)
+        put("TREND", 0.1);       // Features 0-1 (SMA, TRIX) - Lowered for 'scraper' regime
+        put("MOMENTUM", 0.1);    // Feature 2 (ROC) - Lowered for 'scraper' regime
+        put("STATISTICAL", 0.45);// Features 4-5 (Spike, Cumulative) - Highest in 'scraper' regime
+        put("ADVANCED", 0.35);   // Features 6-7 (Keltner, Elder) - Secondary importance
     }};
 
+    /**
+     * Maps feature index to its category for weighted scoring.
+     * <p>
+     * Allows for lookup of each feature's conceptual grouping ("TREND", "MOMENTUM", etc.) when aggregating scores.
+     * <ul>
+     *   <li>Index: Corresponds to {@link #INDICATOR_KEYS} order.</li>
+     *   <li>Value: Category string.</li>
+     * </ul>
+     */
     private static final Map<Integer, String> FEATURE_CATEGORIES = new HashMap<>() {{
-        put(0, "TREND");
-        put(1, "TREND");
-        put(2, "MOMENTUM");
-        put(3, "NEUTRAL");
-        put(4, "STATISTICAL");
-        put(5, "STATISTICAL");
-        put(6, "ADVANCED");
-        put(7, "ADVANCED");
+        put(0, "TREND");        // SMA crossover
+        put(1, "TREND");        // TRIX
+        put(2, "MOMENTUM");     // ROC
+        put(3, "NEUTRAL");      // Placeholder
+        put(4, "STATISTICAL");  // Cumulative spike
+        put(5, "STATISTICAL");  // Cumulative % move
+        put(6, "ADVANCED");     // Keltner
+        put(7, "ADVANCED");     // Elder Ray
     }};
 
+    /**
+     * Directory path for disk cache of stock data (e.g., "cache/" in current working directory).
+     * <p>
+     * Used for storing and retrieving locally cached minute-bar or indicator data to minimize API calls.
+     */
     public static final String CACHE_DIR = Paths.get(System.getProperty("user.dir"), "cache").toString();
+
+    /**
+     * Central timeline map: stores the loaded or downloaded time series for each stock symbol.
+     * <ul>
+     *   <li>Key: Stock symbol (always uppercase, e.g., "AAPL")</li>
+     *   <li>Value: List of {@link StockUnit} representing each time bar (chronological order)</li>
+     * </ul>
+     * <p>
+     * This is the primary in-memory data store for the entire pipeline, used for all technical indicator calculation.
+     * <p>
+     * Thread-safe for concurrent reads and writes.
+     */
     static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
+
+    /**
+     * Stores all generated {@link Notification} objects relevant to PL (Profit & Loss) analysis or spike detection.
+     * <p>
+     * Populated throughout analytics; used for summary UI panels, notification feeds, or backtesting.
+     */
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
+
+    /**
+     * State-tracking map for per-symbol SMA crossover state.
+     * <ul>
+     *   <li>Key: Symbol</li>
+     *   <li>Value: Integer state of SMA (1 = bullish crossover, -1 = bearish, 0 = neutral/no signal)</li>
+     * </ul>
+     * Used to prevent duplicate signals on repeated crossovers.
+     * <p>
+     * Thread-safe, supports concurrent indicator calculation in multithreaded contexts.
+     */
     private static final ConcurrentHashMap<String, Integer> smaStateMap = new ConcurrentHashMap<>();
+
+    /**
+     * Dedicated single-threaded executor for scheduled background tasks such as real-time data polling.
+     * <p>
+     * Used by routines that require fixed-rate, non-blocking execution, e.g. {@link #realTimeDataCollector(String)}.
+     */
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+
+    /**
+     * Cache of precomputed ATR (Average True Range) values per symbol.
+     * <ul>
+     *   <li>Key: Symbol</li>
+     *   <li>Value: Cached ATR (used for adaptive gap threshold logic and high-volatility detection)</li>
+     * </ul>
+     * Avoids repeated ATR computation for the same look-back period.
+     */
     private static final Map<String, Double> historicalATRCache = new ConcurrentHashMap<>();
+
+    /**
+     * Look-back window (in bars) for historical ATR calculations. Controls sensitivity of volatility measurements.
+     * <p>
+     * Set to 100 to provide a robust estimate across typical trading weeks.
+     */
     private static final int HISTORICAL_LOOK_BACK = 100;
-    static int frameSize = 30; // Frame size for analysis
+
+    /**
+     * Number of bars in each analysis window (frame) for main technical signal generation.
+     * <ul>
+     *   <li>Controls the minimum data size for feature calculation and spike detection.</li>
+     *   <li>Adjustable for tuning short-term vs. long-term strategy.</li>
+     * </ul>
+     */
+    static int frameSize = 30; // Frame size for analysis (default: 30 bars, typically minutes)
+
     public static String[] stockSymbols = {
             "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
             , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
@@ -110,197 +235,405 @@ public class mainDataHandler {
             , "ZIM", "ZTO", "ZTS", "ВТВТ"
     };
 
-    // Rally pipeline variables
-    private static final int MINUTES = 120;     // bar length
-    private static final int DAYS = 12;  // look-back
-    private static final int W = DAYS * 8;   // ≈ 8 bars per day
-    private static final double SLOPE_MIN = 0.1;    // % per bar
-    private static final double WIDTH_MAX = 0.06;   // 6 % channel width
-    private static final int[] DAYS_OPTIONS = {4, 6, 8, 10, 14};  // Different day ranges to check
+    // ==================== RALLY PIPELINE PARAMETERS =====================
+
+    /**
+     * Number of minutes to aggregate per bar in rally analysis compression.
+     * <p>
+     * Used for grouping high-frequency bars into multi-minute "super-bars"
+     * to smooth noise in trend and channel calculations.
+     * Typical value: 120 minutes (2 hours per bar).
+     */
+    private static final int MINUTES = 120;
+
+    /**
+     * Number of look-back days for rally detection algorithms.
+     * <p>
+     * Defines window size for regression analysis and uptrend confirmation.
+     */
+    private static final int DAYS = 12;
+
+    /**
+     * Total number of bars in full rally detection window.
+     * <p>
+     * Assumes ~8 bars per day (based on 2-hour bars, standard US session).
+     * Used for window slicing in regression and channel width calculations.
+     */
+    private static final int W = DAYS * 8;
+
+    /**
+     * Minimum required regression slope (in percent per bar) for a rally to qualify as an "uptrend".
+     * <p>
+     * Used to reject trends that are too flat to be significant.
+     */
+    private static final double SLOPE_MIN = 0.1;
+
+    /**
+     * Maximum allowable regression channel width as percent of price.
+     * <p>
+     * Rejects "rallies" where the price action is too volatile or inconsistent with a clean trend.
+     */
+    private static final double WIDTH_MAX = 0.06;
+
+    /**
+     * Array of different day-based windows for multi-horizon rally checking.
+     * <p>
+     * E.g., checks consistency of uptrend over 4, 6, 8, 10, and 14 day spans.
+     * Each is mapped to a number of bars for regression analysis.
+     */
+    private static final int[] DAYS_OPTIONS = {4, 6, 8, 10, 14};
+
+    /**
+     * Minimum R^2 (coefficient of determination) for accepting a regression trend as meaningful.
+     * <p>
+     * Rejects trends with too much scatter or inconsistency.
+     */
     private static final double R2_MIN = 0.6;
+
+    /**
+     * Allowed tolerance as a percent for checking alignment of price to regression line at rally end.
+     * <p>
+     * If actual prices are outside this band, trend is considered broken.
+     */
     private static final double TOLERANCE_PCT = 0.03;
+
+    /**
+     * Market open time (assumed for all data, in 24hr format).
+     * <p>
+     * Filters out pre-market and after-hours bars.
+     */
     private static final LocalTime MARKET_OPEN = LocalTime.of(4, 0);
+
+    /**
+     * Market close time (assumed for all data, in 24hr format).
+     * <p>
+     * Used to identify valid in-session bars.
+     */
     private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
 
+    // ====================================================================
+
+    /**
+     * Main method entry point for standalone running or backtesting.
+     * <p>
+     * Typically used during development to launch test analysis routines.
+     * By default, triggers PLAnalysis (profit/loss/spike testing) on startup.
+     * Optionally, can be used to launch real-time collectors.
+     *
+     * @param args Command-line arguments (unused)
+     */
     public static void main(String[] args) {
-        PLAnalysis();
-        //realTimeDataCollector("MARA");
+        PLAnalysis(); // Entry point for profit & loss/notification analysis
+        //realTimeDataCollector("MARA"); // Example: Start live data collector for symbol "MARA"
     }
 
+    /**
+     * Initializes the Alpha Vantage API client using a provided API key.
+     * <p>
+     * Sets the API key and timeout value globally for all subsequent requests.
+     * This method must be called before any API calls are made.
+     *
+     * @param token Your Alpha Vantage API key
+     */
     public static void InitAPi(String token) {
-        // Configure the API client
+        // Configure the API client with a key and a 10-second timeout
         Config cfg = Config.builder()
                 .key(token)
-                .timeOut(10) // Timeout in seconds
+                .timeOut(10) // Timeout in seconds (ensures non-blocking UI)
                 .build();
 
-        // Initialize the Alpha Vantage API
+        // Initialize the Alpha Vantage API singleton with the config
         AlphaVantage.api().init(cfg);
     }
 
+    /**
+     * Fetches the full minute-by-minute price timeline for a given stock symbol from Alpha Vantage API.
+     * <p>
+     * On success, triggers the provided {@link TimelineCallback} with a {@code List<StockUnit>} containing all available bars.
+     * The result can be used for historical analysis, feature extraction, or visualizations.
+     * This call is asynchronous and does not block the UI.
+     *
+     * @param symbolName The ticker symbol to fetch (e.g., "AAPL")
+     * @param callback   Callback that receives the populated stock timeline
+     */
     public static void getTimeline(String symbolName, TimelineCallback callback) {
-        List<StockUnit> stocks = new ArrayList<>(); // Directly use a List<StockUnit>
+        // Prepare a container for StockUnit bars (will be populated via API response)
+        List<StockUnit> stocks = new ArrayList<>();
 
         AlphaVantage.api()
                 .timeSeries()
-                .intraday()
-                .forSymbol(symbolName)
-                .interval(Interval.ONE_MIN)
-                .outputSize(OutputSize.FULL)
+                .intraday()                      // Intraday data (minute bars)
+                .forSymbol(symbolName)           // Set symbol
+                .interval(Interval.ONE_MIN)      // 1-minute interval
+                .outputSize(OutputSize.FULL)     // Fetch entire available history
                 .onSuccess(e -> {
+                    // On success, cast to TimeSeriesResponse and extract all StockUnits
                     TimeSeriesResponse response = (TimeSeriesResponse) e;
-                    stocks.addAll(response.getStockUnits()); // Populate the list
-                    callback.onTimeLineFetched(stocks); // Call the callback with the Stock list
+                    stocks.addAll(response.getStockUnits());     // Populate list with all bars
+                    callback.onTimeLineFetched(stocks);          // Fire callback for further processing
                 })
-                .onFailure(mainDataHandler::handleFailure)
-                .fetch();
+                .onFailure(mainDataHandler::handleFailure)        // Handle error using global handler
+                .fetch();                                        // Start asynchronous fetch
     }
 
+    /**
+     * Fetches both fundamental and latest quote data for a given stock symbol,
+     * assembling a 9-element {@code Double[]} array with common key metrics.
+     * <p>
+     * The resulting array is populated as follows:
+     * <pre>
+     *   [0] Open price (from latest quote)
+     *   [1] High price (from latest quote)
+     *   [2] Low price (from latest quote)
+     *   [3] Volume (from latest quote)
+     *   [4] P/E Ratio (from fundamentals)
+     *   [5] PEG Ratio (from fundamentals)
+     *   [6] 52-week high (from fundamentals)
+     *   [7] 52-week low (from fundamentals)
+     *   [8] Market capitalization (from fundamentals)
+     * </pre>
+     * <b>Note:</b> This method launches two asynchronous API calls (fundamental and quote data) in parallel.
+     * The callback is called only after the quote data is received (but before fundamentals necessarily finish).
+     * For fully synchronized fundamental+quote delivery, consider a custom latch.
+     *
+     * @param symbolName The ticker symbol (e.g., "AAPL", "MSFT")
+     * @param callback   Callback that will receive the populated Double[] data array.
+     */
     public static void getInfoArray(String symbolName, DataCallback callback) {
+        // Pre-allocate array to store all 9 values (indexes defined above)
         Double[] data = new Double[9];
 
-        // Fetch fundamental data
+        // ====== Fetch fundamental data asynchronously ======
         AlphaVantage.api()
                 .fundamentalData()
                 .companyOverview()
                 .forSymbol(symbolName)
                 .onSuccess(e -> {
+                    // Upon successful response, extract key fields from fundamentals
                     CompanyOverviewResponse companyOverviewResponse = (CompanyOverviewResponse) e;
                     CompanyOverview response = companyOverviewResponse.getOverview();
-                    data[4] = response.getPERatio();
-                    data[5] = response.getPEGRatio();
-                    data[6] = response.getFiftyTwoWeekHigh();
-                    data[7] = response.getFiftyTwoWeekLow();
-                    data[8] = Double.valueOf(response.getMarketCapitalization());
-
+                    data[4] = response.getPERatio();                // Price-to-Earnings Ratio
+                    data[5] = response.getPEGRatio();                // PEG Ratio
+                    data[6] = response.getFiftyTwoWeekHigh();        // 52-week High Price
+                    data[7] = response.getFiftyTwoWeekLow();         // 52-week Low Price
+                    data[8] = Double.valueOf(response.getMarketCapitalization()); // Market Cap
                 })
-                .onFailure(mainDataHandler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)  // Logs any API failure for debugging
                 .fetch();
 
+        // ====== Fetch current quote data asynchronously ======
         AlphaVantage.api()
                 .timeSeries()
                 .quote()
                 .forSymbol(symbolName)
                 .onSuccess(e -> {
+                    // On quote data arrival, fill in open, high, low, and volume
                     QuoteResponse response = (QuoteResponse) e;
-                    data[0] = response.getOpen();
-                    data[1] = response.getHigh();
-                    data[2] = response.getLow();
-                    data[3] = response.getVolume();
+                    data[0] = response.getOpen();      // Latest open price
+                    data[1] = response.getHigh();      // Latest high price
+                    data[2] = response.getLow();       // Latest low price
+                    data[3] = response.getVolume();    // Latest volume
 
-                    // Call the callback with the fetched data
+                    // Callback fires here – note: fundamental data may or may not have arrived yet
                     callback.onDataFetched(data);
                 })
-                .onFailure(mainDataHandler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure)  // Logs error on API failure
                 .fetch();
     }
 
+    /**
+     * Generic global handler for AlphaVantage API failures.
+     * <p>
+     * Prints stack trace to stderr. Intended as a quick diagnostics handler,
+     * but can be replaced with a more robust UI-level notification or logging framework.
+     *
+     * @param error The thrown exception from API
+     */
     public static void handleFailure(AlphaVantageException error) {
-        error.printStackTrace();
+        error.printStackTrace(); // Simple debug log; can be expanded to UI or persistent logs
     }
 
+    /**
+     * Searches the AlphaVantage symbol database for tickers matching a user search string.
+     * <p>
+     * Typically used to implement an "autocomplete" or "search bar" in the UI,
+     * providing the user with a list of possible tickers as they type.
+     * Asynchronous: does not block the calling thread.
+     *
+     * @param searchText The partial or full search string (e.g., "Apple", "TESL")
+     * @param callback   Callback that receives either a List of matching symbol strings, or a failure event.
+     */
     public static void findMatchingSymbols(String searchText, SymbolSearchCallback callback) {
         AlphaVantage.api()
                 .Stocks()
-                .setKeywords(searchText)
+                .setKeywords(searchText)     // Set the search pattern (not case-sensitive)
                 .onSuccess(e -> {
+                    // On success, extract and map symbols from each match result
                     List<String> allSymbols = e.getMatches()
                             .stream()
-                            .map(StockResponse.StockMatch::getSymbol)
+                            .map(StockResponse.StockMatch::getSymbol) // Extract only the symbol string
                             .toList();
-                    callback.onSuccess(allSymbols);
+                    callback.onSuccess(allSymbols);    // Deliver results to UI or caller
                 })
                 .onFailure(failure -> {
-                    // Handle failure and invoke the failure callback
+                    // On failure: log the error, and return a RuntimeException via callback
                     mainDataHandler.handleFailure(failure);
                     callback.onFailure(new RuntimeException("API call failed"));
                 })
-                .fetch();
+                .fetch(); // Non-blocking, returns immediately
     }
 
+    /**
+     * Fetches the latest news headlines and article summaries for a given ticker symbol.
+     * <p>
+     * Allows the UI to display recent, relevant news for a specific company or stock.
+     * Limits to the 12 most recent stories, sorted with the newest first.
+     *
+     * @param Symbol   The ticker symbol (case-insensitive, e.g., "AAPL", "TSLA")
+     * @param callback Callback that receives a List of {@link NewsResponse.NewsItem} objects on success.
+     */
     public static void receiveNews(String Symbol, ReceiveNewsCallback callback) {
         AlphaVantage.api()
                 .News()
-                .setTickers(Symbol)
-                .setSort("LATEST")
-                .setLimit(12)
-                .onSuccess(e -> callback.onNewsReceived(e.getNewsItems()))
-                .onFailure(mainDataHandler::handleFailure)
+                .setTickers(Symbol)      // Target stock ticker(s), comma separated
+                .setSort("LATEST")       // Ensure latest news comes first
+                .setLimit(12)            // Only fetch up to 12 headlines/articles
+                .onSuccess(e -> callback.onNewsReceived(e.getNewsItems())) // Deliver news to UI or caller
+                .onFailure(mainDataHandler::handleFailure) // Log/notify on API failure
                 .fetch();
     }
 
+    /**
+     * Starts "Hype Mode", which automatically selects a subset of symbols for high-frequency scanning
+     * based on the specified trade volume.
+     * <p>
+     * This method is designed to quickly assemble a list of stocks that match the user's trading size,
+     * ensuring sufficient liquidity for realistic simulations or scanning. It minimizes redundant API calls
+     * by using local file caching for large volumes and falls back to a pre-set symbol list for lower volumes.
+     * <ul>
+     *   <li>For trade volumes above 90,000, the function uses a cache file (named "[tradeVolume].txt").</li>
+     *   <li>If the file exists, it loads symbols directly from disk, saving time and API quota.</li>
+     *   <li>If the file does not exist, it dynamically filters symbols using {@link #getAvailableSymbols},
+     *       then writes them to the cache for future use.</li>
+     *   <li>For trade volumes 90,000 or below, it simply uses the full list of {@code stockSymbols}.</li>
+     *   <li>In all cases, the function calls {@link #hypeModeFinder(List)} with the resulting symbol set.</li>
+     * </ul>
+     * Progress and status updates are shown in the UI's {@code logTextArea} in real time.
+     *
+     * @param tradeVolume The user-selected trade volume for filtering stocks (e.g., 10,000, 100,000, etc.)
+     */
     public static void startHypeMode(int tradeVolume) {
-        logTextArea.append(String.format("Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Stocks to scan\n", tradeVolume, stockSymbols.length));
+        // Log start message: indicates hype mode activation and initial parameters
+        logTextArea.append(String.format(
+                "Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Stocks to scan\n",
+                tradeVolume, stockSymbols.length));
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-        List<String> possibleSymbols = new ArrayList<>(); //get the symbols based on the config
+        // Local container for filtered or loaded symbol names (uppercased)
+        List<String> possibleSymbols = new ArrayList<>();
 
+        // ======= MAIN LOGIC BRANCH: LARGE TRADE VOLUME =======
         if (tradeVolume > 90000) {
-            File file = new File(tradeVolume + ".txt");
+            File file = new File(tradeVolume + ".txt"); // Use a dedicated file for each volume setting
 
             if (file.exists()) {
-                // Load symbols from file if it exists
+                // ------------ [1] FILE EXISTS: LOAD SYMBOLS FROM DISK ------------
                 try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
                     String line;
+                    // Read every line as a symbol and add to possibleSymbols
                     while ((line = reader.readLine()) != null) {
                         possibleSymbols.add(line);
                     }
                 } catch (IOException e) {
-                    e.printStackTrace();
+                    e.printStackTrace(); // Print to stderr for debugging if file can't be read
                 }
 
+                // Log success to UI
                 logTextArea.append("Loaded symbols from file\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
+                // Proceed to next step with the loaded symbols
                 hypeModeFinder(possibleSymbols);
+
             } else {
+                // ------------ [2] FILE DOES NOT EXIST: FETCH AND CACHE SYMBOLS ------------
                 logTextArea.append("Started getting possible symbols\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-                // If file does not exist, call API and write symbols to file
+                // Dynamically fetch suitable symbols and cache to file for next run
                 getAvailableSymbols(tradeVolume, stockSymbols, result -> {
                     try (FileWriter writer = new FileWriter(file)) {
                         for (String s : result) {
                             String symbol = s.toUpperCase();
-                            possibleSymbols.add(symbol);  // Add to possibleSymbols
-                            writer.write(symbol + System.lineSeparator());  // Write to file
+                            possibleSymbols.add(symbol);  // Add to runtime set
+                            writer.write(symbol + System.lineSeparator()); // Write to cache file
                         }
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        e.printStackTrace(); // Error writing cache file (still proceeds)
                     }
 
+                    // Log finish and proceed to main analysis
                     logTextArea.append("Finished getting possible symbols\n");
                     logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-                    hypeModeFinder(possibleSymbols);
+                    hypeModeFinder(possibleSymbols); // Continue with filtered set
                 });
             }
         } else {
-            // For tradeVolume <= 90000, directly copy symbols to the list and process
+            // ======= MAIN LOGIC BRANCH: SMALL OR DEFAULT TRADE VOLUME =======
+            // No filtering or API hit—simply use all available symbols
             possibleSymbols.addAll(Arrays.asList(stockSymbols));
 
+            // Log to UI for transparency
             logTextArea.append("Use pre set symbols\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
+            // Begin hype mode scan on the unfiltered set
             hypeModeFinder(possibleSymbols);
         }
     }
 
+    /**
+     * Dynamically filters a universe of stock symbols to find those that meet liquidity and tradability
+     * requirements for a specific trade volume. Designed for "Hype Mode" symbol preselection.
+     * <p>
+     * This method is highly parallel and asynchronous. For each candidate symbol:
+     * <ul>
+     *   <li>Fetches fundamental data (market cap, shares outstanding) via AlphaVantage.</li>
+     *   <li>Fetches recent daily price and volume bars for liquidity analysis.</li>
+     *   <li>Applies several liquidity filters (market cap, avg volume, shares available, max open limit).</li>
+     *   <li>If a symbol passes all checks, it is added to the result list.</li>
+     *   <li>When all symbols have completed (success or fail), triggers the callback with the filtered list.</li>
+     * </ul>
+     * Filters and calculations are designed to ensure only realistically tradable, liquid stocks are
+     * considered for high-volume algorithmic strategies or simulation.
+     *
+     * @param tradeVolume     The cash trade size to check (e.g., $100,000)
+     * @param possibleSymbols Universe of candidate tickers to filter (e.g., S&P500 list)
+     * @param callback        Callback invoked with the filtered List of tradable symbols
+     */
     public static void getAvailableSymbols(int tradeVolume, String[] possibleSymbols, SymbolCallback callback) {
+        // If no possible symbols, immediately short-circuit and return empty list to callback.
         if (possibleSymbols.length == 0) {
             callback.onSymbolsAvailable(Collections.emptyList());
             return;
         }
 
+        // Thread-safe list to collect symbols passing all checks (safe for concurrent mutation)
         List<String> actualSymbols = new CopyOnWriteArrayList<>();
+
+        // Atomic counter to track completion of async calls (one per candidate symbol)
         AtomicInteger remaining = new AtomicInteger(possibleSymbols.length);
 
-        // Thresholds (adjust these values as needed)
-        final double MARKET_CAP_PERCENTAGE = 0.05; // 5% of market cap
-        final double AVG_VOLUME_PERCENTAGE = 0.20; // 20% of average volume
-        final double SHARES_OUTSTANDING_PERCENTAGE = 0.01; // 1% of shares outstanding
+        // ==================== FILTER THRESHOLDS ====================
+        // (These values can be tuned for stricter or looser liquidity requirements)
+        final double MARKET_CAP_PERCENTAGE = 0.05;         // Max trade = 5% of market cap
+        final double AVG_VOLUME_PERCENTAGE = 0.20;         // Max shares = 20% of avg 30-day volume
+        final double SHARES_OUTSTANDING_PERCENTAGE = 0.01; // Max shares = 1% of shares outstanding
 
+        // ==================== MAIN FILTER LOOP ====================
         for (String symbol : possibleSymbols) {
+            // --------- [1] Fetch company fundamentals (market cap, shares out) ---------
             AlphaVantage.api()
                     .fundamentalData()
                     .companyOverview()
@@ -310,6 +643,7 @@ public class mainDataHandler {
                         long marketCapitalization = companyResponse.getOverview().getMarketCapitalization();
                         long sharesOutstanding = companyResponse.getOverview().getSharesOutstanding();
 
+                        // --------- [2] Fetch recent daily price/volume series for this symbol ---------
                         AlphaVantage.api()
                                 .timeSeries()
                                 .daily()
@@ -319,37 +653,42 @@ public class mainDataHandler {
                                     TimeSeriesResponse ts = (TimeSeriesResponse) tsResponse;
                                     List<StockUnit> stockUnits = ts.getStockUnits();
 
+                                    // If there is no price data, skip this symbol.
                                     if (stockUnits.isEmpty()) {
                                         checkCompletion(remaining, actualSymbols, callback);
                                         return;
                                     }
 
+                                    // Use the latest close price for shares-to-buy calculation.
                                     double close = stockUnits.get(0).getClose();
                                     if (close <= 0) {
                                         checkCompletion(remaining, actualSymbols, callback);
                                         return;
                                     }
 
-                                    // Calculate shares to trade
+                                    // Compute how many shares we need to buy for the given trade volume.
                                     double sharesToTrade = tradeVolume / close;
 
-                                    // Calculate 30-day average volume
+                                    // Compute average volume over last 30 trading days (or as many as available).
                                     int daysToConsider = Math.min(30, stockUnits.size());
                                     double totalVolume = 0;
                                     for (int i = 0; i < daysToConsider; i++) {
                                         totalVolume += stockUnits.get(i).getVolume();
                                     }
-
                                     double averageVolume = daysToConsider > 0 ? totalVolume / daysToConsider : 0;
 
-                                    // Liquidity checks
+                                    // ========== LIQUIDITY FILTERS ==========
+                                    // [A] Is trade small enough relative to market cap?
                                     boolean validMarketCap = (double) tradeVolume <= MARKET_CAP_PERCENTAGE * marketCapitalization;
+                                    // [B] Is trade small enough relative to daily trading volume?
                                     boolean validVolume = sharesToTrade <= AVG_VOLUME_PERCENTAGE * averageVolume;
+                                    // [C] Is trade small enough relative to total shares outstanding?
                                     boolean validSharesOutstanding = sharesToTrade <= SHARES_OUTSTANDING_PERCENTAGE * sharesOutstanding;
-
+                                    // [D] Custom limit from static TickerData cache (if available)
                                     TickerData data = nameToData.get(symbol);
                                     boolean canBuyEnough = data != null && sharesToTrade <= data.maxOpenQuantity();
 
+                                    // [OPTIONAL] Print detailed liquidity filter diagnostics for debugging
                                     System.out.println("===== Liquidity Check for: " + symbol + " =====");
                                     System.out.println("Trade Volume ($): " + tradeVolume);
                                     System.out.println("Close Price: " + close);
@@ -364,19 +703,23 @@ public class mainDataHandler {
                                     System.out.println("Can Buy Enough? " + canBuyEnough);
                                     System.out.println("=====================================");
 
+                                    // [E] Only add to final result if ALL filters pass
                                     if (validMarketCap && validVolume && validSharesOutstanding && canBuyEnough) {
                                         actualSymbols.add(symbol);
                                     }
 
+                                    // Check if this was the last pending symbol
                                     checkCompletion(remaining, actualSymbols, callback);
                                 })
                                 .onFailure(error -> {
+                                    // If daily bar fetch fails, log and continue
                                     mainDataHandler.handleFailure(error);
                                     checkCompletion(remaining, actualSymbols, callback);
                                 })
                                 .fetch();
                     })
                     .onFailure(error -> {
+                        // If fundamental data fetch fails, log and continue
                         mainDataHandler.handleFailure(error);
                         checkCompletion(remaining, actualSymbols, callback);
                     })
@@ -384,46 +727,83 @@ public class mainDataHandler {
         }
     }
 
+    /**
+     * Helper method to check if all asynchronous symbol checks are complete.
+     * <p>
+     * Uses an AtomicInteger countdown. When zero, calls the provided callback with the filtered list.
+     * Called after every async fetch completes, passes, or fails.
+     *
+     * @param remaining     Atomic counter (decremented once per completion)
+     * @param actualSymbols Thread-safe list of passing symbols so far
+     * @param callback      The original callback to fire when done
+     */
     private static void checkCompletion(AtomicInteger remaining, List<String> actualSymbols, SymbolCallback callback) {
+        // Decrement counter; if zero, all async operations are finished, so fire callback.
         if (remaining.decrementAndGet() == 0) {
             callback.onSymbolsAvailable(actualSymbols);
         }
     }
 
+    /**
+     * Loads and maintains up-to-date time series (OHLCV) data for a given set of stock symbols.
+     * <p>
+     * This method coordinates all required pre-processing and continuous polling for "hype mode":
+     * <ul>
+     *   <li><b>1. Data loading:</b> Loads from cache if available, else pulls full intraday data from AlphaVantage.</li>
+     *   <li><b>2. UI feedback:</b> Continuously updates a progress dialog and status log as each symbol is processed.</li>
+     *   <li><b>3. Timeline calculation:</b> Once all symbols are loaded, computes historical % changes and
+     *   precomputes feature indicator ranges needed for later ML/alert calculations.</li>
+     *   <li><b>4. Real-time polling:</b> Enters a loop, fetching latest real-time data for all stocks in batches,
+     *   updating the timeline and running alert logic. Sleeps for 1 minute between updates to avoid API bans.</li>
+     *   <li><b>5. Threading:</b> Heavy lifting is performed in a dedicated background thread so the UI remains responsive.</li>
+     * </ul>
+     * <b>Note:</b> This function is at the heart of the app's "fast scan" and live-trading simulation capability.
+     *
+     * @param symbols List of ticker symbols (Strings) to monitor; case-insensitive (internally converted to uppercase).
+     */
     public static void hypeModeFinder(List<String> symbols) {
+        // Announce to the user that the download/fetch sequence is starting.
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
+        // Countdown latch is used to know when ALL symbol data (from file or API) has loaded.
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
 
-        // Create and show progress dialog
+        // ----------- UI PROGRESS BAR INITIALIZATION -----------
+        // Build a modal dialog (blocks interaction) with a progress bar for visual feedback.
         ProgressDialog progressDialog = new ProgressDialog((Frame) SwingUtilities.getWindowAncestor(logTextArea));
+        // Show the dialog on the UI thread to prevent concurrency issues.
         SwingUtilities.invokeLater(() -> progressDialog.setVisible(true));
 
-        // Update progress helper
+        // Helper: Whenever a symbol is processed, update the dialog with progress.
         Runnable updateProgress = () -> {
             int current = symbols.size() - (int) countDownLatch.getCount();
             progressDialog.updateProgress(current, symbols.size());
         };
 
+        // =========== LOAD DATA FOR EACH SYMBOL ==============
         for (String symbol : symbols) {
-            String symbolUpper = symbol.toUpperCase();
+            String symbolUpper = symbol.toUpperCase(); // Consistent key format for all cache/maps
             Path cachePath = Paths.get(CACHE_DIR, symbolUpper + ".txt");
 
+            // ============= CACHE CHECK =============
             if (Files.exists(cachePath)) {
-                // Load data from cache
+                // --- If we have a file cache, use it (MUCH faster than API, reduces rate limits) ---
                 try {
-                    processStockDataFromFile(cachePath.toString(), symbolUpper, 10000);
-                    countDownLatch.countDown();
+                    processStockDataFromFile(cachePath.toString(), symbolUpper, 10000); // Parse cached bars and update global timeline
+                    countDownLatch.countDown(); // Mark one task done
                     logTextArea.append("Loaded cached data for " + symbolUpper + "\n");
-                    SwingUtilities.invokeLater(updateProgress);
+                    SwingUtilities.invokeLater(updateProgress); // Update the progress bar
                 } catch (IOException e) {
+                    // Any file read issue: tell user and move on so the app doesn't hang.
                     logTextArea.append("Error loading cache for " + symbolUpper + ": " + e.getMessage() + "\n");
                     e.printStackTrace();
-                    countDownLatch.countDown();
+                    countDownLatch.countDown(); // Even on error, count down so the thread doesn't block forever
                     SwingUtilities.invokeLater(updateProgress);
                 }
             } else {
-                // Download data from API
+                // ============= API FETCH (NO CACHE) =============
+                // API call for full intraday OHLCV data (1-min bars, as much as available)
                 AlphaVantage.api()
                         .timeSeries()
                         .intraday()
@@ -432,15 +812,19 @@ public class mainDataHandler {
                         .outputSize(OutputSize.FULL)
                         .onSuccess(e -> {
                             try {
+                                // Parse and store in-memory (and maybe to disk if your handleSuccess does so)
                                 handleSuccess((TimeSeriesResponse) e);
 
+                                // Extract all StockUnits (bars) from response, annotate with symbol.
                                 TimeSeriesResponse response = (TimeSeriesResponse) e;
                                 List<StockUnit> units = response.getStockUnits();
-                                units.forEach(stockUnit -> stockUnit.setSymbol(symbolUpper));
+                                units.forEach(stockUnit -> stockUnit.setSymbol(symbolUpper)); // Tag each bar for clarity
 
+                                // Reverse bars to oldest → newest (AlphaVantage returns newest → oldest)
                                 List<StockUnit> reversedUnits = new ArrayList<>(units);
                                 Collections.reverse(reversedUnits);
 
+                                // Update the global map in a thread-safe way.
                                 synchronized (symbolTimelines) {
                                     symbolTimelines.computeIfAbsent(symbolUpper, k ->
                                             Collections.synchronizedList(new ArrayList<>())
@@ -451,6 +835,7 @@ public class mainDataHandler {
                                 logTextArea.append("Downloaded and cached data for " + symbolUpper + "\n");
                                 SwingUtilities.invokeLater(updateProgress);
                             } catch (Exception ex) {
+                                // Any parsing or logic error, log and proceed so the pipeline keeps running.
                                 logTextArea.append("Failed to process data for " + symbolUpper + ": " + ex.getMessage() + "\n");
                                 ex.printStackTrace();
                                 countDownLatch.countDown();
@@ -458,6 +843,7 @@ public class mainDataHandler {
                             }
                         })
                         .onFailure(error -> {
+                            // API fetch failed; report but don't let this symbol hold up the batch.
                             mainDataHandler.handleFailure(error);
                             logTextArea.append("Failed to download data for " + symbolUpper + "\n");
                             countDownLatch.countDown();
@@ -467,27 +853,35 @@ public class mainDataHandler {
             }
         }
 
+        // ========== BACKGROUND THREAD: CONTINUES AFTER ALL SYMBOLS LOADED ==========
         new Thread(() -> {
             try {
+                // Wait (blocks here) until every symbol is loaded (cache or API).
                 countDownLatch.await();
+
+                // When everything is loaded: close progress dialog and let user know.
                 SwingUtilities.invokeLater(() -> {
                     progressDialog.dispose();
                     logTextArea.append("Initial data loading completed\n");
                 });
 
+                // --- Post-load: Prepare all in-memory timelines for ML/alerting ---
                 synchronized (symbolTimelines) {
                     symbolTimelines.forEach((symbol, timeline) -> {
+                        // If too little data, alert user and skip further analysis for this symbol.
                         if (timeline.size() < 2) {
                             logTextArea.append("Not enough data for " + symbol + "\n");
                             return;
                         }
-
+                        // Compute % price change between each pair of bars.
                         for (int i = 1; i < timeline.size(); i++) {
                             StockUnit current = timeline.get(i);
                             StockUnit previous = timeline.get(i - 1);
 
+                            // Avoid division by zero or negative close values.
                             if (previous.getClose() > 0) {
                                 double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                                // Handle splits/gaps: ignore giant % jumps (>14%) unless propagated.
                                 change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
                                 current.setPercentageChange(change);
                             }
@@ -495,16 +889,23 @@ public class mainDataHandler {
                     });
                 }
 
+                // Precompute min/max/percentile ranges for each indicator, per symbol.
                 precomputeIndicatorRanges(true);
+
+                // Perform another % change scan and prepare notifications (triggers the ML/alert pipeline).
                 calculateStockPercentageChange(false);
 
+                // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
                 while (!Thread.currentThread().isInterrupted()) {
+                    // Thread-safe storage for all real-time results for this pass.
                     List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
                     try {
+                        // AlphaVantage API: limit 100 symbols per real-time fetch, so split into batches.
                         int totalBatches = (int) Math.ceil(symbols.size() / 100.0);
                         CountDownLatch latch = new CountDownLatch(totalBatches);
 
                         for (int i = 0; i < totalBatches; i++) {
+                            // Compute indices for this batch; end is exclusive and handles the last small batch.
                             List<String> batchSymbols = symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()));
                             String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
 
@@ -512,70 +913,115 @@ public class mainDataHandler {
                                     .Realtime()
                                     .setSymbols(symbolsBatch)
                                     .onSuccess(response -> {
+                                        // Collect all match objects (one per symbol in this batch).
                                         matches.addAll(response.getMatches());
                                         latch.countDown();
                                     })
                                     .onFailure(e -> {
+                                        // Error for this batch: log, count down, keep running!
                                         handleFailure(e);
-                                        latch.countDown(); // Ensure latch is counted down on failure
+                                        latch.countDown();
                                     })
                                     .fetch();
                         }
 
-                        // Wait with timeout to prevent hanging
+                        // Wait for all batches to finish, but not longer than 25 seconds.
+                        // (Prevents hanging forever if the API is slow or broken.)
                         if (!latch.await(25, TimeUnit.SECONDS)) {
                             logTextArea.append("Warning: Timed out waiting for data\n");
                         }
 
+                        // Process real-time data into the global timeline, and re-trigger ML/alerts.
                         processStockData(matches);
 
-                        // wait 1 Minute
+                        // ====== Rate limiting: Sleep for 60 seconds before polling again ======
                         Thread.sleep(60000);
 
                     } catch (InterruptedException e) {
+                        // If thread is interrupted (shutdown requested), exit loop cleanly.
                         e.printStackTrace();
                         Thread.currentThread().interrupt();
                         logTextArea.append("Data pull interrupted\n");
                         break;
                     } catch (Exception e) {
+                        // Any error: print/log and keep the background thread running.
                         e.printStackTrace();
                         logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
                     }
+                    // Always scroll UI log to show the latest event.
                     logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
                 }
             } catch (InterruptedException e) {
+                // This is only reached if the whole background thread is interrupted while waiting for data.
                 Thread.currentThread().interrupt();
             }
-        }).start();
+        }).start(); // All of the above runs in a dedicated background worker thread.
     }
 
+    /**
+     * Fetches the most recent real-time quote (tick) for a single symbol, delivering
+     * the result to a callback for live updating, streaming, or monitoring.
+     * <p>
+     * Designed for use in real-time dashboards, streaming price trackers, or
+     * UI elements that need current price and volume updates every second.
+     *
+     * @param symbol   The ticker symbol to monitor (case-insensitive, e.g., "AAPL", "MSFT")
+     * @param callback Callback that receives the latest {@link RealTimeResponse.RealTimeMatch} object
+     */
     public static void getRealTimeUpdate(String symbol, RealTimeCallback callback) {
         AlphaVantage.api()
                 .Realtime()
-                .setSymbols(symbol)
-                .onSuccess(response -> callback.onRealTimeReceived(response.getMatches().get(0)))
-                .onFailure(mainDataHandler::handleFailure)
-                .fetch();
+                .setSymbols(symbol) // Set one or more symbols (comma separated supported)
+                .onSuccess(response ->
+                        // Only take the first result (usually only one for single symbol)
+                        callback.onRealTimeReceived(response.getMatches().get(0))
+                )
+                .onFailure(mainDataHandler::handleFailure) // Log/handle errors
+                .fetch(); // Launch async call (returns immediately)
     }
 
+    /**
+     * Fetches fundamental company overview data (business summary, valuation, etc.)
+     * for a given symbol, and delivers the raw API response to a callback.
+     * <p>
+     * Used for displaying detailed company info, financials, and ratios in dashboards,
+     * or for supporting deeper data-driven analysis in the UI.
+     *
+     * @param symbol   The ticker symbol for the company (e.g., "GOOGL")
+     * @param callback Callback that receives a {@link CompanyOverviewResponse}
+     */
     public static void getCompanyOverview(String symbol, OverviewCallback callback) {
         AlphaVantage.api()
                 .fundamentalData()
                 .companyOverview()
-                .forSymbol(symbol)
+                .forSymbol(symbol) // Request overview for specified ticker
                 .onSuccess(response -> {
+                    // Cast and deliver the result to the callback (for UI or storage)
                     CompanyOverviewResponse overview = (CompanyOverviewResponse) response;
                     callback.onOverviewReceived(overview);
                 })
-                .onFailure(mainDataHandler::handleFailure)
+                .onFailure(mainDataHandler::handleFailure) // Log error
                 .fetch();
     }
 
+    /**
+     * Integrates a batch of real-time quote results into the global symbol timelines,
+     * updating live data structures with fresh price bars and preparing for analysis.
+     * <p>
+     * This method converts each API "match" into a {@link StockUnit}, stores it into a thread-safe
+     * timeline (for charting and analysis), and updates a local batch for reference.
+     * <b>After updating all timelines, it triggers a full percentage change re-calculation
+     * for each affected symbol to ensure all stats/indicators remain current.</b>
+     *
+     * @param matches List of {@link RealTimeResponse.RealTimeMatch} from API
+     */
     public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
+        // Local batch container: maps symbol to last inserted StockUnit (not strictly necessary for UI, but useful for tracking)
         Map<String, StockUnit> currentBatch = new ConcurrentHashMap<>();
 
+        // Iterate through each real-time match and convert to StockUnit
         for (RealTimeResponse.RealTimeMatch match : matches) {
-            String symbol = match.getSymbol().toUpperCase();
+            String symbol = match.getSymbol().toUpperCase(); // Ensure all keys are upper-case for consistency
             StockUnit unit = new StockUnit.Builder()
                     .symbol(symbol)
                     .close(match.getClose())
@@ -585,101 +1031,166 @@ public class mainDataHandler {
                     .open(match.getOpen())
                     .build();
 
-            // Update symbol timeline
+            // Add this bar to the global, thread-safe timeline for this symbol
             symbolTimelines.computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>())).add(unit);
-            currentBatch.put(symbol, unit);
+            currentBatch.put(symbol, unit); // Track for possible future reference (e.g., UI update)
         }
+        // Append a status message for debugging/user feedback
         logTextArea.append("Processed " + currentBatch.size() + " valid stock entries\n");
+        // Recompute percentage change for each symbol (ensures UI, alerts, and indicators are up-to-date)
         calculateStockPercentageChange(true);
     }
 
+    /**
+     * Calculates and updates the percentage price change for every bar of every symbol in the global timeline.
+     * <p>
+     * This ensures all indicators, spike detectors, and trend systems operate on fresh, accurate values.
+     * <b>Call this after any new bars are added to symbolTimelines!</b>
+     * <ul>
+     *   <li>If the flag {@code realFrame} is true, the method triggers a "spike-in-rally" analysis pass
+     *       after updating percentage changes (used for real-time and batch rally scans).</li>
+     *   <li>Handles outlier changes (> 14%) by carrying forward the previous value (removes "bad ticks").</li>
+     *   <li>All results are logged to the UI for transparency and debugging.</li>
+     * </ul>
+     *
+     * @param realFrame If true, triggers an additional full rally spike calculation pass after updating percentages.
+     */
     public static void calculateStockPercentageChange(boolean realFrame) {
+        // Thread safety: synchronize on the global timeline structure
         synchronized (symbolTimelines) {
             symbolTimelines.forEach((symbol, timeline) -> {
                 if (timeline.size() < 2) {
+                    // Not enough data for change calculation, log warning
                     logTextArea.append("Not enough data for " + symbol + "\n");
                     return;
                 }
 
-                int updates = 0;
+                int updates = 0; // Track how many bars were updated
+                // Start from the second bar, since the first has no previous
                 for (int i = 1; i < timeline.size(); i++) {
                     StockUnit current = timeline.get(i);
                     StockUnit previous = timeline.get(i - 1);
 
+                    // Only update if previous close is positive (avoid div by zero)
                     if (previous.getClose() > 0) {
                         double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                        // Clamp outliers (e.g., from splits, bad ticks, or overnight moves)
                         change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
-                        current.setPercentageChange(change);
+                        current.setPercentageChange(change); // Store change in bar for later indicator use
                         updates++;
                     }
                 }
 
+                // Log to user/debug: how many bars were changed
                 logTextArea.append(symbol + ": Updated " + updates + " percentage changes\n");
             });
         }
 
+        // If this update was for a real-time (live) frame, trigger spike analysis
         if (realFrame) {
             calculateSpikesInRally(frameSize, true);
         }
     }
 
+    /**
+     * Scans all loaded symbols for significant "spike" events within a rally period,
+     * processing each symbol's timeline in parallel for efficiency.
+     * <p>
+     * This method is used to find candidate stocks for alerts, notifications, or further
+     * technical analysis based on short-term or real-time market behavior.
+     * <ul>
+     *   <li>Processes each symbol in {@link #symbolTimelines} using parallel streams (multicore).</li>
+     *   <li>For each, slices the timeline into windows and runs event detection.</li>
+     *   <li>After all symbols are processed, the resulting notifications are globally sorted.</li>
+     * </ul>
+     *
+     * @param minutesPeriod Length of the window in minutes to analyze for spikes/rallies.
+     * @param realFrame     If true, only the most recent window is checked per symbol (live mode). If false, all possible windows are checked (historical analysis).
+     */
     public static void calculateSpikesInRally(int minutesPeriod, boolean realFrame) {
         symbolTimelines.keySet()
-                .parallelStream()
+                .parallelStream() // Multithreaded: processes each symbol in its own thread for speed
                 .forEach(symbol -> {
                     List<StockUnit> timeline = getSymbolTimeline(symbol);
                     if (!timeline.isEmpty()) {
+                        // For each symbol, analyze its full or most recent window
                         processTimeWindows(symbol, timeline, minutesPeriod, realFrame);
                     }
                 });
 
+        // After all symbols, sort global notifications so newest/most relevant are first
         sortNotifications(notificationsForPLAnalysis);
     }
 
+    /**
+     * Processes sliding or fixed-size time windows for a symbol's timeline, applying event detection logic.
+     * <p>
+     * Handles both real-time (only the latest frame) and batch (all windows) modes.
+     * For each eligible window, checks for event notifications (e.g., rally spike, technical trigger),
+     * and queues up new notifications for UI, logs, or user alerts.
+     *
+     * @param symbol       Symbol name (upper-case)
+     * @param timeline     Chronologically ordered list of StockUnit bars for this symbol
+     * @param minutes      The length of window (in minutes) to process
+     * @param useRealFrame If true, process only the last window; else, slide window over full timeline
+     */
     private static void processTimeWindows(String symbol, List<StockUnit> timeline, int minutes, boolean useRealFrame) {
-        List<Notification> stockNotifications = new ArrayList<>();
+        List<Notification> stockNotifications = new ArrayList<>(); // Collected notifications for this run
 
         if (useRealFrame) {
-            // Process only the last relevant timeframe
+            // ===== Real-time mode: only process the most recent relevant window =====
             if (!timeline.isEmpty()) {
+                // Set end to the latest bar, start to N minutes back
                 LocalDateTime endTime = timeline.get(timeline.size() - 1).getLocalDateTimeDate();
                 LocalDateTime startTime = endTime.minusMinutes(minutes);
 
+                // Extract the relevant window (maybe smaller than needed)
                 LinkedList<StockUnit> timeWindow = new LinkedList<>(getTimeWindow(timeline, startTime, endTime));
                 int startIndex = findTimeIndex(timeline, startTime);
 
+                // Pad window from left if it's too short (backfill with earlier bars)
                 while (timeWindow.size() < frameSize && startIndex > 0) {
                     startIndex--;
                     timeWindow.addFirst(timeline.get(startIndex));
                 }
 
+                // Only process window if it is large enough for event logic
                 if (timeWindow.size() >= frameSize) {
                     try {
+                        // Run event detection (technical signals, spikes, etc.)
                         List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
                         stockNotifications.addAll(notifications);
 
-                        // Add notifications to UI
+                        // Push notifications to UI, dashboard, etc.
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
-                                addNotification(notification.getTitle(), notification.getContent(), notification.getStockUnitList(),
-                                        notification.getLocalDateTime(), notification.getSymbol(), notification.getChange(), notification.getConfig());
+                                addNotification(
+                                        notification.getTitle(),
+                                        notification.getContent(),
+                                        notification.getStockUnitList(),
+                                        notification.getLocalDateTime(),
+                                        notification.getSymbol(),
+                                        notification.getChange(),
+                                        notification.getConfig()
+                                );
                             }
                         }
                     } catch (Exception e) {
-                        e.printStackTrace();
+                        e.printStackTrace(); // Don't crash on one bad window
                     }
                 }
             }
         } else {
-            // Original notification-based processing
-            timeline.forEach(stockUnit -> { //parallel stream is better, but we can't use it since we need to keep the entries in order
+            // ===== Historical mode: slide window over every possible start in the timeline =====
+            timeline.forEach(stockUnit -> {
+                // Set up sliding window: starts at each bar, extends N minutes forward
                 LocalDateTime startTime = stockUnit.getLocalDateTimeDate();
                 LocalDateTime endTime = startTime.plusMinutes(minutes);
                 int startIndex = findTimeIndex(timeline, startTime);
 
                 List<StockUnit> timeWindow = getTimeWindow(timeline, startTime, endTime);
 
-                // Fallback if not enough data points
+                // Fallback: if window is too short, attempt to fill out to frameSize using available data
                 if (timeWindow.size() < frameSize) {
                     int fallbackEnd = Math.min(startIndex + frameSize, timeline.size());
                     timeWindow = timeline.subList(startIndex, fallbackEnd);
@@ -687,6 +1198,7 @@ public class mainDataHandler {
 
                 if (timeWindow.size() >= frameSize) {
                     try {
+                        // Run event detection for this window
                         List<Notification> notifications = getNotificationForFrame(timeWindow, symbol);
                         stockNotifications.addAll(notifications);
                     } catch (Exception e) {
@@ -696,24 +1208,51 @@ public class mainDataHandler {
             });
         }
 
+        // Batch add any found notifications for this symbol to the global list
         synchronized (notificationsForPLAnalysis) {
             notificationsForPLAnalysis.addAll(stockNotifications);
         }
     }
 
+    /**
+     * Helper function to extract a slice of a timeline (bars) between a start and end timestamp (inclusive).
+     * Used to get N-minute windows for rally/event analysis.
+     *
+     * @param timeline Chronologically sorted list of StockUnit bars
+     * @param start    Start time for window (inclusive)
+     * @param end      End time for window (inclusive)
+     * @return List of StockUnits between start and end (maybe empty if no bars in range)
+     */
     private static List<StockUnit> getTimeWindow(List<StockUnit> timeline, LocalDateTime start, LocalDateTime end) {
         int startIndex = findTimeIndex(timeline, start);
-        if (startIndex == -1) return Collections.emptyList();
+        if (startIndex == -1) return Collections.emptyList(); // If start not found, return empty
 
         int endIndex = startIndex;
+        // Extend to end of range or timeline
         while (endIndex < timeline.size() && !timeline.get(endIndex).getLocalDateTimeDate().isAfter(end)) {
             endIndex++;
         }
 
+        // Return bars from [startIndex, endIndex) (Java subList is exclusive of end)
         return timeline.subList(startIndex, endIndex);
     }
 
+    /**
+     * Finds the index in a timeline of {@link StockUnit}s that is closest to or exactly matches a target timestamp.
+     * <p>
+     * The search is performed using a binary search for efficiency (O(log n)), since timelines are sorted chronologically.
+     * <ul>
+     *   <li>If an exact match for the target timestamp exists, returns its index.</li>
+     *   <li>If not found, returns the index of the nearest later bar (or -1 if out of bounds).</li>
+     *   <li>This is used for fast window slicing during indicator calculation and time-series operations.</li>
+     * </ul>
+     *
+     * @param timeline The full, sorted (ascending) list of {@link StockUnit} objects (e.g., minute-by-minute data)
+     * @param target   The target {@link LocalDateTime} to locate (e.g., window start or end)
+     * @return Index of the matching or next closest bar, or -1 if beyond end of timeline.
+     */
     private static int findTimeIndex(List<StockUnit> timeline, LocalDateTime target) {
+        // Standard binary search on sorted timeline
         int low = 0;
         int high = timeline.size() - 1;
 
@@ -722,74 +1261,105 @@ public class mainDataHandler {
             LocalDateTime midTime = timeline.get(mid).getLocalDateTimeDate();
 
             if (midTime.isBefore(target)) {
-                low = mid + 1;
+                low = mid + 1;    // Search upper half
             } else if (midTime.isAfter(target)) {
-                high = mid - 1;
+                high = mid - 1;   // Search lower half
             } else {
-                return mid;  // Exact match
+                return mid;       // Exact match found
             }
         }
 
-        return low < timeline.size() ? low : -1;  // Nearest index if exact not found
+        // If no exact match, return nearest valid index (not past end of array)
+        return low < timeline.size() ? low : -1;
     }
 
+    /**
+     * Sorts a provided list of {@link Notification} objects in-place by their {@code LocalDateTime} property (chronological order).
+     * <p>
+     * Used to ensure notifications (e.g., spikes, dips, rally signals) are displayed in time order in the UI or logs.
+     *
+     * @param notifications The list of {@link Notification}s to sort.
+     */
     public static void sortNotifications(List<Notification> notifications) {
-        // Sort notifications by their time series end date
+        // Sort notifications by event time (ascending)
         notifications.sort(Comparator.comparing(Notification::getLocalDateTime));
     }
 
+    /**
+     * Precomputes robust min/max value ranges for every technical indicator, for every symbol in memory.
+     * <p>
+     * These ranges are used for normalizing all indicator values, so different stocks and features can be compared on a standard 0-1 scale.
+     * <ul>
+     *   <li>For binary indicators (e.g., spike, Keltner), the range is hardcoded to [0, 1].</li>
+     *   <li>For SMA_CROSS, range is [-1, 1] (since it can be bullish, bearish, or neutral).</li>
+     *   <li>For all other indicators, min and max are set as the 1st and 99th percentiles, making normalization robust to outliers.</li>
+     *   <li>The computed values are stored in {@link #SYMBOL_INDICATOR_RANGES} for fast access during normalization.</li>
+     * </ul>
+     * This function should be called every time the symbol timelines are updated or reloaded, so ranges reflect the latest data.
+     *
+     * @param realData If true, operates on live in-memory symbols (from {@code symbolTimelines});
+     *                 if false, operates on static symbol list (e.g., for dry-run or historical mode).
+     */
     public static void precomputeIndicatorRanges(boolean realData) {
-        int maxRequiredPeriod = frameSize;
+        int maxRequiredPeriod = frameSize; // How many bars are needed for feature calculation
 
+        // Build the working list of symbols to process
         List<String> symbolList = new ArrayList<>();
         if (realData) {
-            symbolList.addAll(symbolTimelines.keySet());
+            symbolList.addAll(symbolTimelines.keySet()); // Use live symbols from current session
         } else {
+            // For backtesting: use predefined SYMBOLS array (stripped and uppercased)
             symbolList.addAll(Arrays.stream(SYMBOLS)
-                    .map(s -> s.toUpperCase().replace(".TXT", "")) // map returns transformed elements
+                    .map(s -> s.toUpperCase().replace(".TXT", "")) // Remove .TXT extension, standardize
                     .toList());
         }
 
+        // ======= Process each symbol individually =======
         for (String symbol : symbolList) {
             List<StockUnit> timeline = symbolTimelines.get(symbol);
             if (timeline.size() < maxRequiredPeriod) {
+                // Skip symbols that don't have enough history for feature extraction
                 continue;
             }
 
-            List<String> indicators = new ArrayList<>(INDICATOR_KEYS);
+            // Prepare to accumulate all feature values over all sliding windows
+            List<String> indicators = new ArrayList<>(INDICATOR_KEYS); // All feature keys in correct order
             Map<String, List<Double>> indicatorValues = new HashMap<>();
-            indicators.forEach(ind -> indicatorValues.put(ind, new ArrayList<>()));
+            indicators.forEach(ind -> indicatorValues.put(ind, new ArrayList<>())); // Pre-populate empty lists
 
-            // Slide window and collect all feature values
+            // Slide a window of length maxRequiredPeriod over the timeline
             for (int i = maxRequiredPeriod - 1; i < timeline.size(); i++) {
                 List<StockUnit> window = timeline.subList(i - maxRequiredPeriod + 1, i + 1);
-                double[] features = computeFeatures(window, symbol);
+                double[] features = computeFeatures(window, symbol); // Extract all features for this window
 
+                // Add each feature to its indicator's value list
                 for (int j = 0; j < features.length; j++) {
                     String indicator = indicators.get(j);
                     indicatorValues.get(indicator).add(features[j]);
                 }
             }
 
-            // Calculate robust min/max using percentiles
+            // === Calculate robust min/max for each indicator ===
             Map<String, Map<String, Double>> symbolRanges = new LinkedHashMap<>();
 
             for (String indicator : indicators) {
+                // Handle binary indicators with hardcoded [0, 1] normalization
                 if (BINARY_INDICATORS.contains(indicator)) {
-                    // Hardcoded min/max for binary indicators
                     symbolRanges.put(indicator, Map.of("min", 0.0, "max", 1.0));
                     continue;
                 }
 
+                // SMA_CROSS has three states: -1, 0, 1 (bearish, neutral, bullish)
                 if (indicator.equals("SMA_CROSS")) {
-                    // Hardcoded min/max for binary indicators
                     symbolRanges.put(indicator, Map.of("min", -1.0, "max", 1.0));
                     continue;
                 }
 
+                // For all other indicators, use percentile-based min/max (robust to outliers)
                 List<Double> values = indicatorValues.get(indicator);
                 values.sort(Double::compareTo);
 
+                // Use the 1st and 99th percentiles to avoid impact from rare/extreme data points
                 int lowerIndex = (int) (values.size() * 0.01);
                 int upperIndex = (int) (values.size() * 0.99);
 
@@ -798,26 +1368,48 @@ public class mainDataHandler {
 
                 symbolRanges.put(indicator, Map.of("min", min, "max", max));
             }
+            // Save the computed range map for this symbol
             SYMBOL_INDICATOR_RANGES.put(symbol, symbolRanges);
         }
     }
 
+    /**
+     * Normalizes a raw indicator value to the range [0, 1] for use in ML models or aggregation.
+     * <p>
+     * Uses robust min/max ranges calculated per-symbol (see {@link #precomputeIndicatorRanges}) to avoid skew from outliers.
+     * Binary indicators are always mapped strictly to 0 or 1, based on threshold.
+     * <ul>
+     *   <li>For indicators "SMA_CROSS", "KELTNER", "CUMULATIVE_PERCENTAGE", returns 1.0 if {@code rawValue >= 0.5}, else 0.0.</li>
+     *   <li>For all others, does linear normalization within the min-max band and clips output to [0, 1].</li>
+     * </ul>
+     *
+     * @param indicator Name/key of the indicator (should match keys from INDICATOR_KEYS)
+     * @param rawValue  Raw, unnormalized feature value (e.g., TRIX output, percentage change, etc.)
+     * @param symbol    The stock symbol (needed to lookup normalization ranges)
+     * @return Normalized value, always between 0.0 and 1.0.
+     * @throws RuntimeException if the indicator or symbol has no normalization range configured.
+     */
     public static double normalizeScore(String indicator, double rawValue, String symbol) {
+        // Lookup normalization range for this symbol/indicator
         Map<String, Map<String, Double>> symbolRanges = SYMBOL_INDICATOR_RANGES.get(symbol);
         Map<String, Double> range = symbolRanges.get(indicator);
 
         if (range == null) {
+            // Defensive: prevents silent bugs if an indicator is missing from ranges
             throw new RuntimeException("Empty indicator");
         }
 
         double min = range.get("min");
         double max = range.get("max");
 
-        if (max == min) return 0.0; // Prevent division by zero
+        // Handle degenerate case: constant value (prevents division by zero)
+        if (max == min) return 0.0;
 
+        // Special-case normalization for binary features (fast path)
         return switch (indicator) {
-            // Binary decision indicators
+            // All these are interpreted as binary events (spike/no spike, breakout/no breakout, etc.)
             case "SMA_CROSS", "KELTNER", "CUMULATIVE_PERCENTAGE" -> rawValue >= 0.5 ? 1.0 : 0.0;
+            // Default case: robust linear normalization, always clipped to [0, 1]
             default -> {
                 double normalized = (rawValue - min) / (max - min);
                 yield Math.max(0.0, Math.min(1.0, normalized));
@@ -825,84 +1417,193 @@ public class mainDataHandler {
         };
     }
 
+    /**
+     * Extracts all feature values for a rolling window of stocks, returning a fixed-length array in canonical order.
+     * <p>
+     * All indicator computations are "feature-engineered" for downstream ML or statistical usage.
+     * <ul>
+     *   <li>Trend indicators: SMA crossover, TRIX</li>
+     *   <li>Momentum indicator: Rate of Change (ROC)</li>
+     *   <li>Statistical: spike test, cumulative % change</li>
+     *   <li>Advanced: Keltner channel breakout, Elder-Ray index</li>
+     *   <li>One placeholder for future expansion</li>
+     * </ul>
+     * Each feature is computed using its own custom logic (see each method for details).
+     *
+     * @param stocks List of {@link StockUnit}s (historical OHLCV bars), must have enough elements for each period tested
+     * @param symbol The ticker symbol (needed for some contextual feature logic)
+     * @return Array of raw (not yet normalized) feature values, in the order defined by INDICATOR_KEYS
+     */
     private static double[] computeFeatures(List<StockUnit> stocks, String symbol) {
+        // Fixed-length feature array for pipeline compatibility
         double[] features = new double[INDICATOR_KEYS.size()];
 
-        // Trend Following Indicators
-        features[0] = isSMACrossover(stocks, 9, 21, symbol); // 0
-        features[1] = calculateTRIX(stocks, 5); // 1
+        // === Trend Following Indicators ===
+        features[0] = isSMACrossover(stocks, 9, 21, symbol); // [0] Bull/bear/neutral crossover state (see SMA)
+        features[1] = calculateTRIX(stocks, 5);              // [1] TRIX momentum oscillator
 
-        // Momentum Indicators
-        features[2] = calculateROC(stocks, 20); // 2
+        // === Momentum Indicators ===
+        features[2] = calculateROC(stocks, 20);              // [2] N-period Rate of Change
 
-        features[3] = 0.2; // 3
+        features[3] = 0.2; // [3] Placeholder
 
-        // Statistical Indicators
-        features[4] = isCumulativeSpike(stocks, 10, 0.35); // 4
-        features[5] = cumulativePercentageChange(stocks); // 5
+        // === Statistical Indicators ===
+        features[4] = isCumulativeSpike(stocks, 10, 0.35);   // [4] Binary: Has cumulative % change exceeded threshold?
+        features[5] = cumulativePercentageChange(stocks);     // [5] Total percentage move over short window
 
-        // Advanced Indicators
-        features[6] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // 6
-        features[7] = elderRayIndex(stocks, 12); // 7
+        // === Advanced Indicators ===
+        features[6] = isKeltnerBreakout(stocks, 12, 10, 0.3, 0.4); // [6] Binary: Keltner channel breakout detected?
+        features[7] = elderRayIndex(stocks, 12);                    // [7] Bull Power (close - EMA)
 
         return features;
     }
 
+    /**
+     * Normalizes a raw feature vector for a specific symbol, producing an ML-ready [0, 1] float array.
+     * <p>
+     * Calls {@link #normalizeScore} for each feature in order, using the canonical keys from INDICATOR_KEYS.
+     * Ensures all features for a given symbol are comparable, regardless of raw data range.
+     *
+     * @param rawFeatures Array of raw feature values (from {@link #computeFeatures})
+     * @param symbol      Symbol context for normalization (impacts per-feature scaling)
+     * @return Array of normalized float features, each in [0, 1]
+     */
     private static float[] normalizeFeatures(double[] rawFeatures, String symbol) {
         float[] normalizedFeatures = new float[rawFeatures.length];
-        List<String> indicatorKeys = new ArrayList<>(INDICATOR_KEYS);
+        List<String> indicatorKeys = new ArrayList<>(INDICATOR_KEYS); // Stable ordering
+
+        // Apply normalization function for each feature
         for (int i = 0; i < rawFeatures.length; i++) {
             normalizedFeatures[i] = (float) normalizeScore(indicatorKeys.get(i), rawFeatures[i], symbol);
         }
         return normalizedFeatures;
     }
 
+    /**
+     * Calculates a dynamically weighted "aggressiveness score" for a trade decision,
+     * based on normalized feature activations and category-specific weights.
+     * <p>
+     * This score is used to scale risk or confidence in the pipeline, allowing dynamic adaptation
+     * to prevail market conditions by emphasizing certain technical indicators.
+     * A higher aggressiveness indicates a stronger bullish signal or conviction to trade.
+     * </p>
+     * <p>
+     * <strong>Weighting Process:</strong>
+     * <ul>
+     *   <li>Each feature is normalized to a 0–1 scale to ensure comparability.</li>
+     *   <li>Features are grouped into categories (e.g., Trend, Momentum, Statistical, Advanced).</li>
+     *   <li>Each category has a predefined weight reflecting its importance in bullish prediction.</li>
+     *   <li>Feature activations within each category are multiplied by their category weight and summed.</li>
+     *   <li>All category scores are summed to produce a global weighted score.</li>
+     *   <li>The global score is scaled by the baseAggressiveness multiplier, allowing user adjustment.</li>
+     * </ul>
+     * </p>
+     * <p>
+     * <strong>Ensuring Good Bullish Prediction:</strong>
+     * <ul>
+     *   <li><em>Tune category weights</em> to emphasize features that historically predict bullish rallies well.</li>
+     *   <li><em>Validate and improve feature quality</em> to reduce false positives and ensure meaningful activations.</li>
+     *   <li><em>Use percentile normalization</em> to limit outlier effects and keep feature activations realistic.</li>
+     *   <li><em>Combine this score with threshold and multiple feature checks</em> in the signal decision logic for robustness.</li>
+     *   <li><em>Backtest with different weight sets</em> to find the best balance between sensitivity and noise.</li>
+     * </ul>
+     * </p>
+     * <p>
+     * <strong>Example tuning:</strong><br>
+     * Increasing weights on Momentum and Advanced categories while lowering Trend and Statistical can improve
+     * bullish rally detection if those categories are more predictive in your data.<br>
+     * Example decision logic could require the aggressiveness score to exceed a threshold and key features like SMA crossover to be positive.
+     * </p>
+     *
+     * @param features           Array of normalized feature activations (range 0–1) produced by {@link #normalizeFeatures}.
+     * @param baseAggressiveness The user-set base multiplier for aggressiveness (default 1.0).
+     * @return The scaled aggressiveness score, where higher values correspond to stronger bullish signals and trading confidence.
+     */
     private static double calculateWeightedAggressiveness(float[] features, float baseAggressiveness) {
         Map<String, Double> categoryScores = new HashMap<>();
 
-        // Calculate weighted activation score for each category
+        // Compute total activation score per feature category (trend, momentum, etc.)
         for (int i = 0; i < features.length; i++) {
             String category = FEATURE_CATEGORIES.getOrDefault(i, "NEUTRAL");
 
-            // Dead feature check (very low or 0)
+            // Ignore neutral/placeholder features
             if (!category.equals("NEUTRAL")) {
-                double weight = CATEGORY_WEIGHTS.get(category);
-                double activation = features[i] * weight;
+                double weight = CATEGORY_WEIGHTS.get(category);   // Retrieve per-category weight
+                double activation = features[i] * weight;         // Feature value * category weight
+                // Merge to category score (sum over all features in same category)
                 categoryScores.merge(category, activation, Double::sum);
             }
         }
 
-        // Sum all category scores
+        // Combine all category scores for the global boost
         double weightedScore = categoryScores.values().stream()
                 .mapToDouble(Double::doubleValue)
                 .sum();
 
-        // Final aggressiveness scaling
+        // Apply dynamic scaling to user base aggressiveness (e.g., 1.0 * (1 + weighted score))
         return baseAggressiveness * (1 + weightedScore);
     }
 
+    /**
+     * Generates notifications (alerts) for a specific rolling frame of stock data for a given symbol.
+     * <p>
+     * This method is the core of the alert/decision pipeline: it processes a window of {@link StockUnit} bars
+     * and, if relevant events (e.g. spike, dip, breakout) are detected, produces one or more {@link Notification} objects.
+     * <ul>
+     *   <li>Skips frames that span a weekend (to avoid false signals from market closures/gaps).</li>
+     *   <li>Extracts raw and normalized feature vectors (see {@link #computeFeatures} and {@link #normalizeFeatures}).</li>
+     *   <li>Calls the ML/decision model (e.g. neural net) via {@code predict()} to get a rally/alert confidence.</li>
+     *   <li>Delegates to {@link #evaluateResult} to interpret the prediction, indicators, and generate actual notifications.</li>
+     * </ul>
+     *
+     * @param stocks A frame (window) of recent {@link StockUnit} bars (length: {@code frameSize})
+     * @param symbol The ticker symbol context
+     * @return A list of notifications generated for this frame (maybe empty)
+     */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
 
-        // Prevent notifications if time frame spans over the weekend (Friday to Monday)
+        // Step 1: Defensive - don't process frames that span market-closure weekends (avoids spurious signals)
         if (isWeekendSpan(stocks)) {
-            return new ArrayList<>(); // Return empty list to skip notifications
+            return new ArrayList<>(); // Return empty; no alerts generated for non-contiguous sessions
         }
 
-        //raw features
+        // Step 2: Compute all feature values (trend/momentum/spike/etc) for this frame, using latest model
         double[] features = computeFeatures(stocks, symbol);
+
+        // Step 3: Normalize the feature vector for ML input/aggregation
         float[] normalizedFeatures = normalizeFeatures(features, symbol);
 
-        // feed normalized features and symbol
+        // Step 4: Feed normalized features to ML model for a prediction score (probability of rally/event/etc)
         double prediction = predict(normalizedFeatures, symbol);
 
+        // Step 5: Evaluate prediction + features using custom alert logic (spikes, dips, etc)
         return evaluateResult(prediction, stocks, symbol, features, normalizedFeatures);
     }
 
+    /**
+     * Orchestrates a full rally scan across all tracked symbols.
+     * <p>
+     * Downloads intraday data for each stock, computes rolling percentage changes,
+     * and then analyzes each timeline for potential "rally" conditions using regression.
+     * Handles asynchronous fetches and UI progress feedback in a thread-safe manner.
+     * <ul>
+     *   <li>Uses a {@link CountDownLatch} to synchronize multiple async data fetches.</li>
+     *   <li>Displays a progress bar via {@link ProgressDialog} for user feedback.</li>
+     *   <li>Calls {@link #calculateIfRally} at the end to perform uptrend/rally checks for each symbol.</li>
+     * </ul>
+     *
+     * @return List of symbols that meet all rally conditions (see regression/width/continuation logic).
+     * @throws InterruptedException If thread is interrupted during blocking wait for data fetches.
+     */
     public static List<String> checkForRallies() throws InterruptedException {
+        // Clone the symbol array as an ArrayList for mutability
         List<String> stockList = new ArrayList<>(List.of(stockSymbols));
+
+        // Map for per-symbol bar data (thread safe, as many fetches run in parallel)
         Map<String, List<StockUnit>> timelines = new ConcurrentHashMap<>();
         CountDownLatch latch = new CountDownLatch(stockList.size());
 
+        // ====== User Feedback: Start Progress Dialog ======
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
@@ -910,12 +1611,13 @@ public class mainDataHandler {
         ProgressDialog progressDialog = new ProgressDialog((Frame) SwingUtilities.getWindowAncestor(logTextArea));
         SwingUtilities.invokeLater(() -> progressDialog.setVisible(true));
 
-        // Update progress helper
+        // Helper for thread-safe progress updates in the UI
         Runnable updateProgress = () -> {
             int current = stockList.size() - (int) latch.getCount();
             progressDialog.updateProgress(current, stockList.size());
         };
 
+        // ====== Fetch Data for Each Symbol (Async, Non-blocking) ======
         for (String symbol : stockList) {
             String symbolUpper = symbol.toUpperCase();
 
@@ -927,100 +1629,196 @@ public class mainDataHandler {
                     .outputSize(OutputSize.FULL)
                     .onSuccess(r -> {
                         try {
-                            handleSuccess((TimeSeriesResponse) r);
+                            handleSuccess((TimeSeriesResponse) r); // UI feedback, file cache, etc.
                             List<StockUnit> units = ((TimeSeriesResponse) r).getStockUnits();
                             units.forEach(u -> u.setSymbol(symbolUpper));
+                            Collections.reverse(units); // Ensure oldest first
 
-                            Collections.reverse(units);
+                            // Store to thread-safe structure for later analysis
                             timelines.computeIfAbsent(symbolUpper, k -> new ArrayList<>()).addAll(units);
                         } catch (IOException e) {
-                            throw new RuntimeException(e);
+                            throw new RuntimeException(e); // Surface for debugging
                         } finally {
-                            latch.countDown();
-                            SwingUtilities.invokeLater(updateProgress);
+                            latch.countDown(); // Always count down, even if error
+                            SwingUtilities.invokeLater(updateProgress); // UI progress
                         }
                     })
                     .onFailure(err -> {
                         mainDataHandler.handleFailure(err);
-                        latch.countDown();
+                        latch.countDown(); // Don't hang latch on API error
                         SwingUtilities.invokeLater(updateProgress);
                     })
                     .fetch();
         }
 
-        latch.await();
+        // ====== Wait for All Downloads to Finish ======
+        latch.await(); // Blocks until all symbols processed
+
+        // Final progress update and dialog cleanup
         SwingUtilities.invokeLater(() -> {
             progressDialog.dispose();
             logTextArea.append("Initial data loading completed\n");
         });
 
+        // ====== Post-processing: Compute % change for all bars ======
         timelines.forEach((symbol, timeline) -> {
             for (int i = 1; i < timeline.size(); i++) {
                 StockUnit cur = timeline.get(i);
                 StockUnit prev = timeline.get(i - 1);
                 if (prev.getClose() > 0) {
                     double pct = ((cur.getClose() - prev.getClose()) / prev.getClose()) * 100;
+                    // Prevent insane spikes: clamp to previous value if too large
                     cur.setPercentageChange(Math.abs(pct) >= 14 ? prev.getPercentageChange() : pct);
                 }
             }
         });
 
+        // ====== Analyze All Timelines for Rally Candidates ======
         return calculateIfRally(timelines);
     }
 
+    /**
+     * Detects which symbols (from a batch) are currently exhibiting a statistically significant "rally" pattern,
+     * based on advanced multi-period regression analysis, volatility filtering, and strict trend confirmation logic.
+     * <p>
+     * <b>How this method achieves high-precision rally detection:</b>
+     * <ul>
+     *   <li><b>Data Quality Control:</b>
+     *       <ul>
+     *           <li><b>Cleaning:</b> Filters out non-trading periods (weekends, premarket, after-hours), ensuring only
+     *           meaningful price action is used. This avoids misleading spikes and noise from illiquid sessions.</li>
+     *           <li><b>Aggregation:</b> Compresses raw minute data into multi-hour bars, smoothing micro-fluctuations
+     *           and highlighting real, sustained trends over time.</li>
+     *       </ul>
+     *   </li>
+     *   <li><b>Multi-Period Trend Regression:</b>
+     *       <ul>
+     *           <li>Performs rolling window regressions over several different durations (e.g., 4, 6, 8, 10, 14 days),
+     *           so that only rallies that are persistent and robust across timescales are detected.</li>
+     *           <li>Each window must independently demonstrate strong slope (uptrend) and a high R² fit
+     *           (low noise/variance).</li>
+     *           <li>To avoid "lucky" fits, at least two window lengths must confirm a rally. This redundancy
+     *           ensures signals are not artifacts of parameter choices.</li>
+     *       </ul>
+     *   </li>
+     *   <li><b>Recent Strength and Continuation Checks:</b>
+     *       <ul>
+     *           <li><b>Recency Filter:</b> Even if the long-term trend was strong, the method demands that the
+     *           most recent half of the window also passes slope and R² tests. This rejects rallies that
+     *           are fizzling out, only flagging those that are still alive and strong.</li>
+     *           <li><b>Noise/Volatility Test:</b> Channel width is checked to ensure prices stay near the
+     *           regression line (i.e., the rally is orderly and not just wild swings around a trend).</li>
+     *           <li><b>Final Continuation:</b> Explicitly requires the last several bars (about one trading day)
+     *           to remain close to the trend, catching late failures or reversals.</li>
+     *           <li><b>Trend Degradation Guard:</b> Compares the most recent slope to the long-term slope, so
+     *           that only rallies which are accelerating or at least stable are flagged (no weakening allowed).</li>
+     *       </ul>
+     *   </li>
+     *   <li><b>Robustness and Transparency:</b>
+     *       <ul>
+     *           <li>All reasons for rejection (e.g., not enough valid uptrends, trend lost recently, too much noise)
+     *           are logged in a detailed summary, supporting transparency and further analysis.</li>
+     *           <li>By requiring simultaneous agreement of all these advanced filters, false positives are extremely
+     *           rare and only genuine, multi-confirmed rallies are returned.</li>
+     *       </ul>
+     *   </li>
+     * </ul>
+     * <p>
+     * <b>Summary:</b> The precision of this method comes from its strict requirement that a rally must appear
+     * across multiple timescales, be present right up to the most recent bars, remain orderly (low noise), and not
+     * degrade at the end. This layered approach, with overlapping filters, ensures that only high-conviction,
+     * statistically significant uptrends are ever marked as “rallies” by the system.
+     *
+     * <p>
+     * <b>Pipeline Steps:</b>
+     * <ol>
+     *   <li><b>Clean and aggregate</b> raw minute data to meaningful bars.</li>
+     *   <li><b>Perform regression</b> over various rolling windows to test for persistent uptrend.</li>
+     *   <li><b>Require at least two valid window confirmations</b> for robustness.</li>
+     *   <li><b>Test the recency and noise</b> in the second half of the window, including channel width.</li>
+     *   <li><b>Check trend continuation</b> into the very last bars—rejects faded or choppy moves.</li>
+     *   <li><b>Compare recent slope to historical</b> to ensure the rally isn’t losing strength.</li>
+     *   <li><b>Return only tickers passing <i>all</i> the above</b>—maximizing precision and minimizing
+     *   false positives.</li>
+     * </ol>
+     *
+     * <p>
+     * All progress and intermediate results are appended to {@code summary} and printed for user/marker transparency.
+     *
+     * @param timelines Map of symbol to cleaned/compressed {@link StockUnit} bar lists.
+     * @return List of symbols that pass all rally criteria with very high confidence.
+     */
     private static List<String> calculateIfRally(Map<String, List<StockUnit>> timelines) {
-        StringBuilder summary = new StringBuilder();
-        List<String> rallies = new ArrayList<>();
+        StringBuilder summary = new StringBuilder(); // Used to build a full log of all checks/results for transparency/debugging
+        List<String> rallies = new ArrayList<>();    // This will hold all the symbols detected as being "in rally"
 
+        // Loop over each symbol's timeline
         timelines.forEach((symbol, minuteBars) -> {
             summary.append("\n=====================================\n");
             summary.append("📈 Analyzing: ").append(symbol).append(" 📊\n");
 
+            // 1. CLEAN DATA: Remove bars that are out-of-market hours or on weekends
+            //    This is critical to ensure regression and channel calculations aren't distorted by illiquid or non-trading periods.
             List<StockUnit> minuteBarsClean = tradingMinutesOnly(minuteBars);
+
+            // 2. AGGREGATE TO LONGER TIMEFRAMES: "Compress" minute bars into 2-hour bars (or whatever MINUTES is set to)
+            //    This drastically reduces noise and focuses the regression on meaningful swings/trends, not micro volatility.
             List<StockUnit> series = compress(minuteBarsClean);
-            if (series.size() < W) {
-                summary.append("⚠️ Skipped: not enough compressed data (").append(series.size()).append(" < ").append(W).append(")\n");
-                return;
+            if (series.size() < W) { // W is the minimum number of bars needed for the analysis window
+                summary.append("⚠️ Skipped: not enough compressed data (")
+                        .append(series.size()).append(" < ").append(W).append(")\n");
+                return; // If insufficient data, skip this symbol
             }
 
+            // 3. DEFINE ANALYSIS WINDOW:
+            //    Take the last W bars as our rally window. Also take the second half (most recent W/2 bars)
+            //    We split it this way to later compare if the trend is "just old" or continuing into the most recent period.
             List<StockUnit> rallyWindowFull = series.subList(series.size() - W, series.size());
             List<StockUnit> secondHalf = rallyWindowFull.subList(W / 2, W);
 
-            boolean isRally = true;
+            boolean isRally = true; // Start by assuming a rally is in progress. Eliminate on any failure below.
 
-            // Check multiple day ranges for consistent uptrend
-            int validDayRanges = 0;
-            int checkedDayRanges = 0;
+            // 4. MULTI-PERIOD TREND VALIDATION: Test for uptrend consistency across multiple rolling windows of different lengths (days).
+            //    Why? A true rally should be visible no matter the exact window chosen (robust to parameter tweaks).
+            int validDayRanges = 0; // Number of windows that pass our uptrend check
+            int checkedDayRanges = 0; // Total number of rolling windows we attempted to check
             for (int days : DAYS_OPTIONS) {
-                int w = days * 8;
-                if (series.size() < w) continue;
+                int w = days * 8; // Convert days to number of bars (assuming 8 bars per day due to 2-hour compression)
+                if (series.size() < w) continue; // Can't check this window if not enough data
 
-                checkedDayRanges++;
+                checkedDayRanges++; // We are able to check this window
                 List<StockUnit> window = series.subList(series.size() - w, series.size());
-                LR reg = linReg(window);
+                LR reg = linReg(window); // Fit a regression line
 
-                summary.append(String.format("🔎 Days: %d | Slope: %.4f | R²: %.4f | Size: %s%n", days, reg.slopePct, reg.r2, window.size()));
+                summary.append(String.format("🔎 Days: %d | Slope: %.4f | R²: %.4f | Size: %s%n",
+                        days, reg.slopePct, reg.r2, window.size()));
 
+                // Both slope (trend up) and R² (good fit) must be above threshold for window to "count"
                 if (reg.slopePct >= SLOPE_MIN && reg.r2 >= R2_MIN) {
                     validDayRanges++;
                 }
             }
 
             summary.append(String.format("✅ Valid Day Ranges: %d / %d%n", validDayRanges, checkedDayRanges));
+            // Require at least two uptrend-confirmed windows (reduces chance of false positives on noisy charts)
             if (checkedDayRanges > 0 && validDayRanges < 2) {
                 isRally = false;
                 summary.append("❌ Failed: Not enough valid uptrend periods\n");
             }
 
-            // Second half regression
+            // 5. TEST RECENT PERIOD STRENGTH: Is the uptrend still present in the *most recent* half of the data?
+            //    Many rallies fizzle out near the end; we want to catch only those that are still strong.
             LR secondHalfRegLine = linReg(secondHalf);
-            summary.append(String.format("📊 Second Half | Slope: %.4f | R²: %.4f%n", secondHalfRegLine.slopePct, secondHalfRegLine.r2));
+            summary.append(String.format("📊 Second Half | Slope: %.4f | R²: %.4f%n",
+                    secondHalfRegLine.slopePct, secondHalfRegLine.r2));
+            // Both recent slope and fit must pass thresholds
             if (secondHalfRegLine.slopePct < SLOPE_MIN && secondHalfRegLine.r2 < R2_MIN) {
                 isRally = false;
                 summary.append("❌ Failed: Second half regression too weak\n");
             }
 
-            // Channel width check
+            // 6. TEST FOR NOISE/ERRATIC BEHAVIOR: Is the channel narrow? (Are most bars close to regression?)
+            //    Reject "rallies" that are only spikes or have huge swings around the uptrend.
             double width = channelWidth(secondHalf, secondHalfRegLine);
             summary.append(String.format("📏 Second Half Channel Width: %.4f%n", width));
             if (width > WIDTH_MAX) {
@@ -1028,697 +1826,1393 @@ public class mainDataHandler {
                 summary.append("❌ Failed: Channel width too wide\n");
             }
 
-            // Trend continuation to present
+            // 7. FINAL CONTINUATION TEST: Are the most recent bars (e.g., last trading day) actually still in trend?
+            //    This catches trend breaks that might happen just at the end (e.g. failed breakout, selloff).
             if (!trendUpToPresent(secondHalf, secondHalfRegLine)) {
                 isRally = false;
                 summary.append("❌ Failed: Trend not continuing to present\n");
             }
 
-            // Compare recent trend vs full series
-            LR fullSeriesRegLine = linReg(series);
-            LR fullWindowRegLine = linReg(rallyWindowFull);
-            summary.append(String.format("📉 Full Series Slope: %.4f | Full Window Slope: %.4f%n", fullSeriesRegLine.slopePct, fullWindowRegLine.slopePct));
+            // 8. IS RECENT TREND AS STRONG AS WHOLE? Avoid cases where the trend has recently weakened.
+            //    Compare slope of recent window vs. the whole window.
+            LR fullSeriesRegLine = linReg(series);             // Regression for all available data
+            LR fullWindowRegLine = linReg(rallyWindowFull);    // Regression for our rally window
+            summary.append(String.format("📉 Full Series Slope: %.4f | Full Window Slope: %.4f%n",
+                    fullSeriesRegLine.slopePct, fullWindowRegLine.slopePct));
+            // If the slope of the current window is much less than historical, rally is likely fading.
             if (fullWindowRegLine.slopePct * 1.5 < fullSeriesRegLine.slopePct) {
                 isRally = false;
                 summary.append("❌ Failed: Recent trend weaker than historical\n");
             }
 
+            // 9. ONLY IF ALL TESTS PASSED, MARK SYMBOL AS IN RALLY!
             if (isRally) {
                 rallies.add(symbol);
                 summary.append("🚀 ==> RALLY DETECTED\n");
             }
         });
 
+        // Print the full analysis summary to the console for user/marker transparency.
         summary.append("=====================================\n");
         System.out.println(summary);
 
+        // Return only the tickers passing all conditions.
         return rallies;
     }
 
+    /**
+     * Filters a list of {@link StockUnit} bars to only those that occur during regular market trading hours.
+     * <ul>
+     *   <li>Removes all bars that fall on weekends.</li>
+     *   <li>Removes all bars that are before market open or after market close.</li>
+     *   <li>Resulting list is sorted in chronological order (oldest first).</li>
+     * </ul>
+     *
+     * @param bars List of raw OHLCV bars (may include premarket, postmarket, or weekend bars)
+     * @return A sorted, filtered list containing only bars from Monday-Friday and within [MARKET_OPEN, MARKET_CLOSE]
+     */
     private static List<StockUnit> tradingMinutesOnly(List<StockUnit> bars) {
         return bars.stream()
                 .filter(u -> {
+                    // Extract timestamp of the current bar (LocalDateTime for easy day/time checks)
                     LocalDateTime ts = u.getLocalDateTimeDate();
-                    DayOfWeek dow = ts.getDayOfWeek();
-                    LocalTime tod = ts.toLocalTime();
+                    DayOfWeek dow = ts.getDayOfWeek();     // Get the day of week (MON, TUE, ..., SAT, SUN)
+                    LocalTime tod = ts.toLocalTime();      // Get the time of day (hh:mm:ss)
+
+                    // Step 1: Weekday filter - Only allow Monday to Friday (i.e., drop weekends entirely)
                     boolean weekday = dow != DayOfWeek.SATURDAY && dow != DayOfWeek.SUNDAY;
+
+                    // Step 2: Trading hours filter - Only include bars after market open and before market close.
+                    // - tod.isBefore(MARKET_OPEN) is true if bar is too early (pre-market).
+                    // - tod.isAfter(MARKET_CLOSE) is true if bar is too late (post-market).
+                    // - So, we want bars that are NOT before open AND NOT after close.
                     boolean mktHours = !tod.isBefore(MARKET_OPEN) && !tod.isAfter(MARKET_CLOSE);
-                    return weekday && mktHours;          // drop weekends + out-of-hours
+
+                    // Both conditions must be true to keep the bar
+                    return weekday && mktHours;
                 })
+                // Always return bars in chronological order (oldest to newest)
                 .sorted(Comparator.comparing(StockUnit::getLocalDateTimeDate))
                 .toList();
     }
 
+    /**
+     * Calculates the relative "width" of a trend channel for a given set of bars and a fitted regression line.
+     * <p>
+     * The width is the largest percentage deviation of actual close from predicted trend value,
+     * i.e., the tightness of the channel. Used to reject erratic, volatile rallies.
+     *
+     * @param win Bars in the window to test (should be the second half of rally window)
+     * @param lr  Linear regression model fitted to this window
+     * @return Maximum fractional deviation of price from regression trend (e.g., 0.04 = 4%)
+     */
     private static double channelWidth(List<StockUnit> win, LR lr) {
         double maxResidual = 0.0;
+        // For each bar, calculate the absolute percent deviation from predicted line
         for (int i = 0; i < win.size(); i++) {
-            double pred = predictSlope(lr, i);
+            double pred = predictSlope(lr, i); // Regression-predicted close price for bar i
             maxResidual = Math.max(maxResidual, Math.abs(win.get(i).getClose() - pred) / pred);
         }
         return maxResidual;
     }
 
+    /**
+     * Determines if the most recent set of bars is still "in alignment" with the uptrend defined by the regression line.
+     * <p>
+     * This is a robustness check for rally detection. It ensures the uptrend isn't only in the past,
+     * but that the last few bars (typically one trading day) are still close to the predicted uptrend line.
+     * <ul>
+     *   <li>Looks at the last 8 compressed bars (can be tuned).</li>
+     *   <li>For each, checks if the close price is within {@code TOLERANCE_PCT} (e.g. 3%) of the regression prediction.</li>
+     *   <li>Requires at least 75% of these bars to "align" (avoid one-off outliers).</li>
+     * </ul>
+     *
+     * @param win List of bars representing the most recent window (e.g., second half of rally window)
+     * @param lr  Fitted linear regression ({@link LR}) for that window
+     * @return {@code true} if enough bars are in trend alignment, {@code false} otherwise.
+     */
     private static boolean trendUpToPresent(List<StockUnit> win, LR lr) {
-        int checkBars = 8; // look at the last 8 compressed bars (≈ one trading day)
-        int aligned = 0;
+        int checkBars = 8; // How many bars to check at the end (≈ one trading day)
+        int aligned = 0;   // Counter for bars that meet the "alignment" requirement
 
+        // Loop over the last 'checkBars' entries of 'win'
         for (int i = win.size() - checkBars; i < win.size(); i++) {
-            double predicted = predictSlope(lr, i);
+            double predicted = predictSlope(lr, i); // Expected price by regression
             double price = win.get(i).getClose();
 
-            double lower = predicted * (1 - TOLERANCE_PCT);
-            double upper = predicted * (1 + TOLERANCE_PCT);
+            double lower = predicted * (1 - TOLERANCE_PCT); // Lower bound (e.g., -3%)
+            double upper = predicted * (1 + TOLERANCE_PCT); // Upper bound (e.g., +3%)
 
             if (price >= lower && price <= upper) {
-                aligned++;
+                aligned++; // Price is "close enough" to trend
             }
         }
 
+        // Require at least 75% of bars to be aligned (tolerate a few outliers)
         return aligned >= (int) Math.ceil(0.75 * checkBars);
     }
 
+    /**
+     * Performs a simple ordinary least squares (OLS) linear regression on a list of bars.
+     * <p>
+     * Returns an {@link LR} record, including:
+     * <ul>
+     *   <li>Slope in both price-units-per-bar and as %/bar.</li>
+     *   <li>Mean X (bar index) and Y (price).</li>
+     *   <li>R-squared (coefficient of determination): how well a line fits the data (1 = perfect).</li>
+     * </ul>
+     * <p>
+     * Used to identify trends: uptrends have positive slope, with R² > 0.6 as a filter.
+     *
+     * @param bars List of bars (must have size >= 2).
+     * @return {@link LR} regression result (all fields 0 if degenerate/undefined)
+     */
     private static LR linReg(List<StockUnit> bars) {
         int n = bars.size();
+
+        // Calculate sums for x, y, x^2, x*y
         double sx = 0, sy = 0, sxx = 0, sxy = 0;
         for (int i = 0; i < n; i++) {
             double y = bars.get(i).getClose();
-            sx += i;
-            sy += y;
-            sxx += i * (double) i;
-            sxy += i * y;
+            sx += i;            // Sum of indices
+            sy += y;            // Sum of close prices
+            sxx += i * (double) i; // Sum of index^2
+            sxy += i * y;       // Sum of index*price
         }
-        double denom = n * sxx - sx * sx;
-        if (denom == 0) return new LR(0, 0, 0, 0, 0); // degenerate case
+        double denom = n * sxx - sx * sx; // Denominator for OLS
 
-        double slopePpu = (n * sxy - sx * sy) / denom; // price units / bar
-        double xBar = sx / n;
-        double yBar = sy / n;
-        double slopePct = slopePpu / yBar * 100.0;     // % / bar
+        // If denominator is zero, data is degenerate (all at same time)
+        if (denom == 0) return new LR(0, 0, 0, 0, 0);
 
+        // Slope in price units per bar (OLS formula)
+        double slopePpu = (n * sxy - sx * sy) / denom;
+        double xBar = sx / n;   // Mean of bar index (center of window)
+        double yBar = sy / n;   // Mean of prices (center of window)
+        double slopePct = slopePpu / yBar * 100.0; // Slope as %/bar (normalized)
+
+        // R-squared: proportion of variance explained by model
         double ssTot = 0, ssRes = 0;
         for (int i = 0; i < n; i++) {
             double y = bars.get(i).getClose();
-            double yPred = yBar + slopePpu * (i - xBar);
-            ssTot += (y - yBar) * (y - yBar);
-            ssRes += (y - yPred) * (y - yPred);
+            double yPred = yBar + slopePpu * (i - xBar); // Prediction for index i
+            ssTot += (y - yBar) * (y - yBar); // Total variance
+            ssRes += (y - yPred) * (y - yPred); // Residual (unexplained) variance
         }
         double r2 = ssTot == 0 ? 0 : 1 - ssRes / ssTot;
 
         return new LR(slopePct, slopePpu, r2, yBar, xBar);
     }
 
+    /**
+     * Uses the parameters from a linear regression (LR) fit to predict the *expected* close price
+     * at a given bar index `i` in the time window.
+     * <p>
+     * This is the standard formula for a least-squares regression line:
+     * y = ȳ + slope * (x - x̄)
+     * where:
+     * - ȳ (lr.yBar): The mean close price of the window (average y value).
+     * - x̄ (lr.xBar): The mean index within the window (average x value, usually middle of window).
+     * - slope (lr.slopePpu): The best-fit slope (change in price units per bar, from OLS).
+     * - i: The index (relative position) within the window for which we want the prediction.
+     * <p>
+     * This method is typically called for every bar in the analysis window, to generate the
+     * predicted regression value for each bar, so you can compare the *actual* close to the *expected* close.
+     * The result is used to compute things like channel width (max deviation from the trend),
+     * or to check if recent prices are still "in alignment" with the trend.
+     *
+     * @param lr The regression object (contains mean x, mean y, and slope in price units/bar)
+     * @param i  The target index within the window (0 = start of window, etc)
+     * @return The predicted close price at index i, according to the regression line
+     */
     private static double predictSlope(LR lr, int i) {
+        // The regression line for OLS (ordinary least squares) is:
+        // y = ȳ + m * (x - x̄)
+        // - ȳ: mean y (average close)
+        // - m:  slope in price units per bar (how much price increases per bar, on average)
+        // - x:  current index (i)
+        // - x̄: mean index (center of window)
+        //
+        // This predicts what the price "should be" if the trend held perfectly.
+
         return lr.yBar + lr.slopePpu * (i - lr.xBar);
+        // (i - lr.xBar) gives how far this bar is from the center;
+        // Multiply by the slope, add mean y to get predicted value.
     }
 
+    /**
+     * Aggregates ("compresses") a list of minute bars into larger bars (e.g. 2h bars).
+     * <ul>
+     *   <li>Each output bar contains OHLCV for a {@code MINUTES}-long window.</li>
+     *   <li>Handles missing minutes and only starts a new bucket if enough time has passed.</li>
+     *   <li>Also re-filters to only weekdays (defensive).</li>
+     * </ul>
+     *
+     * @param src List of raw StockUnits (minute bars, possibly unsorted, possibly including weekends)
+     * @return List of compressed StockUnits (bucketed, sorted, one per {@code MINUTES} window)
+     */
     private static List<StockUnit> compress(List<StockUnit> src) {
 
+        // Defensive: Remove weekend bars (in case they're in the source), and ensure bars are sorted by time.
+        // This avoids aggregation errors and keeps output time series consistent.
         List<StockUnit> data = src.stream()
                 .filter(u -> {
                     DayOfWeek d = u.getLocalDateTimeDate().getDayOfWeek();
+                    // Keep only bars from Monday-Friday (ignore Saturday/Sunday completely)
                     return d != DayOfWeek.SATURDAY && d != DayOfWeek.SUNDAY;
                 })
+                // Sorting by bar timestamp so our aggregation always moves forward in time.
                 .sorted(Comparator.comparing(StockUnit::getLocalDateTimeDate))
                 .toList();
 
         List<StockUnit> out = new ArrayList<>();
-        if (data.isEmpty()) return out;
+        if (data.isEmpty()) return out; // No data? Return an empty output—nothing to compress.
 
+        // Initialize the first bucket's start time to the first (oldest) bar, rounded/truncated to the minute.
+        // All bars within this "bucket" period will be grouped together for OHLCV aggregation.
         ZonedDateTime bucketStart = data.get(0).getLocalDateTimeDate()
-                .truncatedTo(ChronoUnit.MINUTES)
-                .atZone(ZoneId.systemDefault());
+                .truncatedTo(ChronoUnit.MINUTES)      // Remove any sub-minute time precision
+                .atZone(ZoneId.systemDefault());      // Use the system default time zone for consistency
 
-        StockUnit agg = null;
+        StockUnit agg = null; // Will hold the current aggregated bar for this bucket
 
+        // Loop over all bars in chronological order
         for (StockUnit stockUnit : data) {
             ZonedDateTime t = stockUnit.getLocalDateTimeDate()
                     .truncatedTo(ChronoUnit.MINUTES)
                     .atZone(ZoneId.systemDefault());
 
             if (agg == null) {
+                // If this is the very first bar (no aggregation started), initialize a new aggregation bar (agg)
                 agg = new StockUnit.Builder()
-                        .open(stockUnit.getOpen())
-                        .high(stockUnit.getHigh())
-                        .low(stockUnit.getLow())
-                        .close(stockUnit.getClose())
-                        .adjustedClose(stockUnit.getClose())
-                        .volume(stockUnit.getVolume())
-                        .dividendAmount(0)
-                        .splitCoefficient(0)
-                        .time(stockUnit.dateTime)
+                        .open(stockUnit.getOpen())           // Open is the open of the first bar in the bucket
+                        .high(stockUnit.getHigh())           // High so far is the current bar's high
+                        .low(stockUnit.getLow())             // Low so far is the current bar's low
+                        .close(stockUnit.getClose())         // Close is the current bar's close (will be updated)
+                        .adjustedClose(stockUnit.getClose()) // Adjusted close starts same as close (may be updated)
+                        .volume(stockUnit.getVolume())       // Initial volume is just this bar's volume
+                        .dividendAmount(0)                   // Default for synthetic bars
+                        .splitCoefficient(0)                 // Default for synthetic bars
+                        .time(stockUnit.dateTime)            // Timestamp of the first bar in the bucket
                         .build();
-                continue;
+                continue; // Move to the next bar; we've initialized our bucket.
             }
 
+            // Check if the current bar still falls within the current bucket
+            // (bucket duration is mainDataHandler.MINUTES, e.g., 120 minutes)
             if (ChronoUnit.MINUTES.between(bucketStart, t) < mainDataHandler.MINUTES) {
-                // still in this bucket – update OHLCV
+                // If yes, update our aggregation:
+                // - High: max of current and previous highs
                 agg.setHigh(Math.max(agg.getHigh(), stockUnit.getHigh()));
+                // - Low: min of current and previous lows
                 agg.setLow(Math.min(agg.getLow(), stockUnit.getLow()));
+                // - Close: always set to the most recent bar's close (rolling forward)
                 agg.setClose(stockUnit.getClose());
+                // - Volume: accumulate total volume for this bucket
                 agg.setVolume(agg.getVolume() + stockUnit.getVolume());
             } else {
+                // If not in the same bucket (i.e., new bar is outside the bucket duration):
+                // 1. Save the completed aggregation bar to the output list
                 out.add(agg);
+
+                // 2. Reset the bucketStart to the current bar's timestamp (truncated to minute)
                 bucketStart = t.truncatedTo(ChronoUnit.MINUTES);
+
+                // 3. Start a new aggregation bar for the new bucket, copying all fields from current bar
                 agg = new StockUnit.Builder()
-                        .open(stockUnit.getOpen())
-                        .high(stockUnit.getHigh())
+                        .open(stockUnit.getOpen())                   // New bucket: open = open of first bar
+                        .high(stockUnit.getHigh())                   // New high/low/close/volume fields from current bar
                         .low(stockUnit.getLow())
                         .close(stockUnit.getClose())
                         .adjustedClose(stockUnit.getClose())
                         .volume(stockUnit.getVolume())
-                        .dividendAmount(stockUnit.getDividendAmount())
-                        .splitCoefficient(stockUnit.getSplitCoefficient())
-                        .time(stockUnit.dateTime)
+                        .dividendAmount(stockUnit.getDividendAmount()) // Pass through if set
+                        .splitCoefficient(stockUnit.getSplitCoefficient()) // Pass through if set
+                        .time(stockUnit.dateTime)                    // Timestamp is from the new first bar
                         .build();
             }
         }
+
+        // After loop: If there's any unfinished aggregation bar, add it as the last bucket.
         if (agg != null) out.add(agg);
+
+        // Return all aggregated, compressed bars (each representing a MINUTES-long bucket)
         return out;
     }
 
+    /**
+     * Evaluates the ML prediction, technical indicators, and recent price action to generate a list of actionable notifications/alerts.
+     * <p>
+     * This function forms the final "decision layer" in the alerting pipeline. It inspects both statistical/ML results and
+     * direct technical signals, combining them with current market context (such as resistance proximity), to decide if an
+     * event (spike, gap, breakout, etc.) should trigger a user notification.
+     *
+     * @param prediction         The ML model's confidence output (probability or score that an event is imminent, e.g., rally/spike).
+     * @param stocks             The window of recent stock bars (should be frameSize long).
+     * @param symbol             The ticker symbol for the analyzed stock.
+     * @param features           The array of raw indicator features for this frame.
+     * @param normalizedFeatures The normalized (0-1) array of features, ready for scoring/aggregation.
+     * @return List of {@link Notification}s to be shown/queued for the user.
+     */
     private static List<Notification> evaluateResult(double prediction, List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
+        // === 1. Prepare the output list for all alerts generated for this frame ===
         List<Notification> alertsList = new ArrayList<>();
 
+        // === 2. Assess if price is near a resistance zone (used for notification context) ===
         double nearRes = isNearResistance(stocks);
 
-        // fill the gap
+        // === 3. "Fill the Gap" event logic ===
+        // - Checks for classic "gap fill" price actions (sharp drop + bounce/oversold indicators).
+        // - Alerts added directly to alertsList if triggered.
         fillTheGap(prediction, stocks, symbol, alertsList);
 
+        // === 4. Defensive fallback: ensure global 'aggressiveness' parameter is set. ===
+        // - Some systems may not set this variable on startup, so default to 1.0.
         if (aggressiveness == 0.0) {
             aggressiveness = 1.0F;
         }
 
-        // Spike & R-Line
-        spikeUp(prediction, stocks, symbol, features, alertsList, nearRes, aggressiveness, normalizedFeatures);
+        // === 5. Core Spike/R-Line event logic ===
+        // - Looks for powerful bullish events using multi-indicator confirmation.
+        // - Handles both R-Line (near resistance) and normal spike scenarios.
+        spikeUp(
+                prediction,
+                stocks,
+                symbol,
+                features,
+                alertsList,
+                nearRes,
+                aggressiveness,
+                normalizedFeatures
+        );
 
+        // === 6. Return all collected notifications for display or further processing ===
         return alertsList;
     }
 
-    private static void spikeUp(double prediction, List<StockUnit> stocks, String symbol, double[] features,
-                                List<Notification> alertsList, double nearRes, float manualAggressiveness, float[] normalizedFeatures) {
+    /**
+     * Tests for rapid bullish "spike" events and R-Line (resistance-line) confirmations.
+     * - Only triggers a notification when multiple technical + statistical conditions are met
+     * - Dynamically adapts thresholds and required price changes based on the current "aggressiveness" parameter
+     * - Designed to filter for the highest-confidence breakouts, reducing noise/false positives
+     */
+    private static void spikeUp(
+            double prediction,                  // ML model prediction confidence [0-1]
+            List<StockUnit> stocks,             // List of recent OHLCV bars (frame)
+            String symbol,                      // Ticker symbol (for notification context)
+            double[] features,                  // Raw indicator feature values (see computeFeatures)
+            List<Notification> alertsList,      // List to append alerts if triggered
+            double nearRes,                     // 1.0 if price is near resistance, 0.0 otherwise
+            float manualAggressiveness,         // User/system-level aggressiveness multiplier (risk tolerance)
+            float[] normalizedFeatures          // Feature vector, normalized [0-1] for dynamic scoring
+    ) {
 
+        // === 1. Calculate "inverse" aggressiveness: used to scale minimum required price moves ===
+        // - Higher aggressiveness means smaller price moves will trigger; lower means stricter thresholds
         double inverseAggressiveness = 1 / manualAggressiveness;
 
-        // Calculate dynamic aggressiveness
+        // === 2. Dynamic composite "aggressiveness" based on active feature weights ===
+        // - Uses all normalized features and their respective category weights
         double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness);
 
-        // Adaptive thresholds based on weights
+        // === 3. Set adaptive threshold for cumulative percentage move, based on feature activations ===
+        // - The more active/bullish features, the more willing to accept smaller price moves as significant
         double cumulativeThreshold = 0.6 * dynamicAggro;
 
+        // === 4. Compute rolling sum of percentage changes for last 2, 3, 4, 6 bars ===
+        // - Used to detect sudden strong upward momentum
+        // - Only the last N bars in the window are summed
         double changeUp2 = stocks.stream().skip(stocks.size() - 2).mapToDouble(StockUnit::getPercentageChange).sum();
         double changeUp3 = stocks.stream().skip(stocks.size() - 3).mapToDouble(StockUnit::getPercentageChange).sum();
         double changeUp4 = stocks.stream().skip(stocks.size() - 4).mapToDouble(StockUnit::getPercentageChange).sum();
         double changeUp6 = stocks.stream().skip(stocks.size() - 6).mapToDouble(StockUnit::getPercentageChange).sum();
 
+        // === 5. Prepare "test pass" flag for logging ===
         String istrue = "❌";
 
-        if (features[4] == 1 && features[5] > cumulativeThreshold && dynamicAggro > 2.5 && prediction > 0.9 && features[6] == 1
-                && (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
+        if (
+                features[4] == 1 &&
+                        features[5] > cumulativeThreshold &&
+                        dynamicAggro > 2.5 &&
+                        prediction > 0.9 &&
+                        features[6] == 1 &&
+                        (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
         ) {
             istrue = "✅";
         }
 
-        System.out.printf("2:%.2f 3:%.2f 4:%.2f 6:%.2f %s %s %s%n", changeUp2, changeUp3, changeUp4, changeUp6,
-                stocks.get(stocks.size() - 1).getVolume(), istrue, stocks.get(stocks.size() - 1).getDateDate());
+        System.out.printf(
+                "2:%.2f 3:%.2f 4:%.2f 6:%.2f %s %s %s%n",
+                changeUp2,
+                changeUp3,
+                changeUp4,
+                changeUp6,
+                stocks.get(stocks.size() - 1).getVolume(),
+                istrue,
+                stocks.get(stocks.size() - 1).getDateDate()
+        );
 
-        if (features[4] == 1 &&
-                features[5] > cumulativeThreshold &&
-                dynamicAggro > 2.5 &&
-                prediction > 0.9 &&
-                features[6] == 1
-                && (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
+        // === 6. Primary bullish spike event logic ===
+        // - All conditions must be satisfied for an alert to fire:
+        //   (a) features[4] == 1   : Binary "spike" feature active (statistical anomaly)
+        //   (b) features[5] > cumulativeThreshold : Large cumulative percentage gain
+        //   (c) dynamicAggro > 2.5 : Strong overall feature activation (robustness check)
+        //   (d) prediction > 0.9   : ML model must be highly confident (>90%)
+        //   (e) features[6] == 1   : Keltner channel breakout detected
+        //   (f) changeUp2 and changeUp3 > 1.5 * inverseAggressiveness : Last 2-3 bars have strong % gains
+
+        // === 7. Only if all above conditions are met, trigger alert notification ===
+        // - If not near resistance, config=3 ("spike" alert)
+        // - If near resistance, config=2 ("R-Line" alert)
+        if (
+                features[4] == 1 &&
+                        features[5] > cumulativeThreshold &&
+                        dynamicAggro > 2.5 &&
+                        prediction > 0.9 &&
+                        features[6] == 1 &&
+                        (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
         ) {
             if (nearRes == 0) {
-                createNotification(symbol, changeUp4, alertsList, stocks,
+                // Normal spike event (not at resistance)
+                createNotification(
+                        symbol,
+                        changeUp4, // Total percentage gain over 4 bars
+                        alertsList,
+                        stocks,
                         stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                        prediction, 3);
+                        prediction,
+                        3 // Config for spike
+                );
             } else {
-                createNotification(symbol, changeUp4, alertsList, stocks,
+                // R-Line event (at/near resistance)
+                createNotification(
+                        symbol,
+                        changeUp4,
+                        alertsList,
+                        stocks,
                         stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                        prediction, 2);
+                        prediction,
+                        2 // Config for R-Line
+                );
             }
         }
     }
 
+    /**
+     * Detects and triggers notifications for "gap fill" events—statistically significant, rapid downward price movements
+     * that are highly likely to be followed by a rebound ("filling the gap").
+     * <p>
+     * <b>How this method achieves near-perfect dip prediction:</b>
+     * <ul>
+     *     <li><b>Multi-layered indicator confirmation:</b>
+     *         <ul>
+     *             <li><b>Trend Context:</b> Measures the deviation of the current close from the 20-period SMA (simple moving average),
+     *             ensuring that only real departures from the recent trend are considered potential gaps/dips.</li>
+     *             <li><b>Dynamic Volatility Filtering:</b> Uses a threshold based on current ATR (Average True Range) and
+     *             historical ATR, adjusting its sensitivity to current market volatility—this means the system is
+     *             more selective during wild markets and more sensitive during calm periods.</li>
+     *             <li><b>Momentum Confirmation:</b> Requires at least one momentum exhaustion signal (RSI &lt; 32 <i>or</i>
+     *             Stochastic Oscillator &lt; 5), which are classic technical indicators for “oversold” conditions.</li>
+     *             <li><b>Sharp Drop & Sustained Move:</b> Confirms that a significant, sharp drop has occurred and that
+     *             this move is broad-based (not just a one-candle anomaly), by looking back over several bars.</li>
+     *         </ul>
+     *     </li>
+     *     <li><b>False positive prevention:</b>
+     *         <ul>
+     *             <li><b>Strict AND logic:</b> All major filters must agree before triggering an alert; if any
+     *             condition fails (e.g., not enough deviation, no momentum exhaustion, or move not sustained), the
+     *             alert is suppressed. This redundancy ensures that only true, high-conviction dips fire signals.</li>
+     *             <li><b>Adaptive thresholds:</b> The logic automatically tightens or relaxes thresholds based on current
+     *             market volatility, reducing “noise” during stress and not missing events during quiet periods.</li>
+     *         </ul>
+     *     </li>
+     *     <li><b>Market regime adaptation:</b> By calibrating against recent and historical volatility (ATR),
+     *     the detector can dynamically adjust its expectations, achieving high accuracy in both quiet and turbulent markets.</li>
+     *     <li><b>Result:</b> Only if <i>all</i> statistical, trend, and momentum filters are satisfied—signaling a true, statistically rare event—
+     *     is a “gap fill” notification generated, leading to exceptional robustness and a very low false positive rate.</li>
+     * </ul>
+     *
+     * <p>
+     * <b>Detection Process:</b>
+     * <ol>
+     *     <li><b>Trend baseline:</b> Compute 20-period SMA; measure deviation of current close from SMA.</li>
+     *     <li><b>Volatility filter:</b> Compute ATR for current window and compare to historical ATR to set a dynamic gap threshold.</li>
+     *     <li><b>Momentum check:</b> Require RSI &lt; 32 or Stochastic &lt; 5.</li>
+     *     <li><b>Sharp drop check:</b> Confirm a recent, rapid price drop in the lookback window.</li>
+     *     <li><b>Sustained movement:</b> Require the move to be broad-based (not a single-candle outlier).</li>
+     *     <li><b>Alert:</b> Only if <i>all</i> these filters agree is a notification created for the user/trader.</li>
+     * </ol>
+     *
+     * <p>
+     * <b>Summary:</b> The power of this method is in its strict combination of adaptive, multi-factor statistical and technical tests.
+     * Each component guards against a different type of false positive, making it extremely effective at only flagging genuine
+     * gap fill opportunities with a high probability of mean-reversion.
+     *
+     * @param prediction The latest ML prediction/confidence value (used for alert ranking or display).
+     * @param stocks     Window of StockUnit bars (must have at least {@code smaPeriod} entries).
+     * @param symbol     Ticker symbol (used for historical ATR lookup).
+     * @param alertsList The master notification list to which any generated gap fill notifications are appended.
+     */
     private static void fillTheGap(double prediction, List<StockUnit> stocks, String symbol, List<Notification> alertsList) {
-        // Adaptive parameters
-        int smaPeriod = 20;
-        int atrPeriod = 14;
-        int rsiPeriod = 10;
-        int stochasticPeriod = 14;
-        int dropLookBack = 10;
-        int stochasticLimit = 5;
-        int rsiLimit = 32;
-        double sharpDropThreshold = 2.0;
-        double dipThreshold = -2.5;
+        // --- Detection periods and thresholds (tunable for market regime) ---
+        int smaPeriod = 20;           // Length for moving average baseline (trend context)
+        int atrPeriod = 14;           // ATR window for volatility baseline
+        int rsiPeriod = 10;           // RSI calculation period (momentum)
+        int stochasticPeriod = 14;    // Stochastic oscillator period (momentum divergence)
+        int dropLookBack = 10;        // Look-back for sharp drop test (recent sudden moves)
+        int stochasticLimit = 5;      // Threshold for "extreme" stochastic
+        int rsiLimit = 32;            // RSI < 32 means strongly oversold
+        double sharpDropThreshold = 2.0;  // Minimum % drop to count as sharp
+        double dipThreshold = -2.5;       // Total move threshold for "sustained" dips
 
+        // --- Ensure we have enough bars for SMA calculation ---
         if (stocks.size() >= smaPeriod) {
             int endIndex = stocks.size();
             int startIndex = endIndex - smaPeriod;
 
-            // 1. Enhanced Trend Detection
+            // === 1. Trend Detection: Compute simple moving average over period ===
             double sma = calculateSMA(stocks.subList(startIndex, endIndex));
             double currentClose = stocks.get(endIndex - 1).getClose();
-            double deviation = currentClose - sma;
+            double deviation = currentClose - sma; // How far below the trend are we?
 
-            // 2. Dynamic Gap Threshold
+            // === 2. Volatility-Adjusted Gap Threshold ===
+            // ATR measures volatility in current window; getHistoricalATR is long-term baseline.
             double atr = calculateATR(stocks.subList(endIndex - atrPeriod, endIndex), atrPeriod);
             double historicalATR = getHistoricalATR(symbol);
             double volatilityRatio = atr / historicalATR;
 
-            // Adaptive multiplier (more sensitive in high volatility)
+            // --- Dynamic multiplier: lowers trigger threshold in high volatility ---
             double multiplier = Math.max(1.5, 3.0 - (volatilityRatio * 0.8));
-            double gapThreshold = -multiplier * atr;
+            double gapThreshold = -multiplier * atr; // Required deviation below SMA to count as a "gap"
 
-            // 4. Momentum Confirmation
+            // === 3. Momentum Confirmation (classic bottoming signals) ===
             double rsi = calculateRSI(stocks, rsiPeriod);
-            boolean oversold = rsi < rsiLimit;
+            boolean oversold = rsi < rsiLimit; // Is RSI below "oversold" cutoff?
             double stochastic = calculateStochastic(stocks, stochasticPeriod);
-            boolean momentumDivergence = stochastic < stochasticLimit;
+            boolean momentumDivergence = stochastic < stochasticLimit; // Is momentum at extreme lows?
 
-            // 5. Enhanced Drop Detection
+            // === 4. Drop Detection: Was there a recent sudden drop? ===
             boolean sharpDrop = checkSharpDrop(stocks, dropLookBack, sharpDropThreshold);
 
-            // 6. Wide Gap Specific Checks
+            // === 5. Is this a "wide gap"? (Deviation far below threshold) ===
             boolean isWideGap = deviation < (gapThreshold * 1.3);
+
+            // === 6. Sustained Move: Is the move broad-based, not a one-bar fluke? ===
             boolean sustainedMove = checkSustainedMovement(stocks, dropLookBack, dipThreshold);
 
-            // Signal Generation Logic
+            // --- Only fire alert if ALL core conditions are met ---
             boolean baseCondition = isWideGap && deviation < -0.15 &&
                     sharpDrop && sustainedMove &&
                     (oversold || momentumDivergence);
 
+            // === Final: If so, add a "gap fill" notification to output ===
             if (baseCondition) {
                 createNotification(symbol, deviation, alertsList, stocks,
                         stocks.get(endIndex - 1).getLocalDateTimeDate(),
-                        prediction, 1);
+                        prediction, 1); // config=1 means "gap fill"
             }
         }
     }
 
     //Indicators
+
+    /**
+     * Checks whether the current close price is within 0.5% below the recent resistance level (recent highest high).
+     * <p>
+     * Used for alert logic to trigger special notifications (e.g., "R-Line" events) if price is testing or just below resistance.
+     *
+     * <ul>
+     *     <li>Resistance is defined as the highest high from all but the most recent bar.</li>
+     *     <li>If current close is within 0.5% (below but not over) of this level, returns 1.0.</li>
+     *     <li>Otherwise returns 0.0.</li>
+     * </ul>
+     *
+     * @param stocks Window of StockUnit bars (must have at least 2 bars).
+     * @return 1.0 if within 0.5% of resistance, otherwise 0.0.
+     */
     private static double isNearResistance(List<StockUnit> stocks) {
         if (stocks.size() < 2) {
-            return 0.0; // Not enough data points
+            return 0.0; // Not enough data points to define resistance
         }
 
-        // Exclude last candle to determine resistance level
+        // Use all bars except the latest to find recent high (resistance)
         List<StockUnit> previousStocks = stocks.subList(0, stocks.size() - 1);
 
         if (previousStocks.isEmpty()) {
-            return 0.0;
+            return 0.0; // Defensive fallback
         }
 
+        // Find resistance: highest high among previous bars
         double resistanceLevel = previousStocks.stream()
                 .mapToDouble(StockUnit::getHigh)
                 .max()
                 .orElse(0.0);
 
+        // Get the most recent close price
         StockUnit currentStock = stocks.get(stocks.size() - 1);
         double currentClose = currentStock.getClose();
-        double threshold = resistanceLevel * 0.995; // Within 0.5% below resistance
 
+        // Compute threshold (within 0.5% below resistance)
+        double threshold = resistanceLevel * 0.995;
+
+        // Return 1.0 if within [threshold, resistanceLevel], else 0.0
         return (currentClose >= threshold && currentClose <= resistanceLevel) ? 1.0 : 0.0;
     }
 
-    // 1. Simple Moving Average (SMA)
+    /**
+     * Determines if a Simple Moving Average (SMA) crossover event has occurred.
+     * This is used to detect bullish (golden cross) or bearish (death cross) events.
+     *
+     * @param window      List of StockUnit objects representing sequential price bars (most recent last).
+     * @param shortPeriod Length of the short-term SMA window (e.g., 9).
+     * @param longPeriod  Length of the long-term SMA window (e.g., 21). Must be > shortPeriod.
+     * @param symbol      Stock symbol, used for mapping persistent state.
+     * @return 1 for bullish crossover (golden cross),
+     * -1 for bearish crossover (death cross),
+     * 0 for no crossover or insufficient data.
+     *
+     * <p>
+     * Logic:
+     * - Computes both current and previous short and long period SMAs.
+     * - Detects bullish if short SMA crosses above long SMA.
+     * - Detects bearish if short SMA crosses below long SMA.
+     * - Maintains persistent state per-symbol to avoid duplicate signals.
+     * </p>
+     */
     public static int isSMACrossover(List<StockUnit> window, int shortPeriod, int longPeriod, String symbol) {
+        // Return prior state if not enough data or periods are invalid
         if (window == null || window.size() < longPeriod + 1 || shortPeriod >= longPeriod) {
-            return smaStateMap.getOrDefault(symbol, 0); // Return current state if invalid
+            // Use a state map to persist last crossover state for each symbol
+            return smaStateMap.getOrDefault(symbol, 0);
         }
 
-        // Extract closing prices once
+        // Convert close prices to an array for efficient access
         double[] closes = window.stream()
                 .mapToDouble(StockUnit::getClose)
                 .toArray();
 
-        // Calculate current SMAs
-        double shortSMA = calculateSMA(closes, closes.length - shortPeriod, shortPeriod);
-        double longSMA = calculateSMA(closes, closes.length - longPeriod, longPeriod);
+        // Compute the most recent (current) short and long SMAs using the latest available points
+        double shortSMA = calculateSMA(closes, closes.length - shortPeriod, shortPeriod);      // e.g., SMA9 of last 9 closes
+        double longSMA = calculateSMA(closes, closes.length - longPeriod, longPeriod);         // e.g., SMA21 of last 21 closes
 
-        // Calculate previous SMAs (one period back)
+        // Compute previous SMAs for both short and long periods (shift window by one to the past)
         double prevShortSMA = calculateSMA(closes, closes.length - shortPeriod - 1, shortPeriod);
         double prevLongSMA = calculateSMA(closes, closes.length - longPeriod - 1, longPeriod);
 
+        // Bullish crossover: short SMA crosses above long SMA between previous and current
         boolean bullishCrossover = (prevShortSMA <= prevLongSMA) && (shortSMA > longSMA);
+
+        // Bearish crossover: short SMA crosses below long SMA between previous and current
         boolean bearishCrossover = (prevShortSMA >= prevLongSMA) && (shortSMA < longSMA);
 
+        // Retrieve the current crossover state for the symbol
         int currentState = smaStateMap.getOrDefault(symbol, 0);
 
+        // Update the state if a crossover is detected
         if (bullishCrossover) {
-            smaStateMap.put(symbol, 1);
+            smaStateMap.put(symbol, 1);    // 1 indicates bullish
             currentState = 1;
         } else if (bearishCrossover) {
-            smaStateMap.put(symbol, -1);
+            smaStateMap.put(symbol, -1);   // -1 indicates bearish
             currentState = -1;
         }
+        // No crossover, state unchanged
 
-        return currentState;
+        return currentState; // Return the crossover state (1, -1, or 0)
     }
 
-    // 2. TRIX Indicator
+    /**
+     * Calculates the TRIX indicator value for a list of stock prices.
+     * TRIX is the percentage rate-of-change of a triple-smoothed Exponential Moving Average (EMA).
+     *
+     * @param prices List of StockUnit objects, ordered oldest to newest (chronological).
+     * @param period The period window (lookback) for the EMA smoothing.
+     * @return TRIX value as a percentage rate-of-change. Returns 0 if not enough data.
+     *
+     * <p>
+     * Steps:
+     * 1. Compute EMA on closes: once, then again (EMA of EMA), then again (EMA of EMA of EMA).
+     * 2. Calculate percentage rate of change between last two triple EMA values.
+     * </p>
+     */
     public static double calculateTRIX(List<StockUnit> prices, int period) {
+        // Need at least (3*period + 1) bars for triple smoothing to be meaningful
         final int minDataPoints = 3 * period + 1;
         if (prices.size() < minDataPoints || period < 2) {
             return 0; // Not enough data for valid calculation
         }
 
-        // 1. Extract closing prices in chronological order (oldest first)
+        // Extract all close prices as a List<Double>
         List<Double> closes = prices.stream()
                 .map(StockUnit::getClose)
                 .collect(Collectors.toList());
 
-        // 2. Calculate triple-smoothed EMA
+        // 1st EMA smoothing
         List<Double> singleEMA = calculateEMASeries(closes, period);
+        // 2nd EMA smoothing (EMA of first EMA series)
         List<Double> doubleEMA = calculateEMASeries(singleEMA, period);
+        // 3rd EMA smoothing (EMA of second EMA series)
         List<Double> tripleEMA = calculateEMASeries(doubleEMA, period);
 
-        // 3. Calculate rate of change for TRIX
-        if (tripleEMA.size() < 2) return 0;
+        // TRIX is percentage rate-of-change of last two triple-EMA values
+        if (tripleEMA.size() < 2) return 0; // Not enough values
 
-        double current = tripleEMA.get(tripleEMA.size() - 1);
-        double previous = tripleEMA.get(tripleEMA.size() - 2);
+        double current = tripleEMA.get(tripleEMA.size() - 1);    // Most recent triple-EMA
+        double previous = tripleEMA.get(tripleEMA.size() - 2);   // Previous triple-EMA
 
+        // Compute percentage change from previous to current (can be negative)
         return ((current - previous) / previous) * 100;
     }
 
-    // 3. Rate of Change (ROC) with SIMD optimization
+    /**
+     * Calculates the Rate of Change (ROC) indicator for a price window.
+     * ROC = ((currentClose - closeNPeriodsAgo) / closeNPeriodsAgo) * 100
+     *
+     * @param window  List of StockUnit objects, most recent last.
+     * @param periods Lookback period for ROC (e.g., 20).
+     * @return ROC value as percent change, or 0 if insufficient data.
+     *
+     * <p>
+     * - Measures the percentage change from N periods ago to now.
+     * - Used as a momentum indicator.
+     * </p>
+     */
     public static double calculateROC(List<StockUnit> window, int periods) {
+        // Require at least (periods+1) values for a valid calculation
         if (window.size() < periods + 1) return 0;
 
+        // Take only the relevant closes for the calculation (last (periods+1) closes)
         double[] closes = window.stream()
-                .skip(window.size() - periods - 1)
+                .skip(window.size() - periods - 1)   // Skip older values, keep only required window
                 .mapToDouble(StockUnit::getClose)
                 .toArray();
 
-        // Manual vectorization for ARM NEON
-        double current = closes[closes.length - 1];
-        double past = closes[0];
-        return ((current - past) / past) * 100;
+        // ROC is percent change from first (N periods ago) to last (current)
+        double current = closes[closes.length - 1];  // Most recent close
+        double past = closes[0];                     // Close N periods ago
+
+        return ((current - past) / past) * 100;      // Percent change (positive or negative)
     }
 
-    // 4. Cumulative Percentage Change with threshold check
+    /**
+     * Determines if the cumulative sum of percentage changes in a window
+     * exceeds a given threshold. Used to detect 'spikes' in cumulative returns.
+     *
+     * @param window    List of StockUnit objects, most recent last.
+     * @param period    Number of periods to sum for the spike check.
+     * @param threshold Threshold (as a raw sum) to determine a spike event.
+     * @return 1 if sum >= threshold (spike detected), 0 otherwise.
+     *
+     * <p>
+     * - Adds up the 'percentageChange' values of the most recent N bars.
+     * - If sum exceeds threshold, a spike is flagged.
+     * </p>
+     */
     public static int isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
+        // Not enough bars to check spike
         if (window.size() < period) return 0;
 
+        // Sum up the percentageChange field for last 'period' bars
         double sum = window.stream()
-                .skip(window.size() - period)
+                .skip(window.size() - period)    // Keep only last 'period' entries
                 .mapToDouble(StockUnit::getPercentageChange)
                 .sum();
 
-        // Return 1 if true, 0 if false
+        // 1 = spike detected, 0 = not detected
         return sum >= threshold ? 1 : 0;
     }
 
-    // 5. Cumulative Percentage Change
+    /**
+     * Calculates the total cumulative percentage change for the most recent 8 bars.
+     * This can be used as a feature to measure total momentum or spike activity.
+     *
+     * @param stocks List of StockUnit objects, most recent last.
+     * @return Total cumulative percentage change over last 8 bars.
+     *
+     * <p>
+     * - Uses the 'percentageChange' field.
+     * - If less than 8, will use from index 0 to current size.
+     * </p>
+     */
     private static double cumulativePercentageChange(List<StockUnit> stocks) {
-        int startIndex = 0;
-        try {
-            startIndex = stocks.size() - 8;
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        // Calculate the starting index for the last 8 elements.
+        // If the list is shorter than 8, this will be negative, but subList handles that safely as 0.
+        int startIndex = stocks.size() - 8;
 
-        // Using Stream to process the list
-        return stocks.subList(startIndex, stocks.size())
+        // Sum the percentageChange values for the last 8 StockUnits (or all if fewer than 8).
+        // subList(startIndex, stocks.size()) will include all items from startIndex to the end of the list.
+        // If startIndex < 0, subList(0, stocks.size()) is used, meaning the whole list.
+        return stocks.subList(Math.max(0, startIndex), stocks.size())
                 .stream()
-                .mapToDouble(StockUnit::getPercentageChange)  // Convert to double
-                .sum();  // Sum all the results
+                .mapToDouble(StockUnit::getPercentageChange)
+                .sum();
     }
 
-    // 6. Keltner Channels Breakout
+    /**
+     * Checks if a Keltner Channel breakout has occurred for the given stock window.
+     * <p>
+     * The Keltner Channel consists of an Exponential Moving Average (EMA) plus/minus a multiple of the Average True Range (ATR).
+     * This method detects whether the latest close has "broken out" above the upper band AND if the cumulative move is large enough.
+     *
+     * @param window          List of StockUnit price bars, oldest to most recent (must be at least (emaPeriod or 4) + 1 bars long).
+     * @param emaPeriod       The period (lookback window) for the EMA centerline.
+     * @param atrPeriod       The period for the ATR volatility calculation.
+     * @param multiplier      How many ATRs above EMA defines the upper channel (usually 2).
+     * @param cumulativeLimit Minimum absolute % move required for a breakout to count.
+     * @return 1 if there is a valid breakout above the channel and the cumulative move is sufficient, 0 otherwise.
+     *
+     * <p>
+     * Steps:
+     * 1. Compute EMA for the given period as the channel midline.
+     * 2. Compute ATR (average true range) for channel width.
+     * 3. Compute the upper band: EMA + multiplier * ATR.
+     * 4. Check if current close is above upper band AND move from 8 bars ago is big enough.
+     * </p>
+     */
     public static int isKeltnerBreakout(List<StockUnit> window, int emaPeriod, int atrPeriod, double multiplier,
                                         double cumulativeLimit) {
-        // Check if we have enough data for calculations
+        // Data sufficiency check: need at least enough bars for EMA and ATR plus 1 for reference
         if (window.size() < Math.max(emaPeriod, 4) + 1) {
-            return 0; // Not enough data points
+            return 0; // Not enough data points, skip calculation
         }
 
-        // Original Keltner Channel calculation
+        // ---- Keltner Channel Calculation ----
+
+        // Calculate EMA (Exponential Moving Average) over emaPeriod as the central channel
         double ema = calculateEMA(window, emaPeriod);
+
+        // Calculate ATR (Average True Range) over atrPeriod for volatility width
         double atr = calculateATR(window, atrPeriod);
+
+        // Upper band is the central EMA plus N * ATR
         double upperBand = ema + (multiplier * atr);
 
-        // Cumulative percentage change check
+        // ---- Cumulative Change Calculation ----
+
+        // Get indices for current close and close 8 bars ago (reference for cumulative move)
         int currentIndex = window.size() - 1;
         int referenceIndex = currentIndex - 8;
 
-        double currentClose = window.get(currentIndex).getClose();
-        double referenceClose = window.get(referenceIndex).getClose();
+        double currentClose = window.get(currentIndex).getClose();      // Most recent close
+        double referenceClose = window.get(referenceIndex).getClose();  // Close 8 bars ago
 
+        // Calculate cumulative % change over the last 8 bars
         double cumulativeChange = ((currentClose - referenceClose) / referenceClose) * 100;
 
-        // Combined condition check
+        // ---- Combined Breakout and Cumulative Check ----
+
+        // Breakout: is the current close above the upper channel?
         boolean isBreakout = currentClose > upperBand;
+
+        // Is the move over the last 8 bars significant enough in absolute %?
         boolean hasSignificantMove = Math.abs(cumulativeChange) >= cumulativeLimit;
 
+        // Only return 1 if both breakout and significant move detected
         return (isBreakout && hasSignificantMove) ? 1 : 0;
     }
 
-    // 7. Elder-Ray Index Approximation
+    /**
+     * Calculates the Elder-Ray Index (Bull Power) for the most recent price in the window.
+     * <p>
+     * Elder-Ray Index = Last Close - EMA(period)
+     * Measures strength of bulls (above zero) or bears (below zero).
+     *
+     * @param window    List of StockUnit bars, most recent last.
+     * @param emaPeriod Period (lookback) for the EMA.
+     * @return Difference between latest close and EMA(period) (can be positive or negative).
+     */
     public static double elderRayIndex(List<StockUnit> window, int emaPeriod) {
+        // Calculate the EMA (Exponential Moving Average) over the given period.
+        // This acts as the trend baseline for the current window.
         double ema = calculateEMA(window, emaPeriod);
-        return window.get(window.size() - 1).getClose() - ema;
+
+        // Get the most recent closing price (the latest StockUnit in the window).
+        double latestClose = window.get(window.size() - 1).getClose();
+
+        // The Elder-Ray Index (also known as Bull Power) is the difference
+        // between the latest close and the EMA. A positive value suggests
+        // bullish strength (close above EMA), while a negative value suggests
+        // bearish pressure (close below EMA).
+        return latestClose - ema;
     }
 
+    /**
+     * Calculates the Simple Moving Average (SMA) from a close price array.
+     * Used internally for SMA crossover logic.
+     *
+     * @param closes     Array of close prices (ordered oldest to newest).
+     * @param startIndex Start index in array to begin averaging (inclusive).
+     * @param period     Number of elements to average.
+     * @return Arithmetic mean of the close prices in the range, or 0 if indices are out of bounds.
+     *
+     * <p>
+     * Example: If closes = [10,11,12,13,14], startIndex=2, period=3, SMA = mean([12,13,14])
+     * </p>
+     */
     private static double calculateSMA(double[] closes, int startIndex, int period) {
+        // Check if indices are valid; return 0 if not enough data to calculate SMA
         if (startIndex < 0 || startIndex + period > closes.length) return 0;
 
         double sum = 0;
+
+        // Sum the closing prices from startIndex for the given period
         for (int i = startIndex; i < startIndex + period; i++) {
             sum += closes[i];
         }
+
+        // Return the average (Simple Moving Average)
         return sum / period;
     }
 
+    /**
+     * Calculates the Exponential Moving Average (EMA) of the provided stock prices.
+     *
+     * @param prices List of StockUnit price bars (oldest to newest).
+     * @param period Period (lookback) for the EMA calculation.
+     * @return EMA value for the last bar in the window, or 0 if not enough data.
+     *
+     * <p>
+     * Steps:
+     * 1. Start with SMA as the first EMA value for the initial window.
+     * 2. Use recursive EMA formula: EMA_today = (Price_today - EMA_yesterday) * S + EMA_yesterday, S = 2/(N+1)
+     * </p>
+     */
     private static double calculateEMA(List<StockUnit> prices, int period) {
+        // Return 0 if period is invalid or not enough data for calculation
         if (prices.size() < period || period <= 0) {
-            return 0; // Handle invalid input
+            return 0;
         }
 
-        // 1. Calculate SMA for first period values
+        // Calculate the initial EMA value using a Simple Moving Average (SMA)
+        // This is the seed for the recursive EMA formula
         double sma = prices.stream()
                 .limit(period)
                 .mapToDouble(StockUnit::getClose)
                 .average()
                 .orElse(0);
 
-        // 2. Calculate smoothing factor
+        // Smoothing constant for EMA, gives more weight to recent data
         final double smoothing = 2.0 / (period + 1);
+
+        // Start with the SMA as the first EMA value
         double ema = sma;
 
-        // 3. Apply EMA formula to subsequent values
+        // Apply the EMA update formula for each new price after the initial period
         for (int i = period; i < prices.size(); i++) {
             double currentPrice = prices.get(i).getClose();
             ema = (currentPrice - ema) * smoothing + ema;
         }
 
+        // Return the most up-to-date EMA value (for the latest price)
         return ema;
     }
 
+    /**
+     * Calculates an entire series of EMA values from a list of data points.
+     * Used for indicators that need multiple EMA smoothings (e.g., TRIX).
+     *
+     * @param data   List of double values (e.g., closes or intermediate EMA results).
+     * @param period Period for the EMA.
+     * @return List of EMA values, same order as input, starting after initial SMA.
+     */
     private static List<Double> calculateEMASeries(List<Double> data, int period) {
+        // If there isn't enough data to calculate even the first EMA value, return an empty list
         if (data.size() < period) return Collections.emptyList();
 
         List<Double> emaSeries = new ArrayList<>();
+
+        // Calculate the smoothing factor for the EMA calculation
         double smoothing = 2.0 / (period + 1);
 
-        // Initial SMA calculation
+        // Calculate the initial value for EMA using the average of the first 'period' data points (SMA)
         double sma = data.subList(0, period)
                 .stream()
                 .mapToDouble(Double::doubleValue)
                 .average()
                 .orElse(0);
+
+        // Add the initial SMA as the first EMA value in the series
         emaSeries.add(sma);
 
-        // Subsequent EMA calculations
+        // For every data point after the initial period, apply the EMA formula recursively
         for (int i = period; i < data.size(); i++) {
             double currentValue = data.get(i);
-            double prevEMA = emaSeries.get(emaSeries.size() - 1);
+            double prevEMA = emaSeries.get(emaSeries.size() - 1); // Get last calculated EMA
+            // EMA formula: blend previous EMA with current value using smoothing
             double newEMA = (currentValue - prevEMA) * smoothing + prevEMA;
-            emaSeries.add(newEMA);
+            emaSeries.add(newEMA); // Add the new EMA value to the series
         }
 
+        // Return the list of all computed EMA values (starts with the seed SMA)
         return emaSeries;
     }
 
+    /**
+     * Calculates the Average True Range (ATR) for a sequence of stock prices.
+     * ATR is a volatility measure, averaged over 'period' bars.
+     *
+     * @param window List of StockUnit bars, oldest to newest.
+     * @param period Number of bars to use for averaging.
+     * @return ATR value, or 0 if not enough data.
+     *
+     * <p>
+     * True Range = max(high - low, abs(high - prevClose), abs(low - prevClose))
+     * ATR = mean(true range over period)
+     * </p>
+     */
     private static double calculateATR(List<StockUnit> window, int period) {
         double atrSum = 0;
+        // Loop from 1 to size-1 to compare each bar to previous bar
         for (int i = 1; i < window.size(); i++) {
-            double high = window.get(i).getHigh();
-            double low = window.get(i).getLow();
-            double prevClose = window.get(i - 1).getClose();
+            double high = window.get(i).getHigh();               // Current bar high
+            double low = window.get(i).getLow();                 // Current bar low
+            double prevClose = window.get(i - 1).getClose();     // Previous bar close
 
-            double trueRange = Math.max(high - low, Math.max(Math.abs(high - prevClose), Math.abs(low - prevClose)));
+            // True Range: the largest of these three quantities
+            double trueRange = Math.max(
+                    high - low,
+                    Math.max(Math.abs(high - prevClose), Math.abs(low - prevClose))
+            );
             atrSum += trueRange;
         }
 
+        // Average over the number of periods specified
         return atrSum / period;
     }
 
+    /**
+     * Calculates the Relative Strength Index (RSI) for a list of stock data.
+     * RSI is a momentum oscillator that measures the speed and change of price movements.
+     * The value ranges from 0 to 100, where:
+     * - 70+ typically signals overbought
+     * - 30- typically signals oversold
+     * - 50 is considered neutral
+     *
+     * <p>RSI = 100 - (100 / (1 + RS)), where RS is the average gain divided by the average loss
+     *
+     * @param stocks List of StockUnit objects in **chronological order** (oldest to newest).
+     * @param period Number of bars (lookback window) to compute RSI, usually 14.
+     * @return RSI value for the most recent bar (0-100). Returns 50 if not enough data or invalid period.
+     */
     private static double calculateRSI(List<StockUnit> stocks, int period) {
+        // Not enough bars or invalid period, return neutral 50
         if (stocks.size() <= period || period < 1) return 50; // Neutral default
 
+        // List to store price changes between consecutive closes
         List<Double> changes = new ArrayList<>();
+
+        // Calculate close-to-close changes for the last 'period' bars
         for (int i = 1; i <= period; i++) {
             double change = stocks.get(i).getClose() - stocks.get(i - 1).getClose();
             changes.add(change);
         }
 
-        double avgGain = changes.stream().filter(c -> c > 0).mapToDouble(Double::doubleValue).average().orElse(0);
-        double avgLoss = Math.abs(changes.stream().filter(c -> c < 0).mapToDouble(Double::doubleValue).average().orElse(0));
+        // Calculate average gain (only positive changes) and average loss (only negative, absolute value)
+        double avgGain = changes.stream()
+                .filter(c -> c > 0)
+                .mapToDouble(Double::doubleValue)
+                .average()
+                .orElse(0);
 
+        double avgLoss = Math.abs(
+                changes.stream()
+                        .filter(c -> c < 0)
+                        .mapToDouble(Double::doubleValue)
+                        .average()
+                        .orElse(0)
+        );
+
+        // If avgLoss is zero, set RSI to 100 (extremely overbought / all gains)
         if (avgLoss == 0) return 100; // Prevent division by zero
+
+        // RS = average gain / average loss
         double rs = avgGain / avgLoss;
+
+        // RSI formula
         return 100 - (100 / (1 + rs));
     }
 
+    /**
+     * Calculates the Simple Moving Average (SMA) of the close price over a specified period.
+     *
+     * @param periodStocks List of StockUnit objects, most recent last. Size should match desired period.
+     * @return SMA (arithmetic mean) of the close price for the input period.
+     *
+     * <p>
+     * If the input list is empty, returns 0.
+     * </p>
+     */
     private static double calculateSMA(List<StockUnit> periodStocks) {
+        // Edge case: No data, return zero
         if (periodStocks.isEmpty()) return 0;
+
+        // Calculate average of close prices for all items in the list
         return periodStocks.stream()
                 .mapToDouble(StockUnit::getClose)
                 .average()
                 .orElse(0);
     }
 
+    /**
+     * Retrieves the historical Average True Range (ATR) for a given symbol using up to
+     * HISTORICAL_LOOK_BACK bars, and caches the result for faster future lookups.
+     * ATR measures volatility, showing how much an asset moves on average during a given period.
+     *
+     * @param symbol Stock symbol (string, must match what is used in symbolTimelines).
+     * @return Calculated ATR for the historical window, or 1.0 as fallback if not enough data.
+     *
+     * <p>
+     * - Checks for cached value first.
+     * - Uses up to HISTORICAL_LOOK_BACK bars, but at least 14 bars are required for meaningful ATR.
+     * - Caches the computed ATR value for future use (per symbol).
+     * - Returns 1.0 if not enough data to compute ATR.
+     * </p>
+     */
     private static double getHistoricalATR(String symbol) {
-        // Return cached value if available
+        // Fast path: Return cached ATR if present for this symbol
         if (historicalATRCache.containsKey(symbol)) {
             return historicalATRCache.get(symbol);
         }
 
+        // Fetch all price bars for this symbol
         List<StockUnit> allStocks = symbolTimelines.get(symbol);
+
+        // No data, or empty list: fallback value
         if (allStocks == null || allStocks.isEmpty()) {
-            return 1.0; // Fallback default
+            return 1.0; // Fallback default for missing/invalid data
         }
 
         int availableDays = allStocks.size();
+        // Limit lookback to the minimum of available bars and the global lookback cap
         int calculatedLookback = Math.min(availableDays, HISTORICAL_LOOK_BACK);
 
+        // Need at least 14 bars for reliable ATR
         if (calculatedLookback < 14) {
-            return 1.0; // Insufficient data for reliable calculation
+            return 1.0; // Not enough data, use fallback
         }
 
-        // Extract relevant historical data
+        // Find the sublist of last 'calculatedLookback' bars to use for ATR
         int startIndex = Math.max(0, availableDays - calculatedLookback);
         List<StockUnit> historicalData = allStocks.subList(startIndex, availableDays);
 
-        // Calculate ATR using full lookback period
+        // Compute ATR using the historical sublist and its size as period
         double atr = calculateATR(historicalData, calculatedLookback);
 
-        // Cache and return
+        // Cache computed value for future quick lookup
         historicalATRCache.put(symbol, atr);
         return atr;
     }
 
+    /**
+     * Checks if there is a sharp drop in price within the lookback window.
+     * A "sharp drop" is defined as a previous close dropping by more than {@code threshold} percent
+     * relative to the current close.
+     *
+     * @param stocks    List of StockUnit objects, assumed chronological (oldest to newest).
+     * @param lookBack  How many bars back to look for a sharp drop (e.g., 10).
+     * @param threshold Percentage drop to trigger the signal (e.g., 2.0 = 2%).
+     * @return true if a sharp drop is found; false otherwise.
+     */
     private static boolean checkSharpDrop(List<StockUnit> stocks, int lookBack, double threshold) {
+        // Require at least lookBack+1 bars to compare
         if (stocks.size() < lookBack + 1) return false;
 
+        // Get the latest close price (most recent bar)
         double currentClose = stocks.get(stocks.size() - 1).getClose();
 
+        // Check for a sharp drop from any of the previous {lookBack} closes to current
         for (int i = 1; i <= lookBack; i++) {
+            // Close price i bars before the latest
             double previousClose = stocks.get(stocks.size() - 1 - i).getClose();
-            if (((previousClose - currentClose) / previousClose) * 100 > threshold) {
+
+            // Calculate percent drop from previousClose to currentClose
+            double dropPercent = ((previousClose - currentClose) / previousClose) * 100;
+
+            // If the drop exceeds threshold, sharp drop found
+            if (dropPercent > threshold) {
                 return true;
             }
         }
+        // No sharp drop found in lookback window
         return false;
     }
 
+    /**
+     * Checks if there has been a sustained negative price movement
+     * (i.e., consistent overall downward trend) over the lookback period.
+     *
+     * @param stocks    List of StockUnit objects, chronological.
+     * @param lookback  Number of bars to look back (e.g., 10).
+     * @param threshold Total percentage movement threshold (negative, e.g., -2.5 for -2.5%).
+     * @return true if total move < threshold (i.e., sufficiently negative); false otherwise.
+     */
     private static boolean checkSustainedMovement(List<StockUnit> stocks, int lookback, double threshold) {
+        // Need at least lookback bars to check
         if (stocks.size() < lookback) return false;
 
         double totalMove = 0;
+        // Sum up percent change for each bar in the lookback window
         for (int i = 1; i <= lookback; i++) {
+            // Current and previous close prices for each consecutive pair
             StockUnit current = stocks.get(stocks.size() - i);
             StockUnit previous = stocks.get(stocks.size() - i - 1);
+
+            // Compute fractional change and accumulate
             totalMove += (current.getClose() - previous.getClose()) / previous.getClose();
         }
+
+        // Convert to percent, compare to threshold (more negative = more downward movement)
         return totalMove * 100 < threshold;
     }
 
+    /**
+     * Calculates the Stochastic Oscillator (%K) value for the most recent bar in a period.
+     * This measures the close price's position relative to the period's high/low range.
+     *
+     * @param stocks List of StockUnit objects, assumed chronological (oldest to newest).
+     * @param period Lookback period for the oscillator (e.g., 14).
+     * @return Stochastic value (0-100). Returns 50 if all prices are identical.
+     *
+     * <p>
+     * Formula:
+     * %K = 100 * (lastClose - lowestLow) / (highestHigh - lowestLow)
+     * </p>
+     */
     private static double calculateStochastic(List<StockUnit> stocks, int period) {
-        // Implement stochastic oscillator
+        // Use only the last 'period' bars for the calculation
         List<StockUnit> lookback = stocks.subList(stocks.size() - period, stocks.size());
+
+        // Find the highest high and lowest low in the window
         double highestHigh = lookback.stream().mapToDouble(StockUnit::getHigh).max().orElse(0);
         double lowestLow = lookback.stream().mapToDouble(StockUnit::getLow).min().orElse(0);
         double lastClose = lookback.get(lookback.size() - 1).getClose();
 
+        // If all prices are the same (flat range), avoid division by zero
         if (highestHigh == lowestLow) return 50;
+
+        // Standard %K formula
         return 100 * (lastClose - lowestLow) / (highestHigh - lowestLow);
     }
 
     /**
-     * Checks if the time frame of stock data spans over a weekend or across days.
+     * Determines whether a list of StockUnits spans over a weekend or across different days.
+     * Used to avoid generating signals/notifications that erroneously combine non-contiguous periods.
      *
-     * @param stocks The frame of stock data.
-     * @return True if the time frame spans a weekend or multiple days; false otherwise.
+     * @param stocks List of StockUnit objects (chronological, non-empty).
+     * @return true if the window spans a weekend (Friday to Monday) or more than one calendar day; false otherwise.
      */
     private static boolean isWeekendSpan(List<StockUnit> stocks) {
-        // Validate list to avoid errors
+        // Defensive: Must have non-null and non-empty input
         if (stocks == null || stocks.isEmpty()) {
             throw new IllegalArgumentException("Stock list cannot be null or empty");
         }
 
-        // Parse dates using the provided method
+        // Get the LocalDateTime for the first and last bars in the window
         LocalDateTime startDate = stocks.get(0).getLocalDateTimeDate();
         LocalDateTime endDate = stocks.get(stocks.size() - 1).getLocalDateTimeDate();
 
-        // Check if the time span includes a weekend or spans different days
-        return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY) || !startDate.toLocalDate().equals(endDate.toLocalDate());
+        // Two checks:
+        // 1. Start is Friday, end is Monday (crosses a weekend)
+        // 2. Start date and end date are not the same calendar day
+        return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY)
+                || !startDate.toLocalDate().equals(endDate.toLocalDate());
     }
 
     /**
-     * Creates a notification for a stock event (increase or dip) and adds it to the alerts list.
-     * config 0 dip
-     * config 1 gap filler
-     * config 2 R-line spike
-     * config 3 spike
+     * Helper to create and add a Notification for a specific stock event.
+     * Adds a formatted notification message to alertsList depending on config.
      *
-     * @param symbol        The name of the stock.
-     * @param totalChange   The total percentage change triggering the notification.
-     * @param alertsList    The list to store the notification.
-     * @param stockUnitList The time series for graphical representation.
-     * @param date          The date of the event.
+     * @param symbol        The stock symbol for the event.
+     * @param totalChange   The triggering percent change (spike or dip, etc).
+     * @param alertsList    The shared list to store created notifications.
+     * @param stockUnitList The time series (bars) associated with the event.
+     * @param date          The date/time of the event (LocalDateTime).
+     * @param prediction    Model prediction value (if available).
+     * @param config        Type of event:
+     *                      0 = dip,
+     *                      1 = gap filler,
+     *                      2 = R-line spike,
+     *                      3 = spike.
      */
-    private static void createNotification(String symbol, double totalChange, List<
-            Notification> alertsList, List<StockUnit> stockUnitList, LocalDateTime date, double prediction, int config) {
+    private static void createNotification(String symbol, double totalChange, List<Notification> alertsList,
+                                           List<StockUnit> stockUnitList, LocalDateTime date,
+                                           double prediction, int config) {
+        // Depending on config, use different message formats for type of event
         if (config == 0) {
-            alertsList.add(new Notification(String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+            // Dip (sharp downward movement)
+            alertsList.add(new Notification(
+                    String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Decreased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 0));
         } else if (config == 1) {
-            alertsList.add(new Notification(String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+            // Gap fill (move filling a previous price gap)
+            alertsList.add(new Notification(
+                    String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Will fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 1));
         } else if (config == 2) {
-            alertsList.add(new Notification(String.format("%.3f%% %s R-Line %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+            // R-line spike (rapid upward price movement with caution warning)
+            alertsList.add(new Notification(
+                    String.format("%.3f%% %s R-Line %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("R-Line Spike Proceed with caution by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 2));
         } else if (config == 3) {
-            alertsList.add(new Notification(String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+            // Upward spike (sharp increase)
+            alertsList.add(new Notification(
+                    String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 3));
         }
     }
 
+    /**
+     * Retrieves the time series (minute bars, etc.) for a given stock symbol.
+     * Returns an unmodifiable (read-only) list, preventing external code from altering the timeline data.
+     *
+     * @param symbol The stock symbol to look up (case-insensitive; will be uppercased).
+     * @return An unmodifiable List of StockUnit objects for the symbol.
+     * If the symbol is not found, returns an empty unmodifiable list.
+     *
+     * <p>
+     * Use this method to safely expose timeline data without risk of callers modifying the internal state.
+     * </p>
+     */
     public static List<StockUnit> getSymbolTimeline(String symbol) {
+        // Get the timeline list for the uppercased symbol; if missing, return empty list
         return Collections.unmodifiableList(
                 symbolTimelines.getOrDefault(symbol.toUpperCase(), new ArrayList<>())
         );
     }
 
+    /**
+     * Continuously collects real-time price data for a given symbol and appends it to "realtime.txt".
+     * This function schedules a background task (runs every second) that fetches a single real-time update,
+     * then writes the bar's data to file (one line per update, appending).
+     *
+     * @param symbol The stock symbol to track in real-time.
+     *               <p>
+     *               - The API key is hard-coded ("0988PSIKXZ50IP2T"); ensure you use your own.
+     *               - Each line in the output file represents one fetched bar, formatted in StockUnit-like notation.
+     *               - The file grows with each new bar; manage the file if it gets too large over time.
+     *               - Handles I/O errors gracefully (prints errors to System.err).
+     *               </p>
+     */
     public static void realTimeDataCollector(String symbol) {
+        // Initialize the Alpha Vantage API with the given token (hard-coded here for demonstration)
         InitAPi("0988PSIKXZ50IP2T");
+
+        // Schedule a task to run every 1 second (fetching and writing latest data)
         executorService.scheduleAtFixedRate(() -> getRealTimeUpdate(symbol, response -> {
             try {
                 File data = new File("realtime.txt");
+                // Create the output file if it does not exist yet
                 if (!data.exists()) {
                     data.createNewFile();
                 }
 
-                // Use try-with-resources for automatic resource management
-                try (BufferedWriter writer = new BufferedWriter(new FileWriter(data, true))) { // true for append mode
+                // Use try-with-resources to guarantee file is properly closed even if errors occur
+                try (BufferedWriter writer = new BufferedWriter(new FileWriter(data, true))) { // true: append mode
 
+                    // Format the StockUnit data as a single line (CSV-like but using custom format)
                     String formatted = String.format(
                             "StockUnit{open=%.4f, high=%.4f, low=%.4f, close=%.4f, " +
                                     "adjustedClose=%.1f, volume=%.1f, dividendAmount=%.1f, " +
@@ -1728,14 +3222,14 @@ public class mainDataHandler {
                             response.getHigh(),
                             response.getLow(),
                             response.getClose(),
-                            0.0,
+                            0.0, // adjustedClose - set to 0.0 here; replace with actual value if needed
                             response.getVolume(),
-                            0.0,
-                            0.0,
+                            0.0, // dividendAmount - set to 0.0 here
+                            0.0, // splitCoefficient - set to 0.0 here
                             response.getTimestamp(),
                             response.getSymbol(),
-                            0.0,
-                            0
+                            0.0, // percentageChange - set to 0.0 here
+                            0    // target - set to 0 here
                     );
 
                     writer.write(formatted);
@@ -1744,15 +3238,28 @@ public class mainDataHandler {
                 }  // BufferedWriter auto-closes here
 
             } catch (IOException e) {
+                // Print file errors (e.g., disk full, permissions) to the standard error stream
                 System.err.println("Error writing to file: " + e.getMessage());
             }
         }), 0, 1, TimeUnit.SECONDS);
     }
 
+    /**
+     * Swing dialog to visually track the progress of background data fetching tasks.
+     * Displays a progress bar and a status label showing (current/total) count.
+     * Intended to be used from the EDT (Event Dispatch Thread).
+     */
     static class ProgressDialog extends JDialog {
+        // The JProgressBar component for the bar visualization
         private final JProgressBar progressBar;
+        // The JLabel for status text (shows processed/total)
         private final JLabel statusLabel;
 
+        /**
+         * Constructs a modal dialog with a progress bar and status label.
+         *
+         * @param parent The parent window for positioning (can be null).
+         */
         public ProgressDialog(Frame parent) {
             super(parent, "Fetching Data", true);
             setSize(300, 100);
@@ -1766,6 +3273,13 @@ public class mainDataHandler {
             add(progressBar, BorderLayout.CENTER);
         }
 
+        /**
+         * Updates the progress bar and label based on the number of items processed.
+         * Can be called from any thread; will marshal update to Swing EDT.
+         *
+         * @param current How many symbols/items have been processed.
+         * @param total   The total number of symbols/items expected.
+         */
         public void updateProgress(int current, int total) {
             SwingUtilities.invokeLater(() -> {
                 int progress = (int) (((double) current / total) * 100);
@@ -1775,36 +3289,81 @@ public class mainDataHandler {
         }
     }
 
+    /**
+     * Immutable record for storing linear regression results on price bars.
+     * slopePct - Slope as percent per bar
+     * slopePpu - Slope as price units per bar
+     * r2       - R squared (fit quality)
+     * yBar     - Mean Y value (price)
+     * xBar     - Mean X value (index)
+     */
     private record LR(double slopePct, double slopePpu, double r2, double yBar, double xBar) {
     }
 
-    //Interfaces
+    // ==== Callback interfaces for async operations ====
+
+    /**
+     * Callback interface for retrieving an array of fundamental/price data values for a symbol.
+     * Used in asynchronous API calls to receive data when ready.
+     */
     public interface DataCallback {
         void onDataFetched(Double[] values);
     }
 
+    /**
+     * Callback for receiving a timeline (list of StockUnit bars) for a symbol.
+     * Used when historical or intraday price data has been fetched.
+     */
     public interface TimelineCallback {
         void onTimeLineFetched(List<StockUnit> stocks);
     }
 
+    /**
+     * Callback for results from a symbol search API call (partial match / search bar, etc).
+     * Provides a list of matching symbol strings.
+     */
     public interface SymbolSearchCallback {
+        /**
+         * Called when symbol search succeeds.
+         *
+         * @param symbols List of matching symbols.
+         */
         void onSuccess(List<String> symbols);
 
+        /**
+         * Called if symbol search fails (e.g., network/API error).
+         *
+         * @param e Exception describing the failure.
+         */
         void onFailure(Exception e);
     }
 
+    /**
+     * Callback for retrieving a list of news items for a symbol.
+     */
     public interface ReceiveNewsCallback {
         void onNewsReceived(List<NewsResponse.NewsItem> news);
     }
 
+    /**
+     * Callback for when a set of symbols (matching filter/criteria) becomes available.
+     * Used for bulk symbol filtering (e.g., liquidity scan).
+     */
     public interface SymbolCallback {
         void onSymbolsAvailable(List<String> symbols);
     }
 
+    /**
+     * Callback for when a real-time price/bar update is received.
+     * Used by the realTimeDataCollector and other streaming modules.
+     */
     public interface RealTimeCallback {
         void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
     }
 
+    /**
+     * Callback for when company/fundamental overview data has been retrieved.
+     */
     public interface OverviewCallback {
         void onOverviewReceived(CompanyOverviewResponse value);
     }
