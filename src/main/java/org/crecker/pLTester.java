@@ -143,7 +143,7 @@ public class pLTester {
      * </ul>
      */
     public static void PLAnalysis() {
-        // Terminal ANSI color codes for styled output (console color)
+        // --- SETUP: ANSI color codes for styled CLI/terminal feedback ---
         final String RESET = "\u001B[0m";
         final String RED = "\u001B[31m";
         final String GREEN = "\u001B[32m";
@@ -151,80 +151,81 @@ public class pLTester {
         final String CYAN = "\u001B[36m";
         final String WHITE_BOLD = "\u001B[1;37m";
 
-        // Set global chart style for the UI (candlestick vs line)
-        mainUI.useCandles = useCandles;
+        // --- GLOBAL UI CHART STYLE ---
+        mainUI.useCandles = useCandles; // Set global chart mode (candlestick or line)
 
-        // --- CAPITAL AND DATA PREPARATION ---
-        double INITIAL_CAPITAL = 100000; // Starting capital for trade simulation
-        prepData(); // Load and process all price/timeline data (also calculates percent changes)
+        // --- TRADING ACCOUNT INIT ---
+        double INITIAL_CAPITAL = 160000; // Base starting capital for simulation (can be changed)
+        prepData(); // Loads all symbol data, calculates percent changes, prepares all timelines
 
-        // Build a map for each symbol: LocalDateTime -> index in timeline (for fast event lookup)
+        // --- FAST INDEX PREP ---
+        // For every symbol, build a map from LocalDateTime -> timeline index for ultra-fast lookups during trading
         Arrays.stream(SYMBOLS).forEach(symbol -> buildTimeIndex(
                 symbol.replace(".txt", ""),
                 getSymbolTimeline(symbol.replace(".txt", ""))));
 
-        // Initialize live capital and stats
-        double capital = INITIAL_CAPITAL;
-        int successfulCalls = 0;
+        // --- LIVE STATS TRACKING ---
+        double capital = INITIAL_CAPITAL; // Live capital, updated after every trade
+        int successfulCalls = 0;          // Number of successful/entered trades (for statistics)
 
-        // --- TRADE STATE TRACKING ---
-        boolean inTrade;               // Tracks if simulation is currently in an open trade
-        boolean earlyStop = false;     // User flag to exit simulation early
-        LocalDateTime tradeEntryTime;  // Time when the current trade was entered
-        double tradeEntryCapital;      // Capital at the moment of trade entry
-        int tradeEntryIndex;           // Index in the timeline when trade started
+        // --- PER-TRADE STATE VARS ---
+        boolean inTrade;               // True if a trade is currently open
+        boolean earlyStop = false;     // True if user opts to end simulation early
+        LocalDateTime tradeEntryTime;  // When the most recent trade was entered
+        double tradeEntryCapital;      // Capital at trade entry
+        int tradeEntryIndex;           // Timeline index where trade started
 
-        // CLI input scanner for user decisions (enter, skip, exit, label)
-        Scanner scanner = new Scanner(System.in);
+        // --- INPUT/OUTPUT SETUP ---
+        Scanner scanner = new Scanner(System.in);      // CLI scanner for interactive trade decisions
+        LocalDateTime lastProcessedEndTime = null;     // To avoid reprocessing overlapping or duplicate events
 
-        // Used to avoid repeated processing of overlapping/duplicate notifications
-        LocalDateTime lastProcessedEndTime = null;
+        // --- UI CHART LAUNCH ---
+        createSuperChart(SYMBOLS[0]); // Open the main chart window using first symbol for context
 
-        // --- OPEN MAIN CHART UI WINDOW ---
-        createSuperChart(SYMBOLS[0]);
+        // --- TIMELINE CACHE ---
+        Map<String, List<StockUnit>> timelineCache = new HashMap<>(); // Symbol -> List<StockUnit>, speeds up repeated timeline lookups
 
-        // Cache for per-symbol timeline (avoids repeat queries inside loop)
-        Map<String, List<StockUnit>> timelineCache = new HashMap<>();
-
-        // === MAIN LOOP: Go through each notification event ===
+        // === MAIN SIMULATION LOOP ===
         for (Notification notification : notificationsForPLAnalysis) {
             LocalDateTime notifyTime = notification.getLocalDateTime();
 
-            // Skip notification if it occurs before or overlaps with previous trade exit
+            // --- DUPLICATE/EARLY FILTER ---
+            // Skip this notification if it happens before or overlaps with the last trade exit, avoids redundant or impossible scenarios
             if (lastProcessedEndTime != null && !notifyTime.isAfter(lastProcessedEndTime)) {
                 continue;
             }
 
-            // Pop up notification window if GUI is active
-            if (gui != null) createNotification(notification);
+            // --- GUI NOTIFICATION DISPLAY ---
+            if (gui != null) createNotification(notification); // (If using GUI, pop up the notification event panel)
 
-            // Get the data timeline for the relevant symbol (cache if not yet loaded)
+            // --- GET SYMBOL TIMELINE ---
             String symbol = notification.getSymbol();
-            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, mainDataHandler::getSymbolTimeline);
+            List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, mainDataHandler::getSymbolTimeline); // Efficiently cache timelines
 
-            // Print opportunity to terminal
+            // --- TERMINAL OPPORTUNITY DISPLAY ---
             System.out.println(WHITE_BOLD + "\n=== NEW TRADE OPPORTUNITY ===" + RESET);
             System.out.printf(YELLOW + "Notification Time: %s%n" + RESET, notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            notification.showNotification();
+            notification.showNotification(); // Print event details
 
-            // Find the timeline index that matches the notification time
-            Integer baseIndex = getIndexForTime(symbol, notifyTime);
+            // --- FIND TRADE ENTRY INDEX ---
+            Integer baseIndex = getIndexForTime(symbol, notifyTime); // Get timeline index for event
 
-            // Skip if missing index or not enough data bars left for entry/exit simulation
+            // --- DATA SUFFICIENCY CHECK ---
+            // Ensure enough bars left for at least 5-minute simulation; skip if data is missing or truncated
             if (baseIndex == null || baseIndex >= timeline.size() - 5) {
                 System.out.println(RED + "Invalid index for trading - insufficient data" + RESET);
                 continue;
             }
 
-            // --- TRADE ENTRY WINDOW (DEFAULT: 5 candles/minutes) ---
+            // --- TRADE ENTRY WINDOW (DEFAULT: 5 candles/minutes, can be extended) ---
             int totalMinutes = 5;
             int offset = 0;
             while (offset < totalMinutes) {
                 int currentIndex = baseIndex + offset;
                 StockUnit unit = timeline.get(currentIndex);
-                lastProcessedEndTime = timeline.get(currentIndex).getLocalDateTimeDate(); // Prevent overlap
+                lastProcessedEndTime = timeline.get(currentIndex).getLocalDateTimeDate(); // Update to prevent overlap in future loops
 
-                // Print current candle data
+                // --- PRINT CURRENT CANDLE DETAILS ---
                 System.out.printf(CYAN + "\nMinute %d/%d: %s | Price: %.3f | Change: %.3f%% | Symbol: %s%n" + RESET,
                         offset + 1, totalMinutes,
                         unit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
@@ -232,27 +233,27 @@ public class pLTester {
                         unit.getPercentageChange(),
                         symbol);
 
-                // Attach this data point to the notification (so it can be visualized or exported)
+                // --- ADD TO NOTIFICATION DATA (FOR CHARTS/EXPORT) ---
                 notification.addDataPoint(unit);
 
-                // --- USER PROMPT: DECISION TO TRADE ---
+                // --- TRADE ENTRY PROMPT (INTERACTIVE DECISION) ---
                 System.out.print(YELLOW + "Enter trade? (y/n/l/exit): " + RESET);
                 String input = scanner.nextLine().trim().toLowerCase();
 
                 if (input.equals("y")) {
-                    // === TRADE ENTRY ===
-                    tradeEntryCapital = capital;
-                    tradeEntryTime = unit.getLocalDateTimeDate();
-                    tradeEntryIndex = currentIndex;
-                    inTrade = true;
-                    double totalChange = 0.0;
-                    successfulCalls++; // Count as a completed opportunity
+                    // === TRADE ENTRY LOGIC ===
+                    tradeEntryCapital = capital;                        // Store current capital at entry
+                    tradeEntryTime = unit.getLocalDateTimeDate();       // Store entry time
+                    tradeEntryIndex = currentIndex;                     // Store entry index
+                    inTrade = true;                                     // Mark that we are now in a trade
+                    double totalChange = 0.0;                           // Running change % for trade stats
+                    successfulCalls++;                                  // Count this as a completed trade
 
                     System.out.printf(GREEN + "\nENTERED TRADE AT %s WITH €%.2f%n" + RESET,
                             tradeEntryTime.format(DateTimeFormatter.ISO_LOCAL_TIME),
                             tradeEntryCapital);
 
-                    // --- TRADE MANAGEMENT: ALLOW USER TO EXIT TRADE ON ANY SUBSEQUENT CANDLE ---
+                    // --- TRADE MANAGEMENT LOOP (USER CAN EXIT ANY MINUTE) ---
                     for (int i = tradeEntryIndex + 1; i < timeline.size(); i++) {
                         StockUnit minuteUnit = timeline.get(i);
                         totalChange += minuteUnit.getPercentageChange();
@@ -262,59 +263,59 @@ public class pLTester {
                                 minuteUnit.getPercentageChange(),
                                 totalChange);
 
-                        // Attach the update data point for chart visualization
+                        // Add to notification for visualization/tracking
                         notification.addDataPoint(minuteUnit);
 
-                        // Prompt for trade exit at each minute
+                        // --- TRADE EXIT PROMPT ---
                         System.out.print(RED + "Exit trade now? (y/n): " + RESET);
                         String exitChoice = scanner.nextLine().trim().toLowerCase();
 
                         if (exitChoice.equals("y")) {
-                            // === TRADE EXIT ===
-                            capital = calculateTradeValue(timeline, tradeEntryIndex + 1, i, tradeEntryCapital);
+                            // === TRADE EXIT LOGIC ===
+                            capital = calculateTradeValue(timeline, tradeEntryIndex + 1, i, tradeEntryCapital); // Update capital with new result
                             inTrade = false;
                             System.out.printf(GREEN + "\nEXITED TRADE AT %s | NEW CAPITAL: €%.2f%n" + RESET,
                                     minuteUnit.getLocalDateTimeDate().format(DateTimeFormatter.ISO_LOCAL_TIME),
                                     capital);
 
-                            lastProcessedEndTime = minuteUnit.getLocalDateTimeDate();
-                            break; // Exit this for-loop (trade closed)
+                            lastProcessedEndTime = minuteUnit.getLocalDateTimeDate(); // Don't revisit candles
+                            break; // Exit trade management loop
                         }
                     }
 
-                    // --- AUTO-CLOSE: If user never exits, close at final available candle ---
+                    // --- AUTO-CLOSE AT END OF DATA IF NEVER MANUALLY EXITED ---
                     if (inTrade) {
                         int finalIndex = timeline.size() - 1;
                         capital = calculateTradeValue(timeline, tradeEntryIndex + 1, finalIndex, tradeEntryCapital);
                         System.out.printf(RED + "\n[AUTO-CLOSE] FINAL CAPITAL: €%.2f%n" + RESET, capital);
                     }
-                    break; // Exit entry window (while loop) after a trade is entered
+                    break; // Break out of entry window, move to next notification
                 } else if (input.equalsIgnoreCase("exit")) {
-                    // === END SIMULATION EARLY ===
+                    // --- USER ENDS ENTIRE SIMULATION EARLY ---
                     earlyStop = true;
                     break;
                 } else if (input.equals("l")) {
-                    // === EXTEND TRADE ENTRY WINDOW ===
-                    totalMinutes += 5; // Add more time/candles for possible entry
+                    // --- EXTEND ENTRY WINDOW (GIVES USER MORE TIME TO DECIDE) ---
+                    totalMinutes += 5; // Add another 5 candles/minutes to entry window
                     System.out.println(YELLOW + "Extending the trade entry window by 5 minutes..." + RESET);
                 }
-                offset++; // Move to next candle in entry window
+                offset++; // Advance to next minute/candle in entry window
             }
 
-            // If user chose to end simulation, break from notifications loop too
+            // --- GLOBAL EARLY STOP LOGIC ---
             if (earlyStop) {
-                break;
+                break; // Exit main notification loop as well
             }
 
-            // Clean up notification window or panel if needed
+            // --- CLEAN UP UI NOTIFICATION PANEL/WINDOW ---
             notification.closeNotification();
         }
 
-        // --- SUMMARY/RESULTS OUTPUT ---
-        logFinalResults(capital, INITIAL_CAPITAL, successfulCalls);
+        // --- FINAL RESULTS/OUTPUT SECTION ---
+        logFinalResults(capital, INITIAL_CAPITAL, successfulCalls); // Output summary, win %, net gain/loss, etc.
 
-        // Close the CLI input scanner
-        scanner.close();
+        // --- RESOURCE CLEANUP ---
+        scanner.close(); // Always close scanner to free system resources
     }
 
     /**
@@ -328,11 +329,14 @@ public class pLTester {
      * @return Final capital after applying compounded changes over the interval.
      */
     private static double calculateTradeValue(List<StockUnit> timeline, int entryIndex, int exitIndex, double capital) {
+        // Initialize cumulative return as 1.0 (no change)
         double cumulative = 1.0;
+        // Loop from just after entryIndex to and including exitIndex (inclusive trade interval)
         for (int i = entryIndex; i <= exitIndex; i++) {
-            // Each minute, update cumulative return by (1 + percentageChange/100)
+            // For each bar/minute, multiply by the growth factor (1 + percent change/100)
             cumulative *= (1 + timeline.get(i).getPercentageChange() / 100);
         }
+        // Apply cumulative compounded return to starting capital and return the result
         return capital * cumulative;
     }
 
@@ -344,11 +348,14 @@ public class pLTester {
      * @param timeline List of StockUnit objects for the symbol.
      */
     private static void buildTimeIndex(String symbol, List<StockUnit> timeline) {
+        // Prepare a fresh index map: LocalDateTime -> index
         Map<LocalDateTime, Integer> indexMap = new HashMap<>();
+        // For every price bar in the timeline...
         for (int i = 0; i < timeline.size(); i++) {
-            // Store index for each bar's LocalDateTime (assumed unique)
+            // Map each bar's exact timestamp to its index position (assumes timestamps are unique per bar)
             indexMap.put(timeline.get(i).getLocalDateTimeDate(), i);
         }
+        // Save the index map to the global lookup for this symbol (used by getIndexForTime)
         symbolTimeIndex.put(symbol, indexMap);
     }
 
@@ -360,6 +367,8 @@ public class pLTester {
      * @return Index of that time in the timeline, or null if not found.
      */
     private static Integer getIndexForTime(String symbol, LocalDateTime time) {
+        // Query the global index map for this symbol; if missing, use an empty map (prevents NPE)
+        // Return the index for this exact timestamp, or null if absent
         return symbolTimeIndex.getOrDefault(symbol, Collections.emptyMap()).get(time);
     }
 
@@ -374,13 +383,14 @@ public class pLTester {
     private static void logFinalResults(double capital, double initial, int calls) {
         double revenue;
 
-        // Apply 25% tax on profits, but not on losses (simulate real-world capital gains tax)
+        // If profited, apply a 25% capital gains tax; if loss, no tax (simulate real-world trading tax regime)
         if ((capital - initial) > 0) {
             revenue = (capital - initial) * 0.75;
         } else {
             revenue = (capital - initial);
         }
 
+        // Print summary results if there were any trades entered
         if (calls > 0) {
             System.out.printf("Total Revenue: €%.2f%n", revenue);
             System.out.printf("Successful Calls: %d%n", calls);
@@ -394,36 +404,41 @@ public class pLTester {
      * and labeling of price spikes.
      */
     private static void prepData() {
+        // --- FILESYSTEM PREP ---
         File cacheDir = new File(CACHE_DIR);
-        if (!cacheDir.exists()) cacheDir.mkdirs(); // Ensure cache directory exists
+        if (!cacheDir.exists()) cacheDir.mkdirs(); // Ensure cache directory exists for caching price files
 
-        // For each symbol, read, parse, and process its data file
+        // --- PER-SYMBOL DATA LOAD AND PARSE ---
         Arrays.stream(pLTester.SYMBOLS).forEach(symbol -> {
             try {
+                // Compose file name and path for this symbol's data file in the cache directory
                 String fileName = symbol + ".txt";
                 String cachePath = Paths.get(CACHE_DIR, fileName).toString();
+                // Process and parse data from file (populates symbolTimelines, handles price objects)
                 processStockDataFromFile(cachePath, symbol, pLTester.cut);
             } catch (IOException e) {
                 e.printStackTrace();
             }
         });
 
-        // Compute percentage changes for each price bar (relative to the previous)
+        // --- PERCENTAGE CHANGE CALCULATION ---
+        // For every loaded timeline...
         synchronized (symbolTimelines) {
             symbolTimelines.forEach((symbol, timeline) -> {
+                // Skip if not enough data (needs at least 2 bars for % change calc)
                 if (timeline.size() < 2) {
                     logTextArea.append("Not enough data for " + symbol + "\n");
                     return;
                 }
 
-                // For each bar, compute % change from the previous close (capped at 14%)
+                // Calculate percentage change (close-to-close) for each bar (relative to previous bar)
                 for (int i = 1; i < timeline.size(); i++) {
                     StockUnit current = timeline.get(i);
                     StockUnit previous = timeline.get(i - 1);
 
                     if (previous.getClose() > 0) {
                         double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
-                        // Cap abnormal spikes to previous recorded change if > 14%
+                        // Abnormal outliers (>= 14%) are set to the previous % change (keeps continuity for flash spikes)
                         change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
                         current.setPercentageChange(change);
                     }
@@ -431,9 +446,14 @@ public class pLTester {
             });
         }
 
-        // Calculate technical indicators and spike labels for analysis
+        // --- INDICATOR AND LABELING PIPELINE ---
+        // Precompute all indicator min/max ranges for normalization (not using live data)
         precomputeIndicatorRanges(false);
+
+        // Recalculate percentage change labels and spike detection (for training, backtest, etc.)
         dataTester.calculateStockPercentageChange();
+
+        // Compute and label "spikes" (large moves) in all timelines for later analysis
         calculateSpikesInRally(frameSize, false);
     }
 
@@ -689,7 +709,7 @@ public class pLTester {
                         true       // Show legend
                 );
 
-                // Retrieve the plot for further customization (background, axes, renderer, etc)
+                // Retrieve the plot for further customization (background, axes, renderer, etc.)
                 plot = chart.getXYPlot();
 
                 // Auto-range the domain (X) axis
@@ -701,12 +721,7 @@ public class pLTester {
                 rangeAxis.configure();
 
                 // Configure the candlestick renderer for visual clarity
-                CandlestickRenderer renderer = new CandlestickRenderer();
-                renderer.setAutoWidthMethod(CandlestickRenderer.WIDTHMETHOD_SMALLEST); // Narrow candles for high-frequency data
-                renderer.setUpPaint(Color.GREEN);    // Candle color for up (close >= open)
-                renderer.setDownPaint(Color.RED);    // Candle color for down (close < open)
-                renderer.setUseOutlinePaint(true);   // Draw black border around candles
-                renderer.setDrawVolume(true);        // Show volume as an overlay if present
+                CandlestickRenderer renderer = getCandlestickRenderer();
                 plot.setRenderer(renderer);
 
                 // ===== LINE CHART MODE =====
@@ -799,6 +814,17 @@ public class pLTester {
             // Print error for debugging if anything goes wrong in chart setup
             e.printStackTrace();
         }
+    }
+
+    @NotNull
+    private static CandlestickRenderer getCandlestickRenderer() {
+        CandlestickRenderer renderer = new CandlestickRenderer();
+        renderer.setAutoWidthMethod(CandlestickRenderer.WIDTHMETHOD_SMALLEST); // Narrow candles for high-frequency data
+        renderer.setUpPaint(Color.GREEN);    // Candle color for up (close >= open)
+        renderer.setDownPaint(Color.RED);    // Candle color for down (close < open)
+        renderer.setUseOutlinePaint(true);   // Draw black border around candles
+        renderer.setDrawVolume(true);        // Show volume as an overlay if present
+        return renderer;
     }
 
     /**
@@ -1144,7 +1170,7 @@ public class pLTester {
      * Used for both labeling (target=1) and clearing (target=0) intervals.
      *
      * @param symbol    The stock symbol to update.
-     * @param startTime The lower bound of the interval (x axis value, ms since epoch).
+     * @param startTime The lower bound of the interval (x-axis value, ms since epoch).
      * @param endTime   The upper bound of the interval.
      * @param value     The label to set (1 = labeled, 0 = not labeled).
      */
