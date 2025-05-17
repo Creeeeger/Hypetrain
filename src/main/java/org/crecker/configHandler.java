@@ -167,7 +167,7 @@ public class configHandler {
 
             // Example: Default volume setting
             Element volume = doc.createElement("volume");
-            volume.appendChild(doc.createTextNode("1000"));
+            volume.appendChild(doc.createTextNode("40000"));
             root.appendChild(volume);
 
             // Example: Symbols list with associated colours (as a string)
@@ -188,7 +188,7 @@ public class configHandler {
 
             // Example: API key setting (public/free API)
             Element key = doc.createElement("key");
-            key.appendChild(doc.createTextNode("0988PSIKXZ50IP2T"));
+            key.appendChild(doc.createTextNode(""));
             root.appendChild(key);
 
             // Example: Real-time data fetch toggle
@@ -205,6 +205,16 @@ public class configHandler {
             Element useCandles = doc.createElement("candle");
             useCandles.appendChild(doc.createTextNode("false"));
             root.appendChild(useCandles);
+
+            // Example: Trading212 API key
+            Element Trading212Key = doc.createElement("T212");
+            Trading212Key.appendChild(doc.createTextNode(""));
+            root.appendChild(Trading212Key);
+
+            // Example: PushCut notification endPoint
+            Element pushCutUrl = doc.createElement("push");
+            pushCutUrl.appendChild(doc.createTextNode(""));
+            root.appendChild(pushCutUrl);
 
             // Add any additional default settings below as needed for the application
 

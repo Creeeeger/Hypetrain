@@ -76,8 +76,8 @@ public class mainUI extends JFrame {
     /**
      * Trading212 authentication token (API key) & PushCut API token required for secure API requests.
      */
-    static String token = ""; // Your Trading212 API key (insert your own)
-    private static final String ENDPOINT = ""; // PushCut url notification String
+    static String t212ApiToken; // Trading212 API token
+    static String pushCutUrlEndpoint; // PushCut url notification String
 
     /**
      * Mapping from company short names to TickerData (symbol, max position size). Used for search and symbol lookup.
@@ -292,6 +292,8 @@ public class mainUI extends JFrame {
             useRealtime = Boolean.parseBoolean(settingData[4][1]);
             aggressiveness = Float.parseFloat(settingData[5][1]);
             useCandles = Boolean.parseBoolean(settingData[6][1]);
+            t212ApiToken = settingData[7][1];
+            pushCutUrlEndpoint = settingData[8][1];
         } catch (Exception e) {
             System.out.println("Config error - Create new config " + e.getMessage());
             createConfig();
@@ -318,6 +320,7 @@ public class mainUI extends JFrame {
             // If no config exists, create one and show the settings window immediately
             createConfig();
             setValues();
+
             gui = new mainUI();
             gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
             gui.setSize(1900, 1000); // Set window size (W x H)
@@ -330,18 +333,20 @@ public class mainUI extends JFrame {
             // Load the initial stock symbol table (from config)
             loadTable(symbols);
 
+            // Immediately open settings so user can edit config before using the app
+            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint);
+            guiSetting.setSize(500, 700);
+            guiSetting.setAlwaysOnTop(true);
+            guiSetting.setModalityType(Dialog.ModalityType.APPLICATION_MODAL); // makes it blocking
+            guiSetting.setLocationRelativeTo(null);
+            guiSetting.setVisible(true);
+
             // Initialize the main API handler for stock price data
             if (!apiKey.isEmpty()) {
                 mainDataHandler.InitAPi(apiKey);
             } else {
                 throw new RuntimeException("You need to add a key in the settings menu first");
             }
-
-            // Immediately open settings so user can edit config before using the app
-            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness, useCandles);
-            guiSetting.setVisible(true);
-            guiSetting.setSize(500, 500);
-            guiSetting.setAlwaysOnTop(true);
 
             // Log new config event
             logTextArea.append("New config created\n");
@@ -543,7 +548,9 @@ public class mainUI extends JFrame {
                 {"key", apiKey},
                 {"realtime", String.valueOf(useRealtime)},
                 {"algo", String.valueOf(aggressiveness)},
-                {"candle", String.valueOf(useCandles)}
+                {"candle", String.valueOf(useCandles)},
+                {"T212", t212ApiToken},
+                {"push", pushCutUrlEndpoint}
         };
     }
 
@@ -669,7 +676,7 @@ public class mainUI extends JFrame {
                 "-X", "POST",
                 "-H", "Content-Type: application/json",
                 "-d", json,
-                ENDPOINT);
+                pushCutUrlEndpoint);
 
         // Forward curl’s standard output and error to our own process so it is visible in the console.
         pb.inheritIO();
@@ -1576,7 +1583,7 @@ public class mainUI extends JFrame {
         // Build the HTTP GET request, including required Authorization header (your Trading212 token)
         var request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
-                .header("Authorization", token)
+                .header("Authorization", t212ApiToken)
                 .GET()
                 .build();
 
@@ -2795,8 +2802,8 @@ public class mainUI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness, useCandles);
-            gui.setSize(500, 500);            // Fixed dialog size
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint);
+            gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
             gui.setTitle("Config handler ");  // Dialog window title
             gui.setVisible(true);             // Show the settings window
