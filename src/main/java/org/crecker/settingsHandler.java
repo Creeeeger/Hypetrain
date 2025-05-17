@@ -13,17 +13,17 @@ import static org.crecker.mainUI.*;
  * It provides UI fields for volume, API key, aggressiveness, real-time options, etc.,
  * and writes these settings to the config file on confirmation.
  */
-public class settingsHandler extends JFrame {
+public class settingsHandler extends JDialog {
     // Panel holding all settings UI components
     public static JPanel settingsPanel;
     // Labels and input fields for each setting
-    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel, candleLabel;
-    static JTextField volumeText, keyText, algoAggressivenessText;
+    static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel, candleLabel, T212Label, pushCutLabel;
+    static JTextField volumeText, keyText, algoAggressivenessText, T212textField, pushCutTextField;
     static JCheckBox sortCheckBox, realtimeBox, candleBox;
     // Internal variables to hold settings values
     int vol;
     float aggressiveness;
-    String sym, key;
+    String sym, key, T212, push;
     boolean sort, realtime, useCandles;
 
     /**
@@ -37,8 +37,10 @@ public class settingsHandler extends JFrame {
      * @param realtime       Enable real-time updates.
      * @param aggressiveness Aggressiveness for hype algorithm.
      * @param useCandles     Use candle charts.
+     * @param T212           Trading212 Api Key
+     * @param push           PushCut URL endpoint
      */
-    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness, boolean useCandles) {
+    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness, boolean useCandles, String T212, String push) {
         // Set layout manager for this JFrame: BorderLayout allows a central content area
         setLayout(new BorderLayout(10, 10));
 
@@ -50,6 +52,8 @@ public class settingsHandler extends JFrame {
         this.realtime = realtime;
         this.aggressiveness = aggressiveness;
         this.useCandles = useCandles;
+        this.T212 = T212;
+        this.push = push;
 
         // Initialize main settings panel with vertical layout (BoxLayout.Y_AXIS stacks items top to bottom)
         settingsPanel = new JPanel();
@@ -83,6 +87,18 @@ public class settingsHandler extends JFrame {
         keyText = new JTextField(key);
         keyText.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        // API key label for T212
+        T212Label = new JLabel("API key for Trading212:");
+        T212Label.setAlignmentX(Component.LEFT_ALIGNMENT);
+        T212textField = new JTextField(T212);
+        T212textField.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // PushCut URL notification endpoint
+        pushCutLabel = new JLabel("Url endpoint for your notification on PushCut");
+        pushCutLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+        pushCutTextField = new JTextField(push);
+        pushCutTextField.setAlignmentX(Component.LEFT_ALIGNMENT);
+
         // Real-time updates label and checkbox
         realtimeLabel = new JLabel("Chart realtime updates (per second)");
         realtimeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -115,6 +131,14 @@ public class settingsHandler extends JFrame {
         settingsPanel.add(keyLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(keyText);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(T212Label);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(T212textField);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(pushCutLabel);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(pushCutTextField);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(realtimeLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -160,7 +184,9 @@ public class settingsHandler extends JFrame {
                         {"key", keyText.getText()},
                         {"realtime", String.valueOf(realtimeBox.isSelected())},
                         {"algo", String.valueOf(algoAggressivenessText.getText())},
-                        {"candle", String.valueOf(candleBox.isSelected())}
+                        {"candle", String.valueOf(candleBox.isSelected())},
+                        {"T212", T212textField.getText()},
+                        {"push", pushCutTextField.getText()}
                 };
 
                 // Save updated settings to the config XML file

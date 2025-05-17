@@ -77,6 +77,80 @@ Discipline is alpha.
 Obey the system — or be the exit liquidity.
 ---
 
+# 🚄 HypeTrain Setup Guide
+
+Follow these steps to properly configure **HypeTrain** for real-time stock momentum detection and alerting.
+
+---
+
+## 1. 🔑 Get an API Key from AlphaVantage
+
+- **Required for data retrieval**
+- You can use a [free AlphaVantage key](https://www.alphavantage.co/support/#api-key) for limited functionality.
+- For full support including `hypeMode`, you **must** subscribe
+  to [AlphaVantage Premium](https://www.alphavantage.co/premium/).
+    - Recommended tiers:
+        - **1200 Requests/Minute** – Smooth operation, ideal for monitoring many stocks.
+        - **600 Requests/Minute** – Can work, but may cause delays during full data setup.
+- If you only plan to monitor a few stocks, lower-tier keys are sufficient.
+- Your key must support **US real-time data**.
+
+---
+
+## 2. 📊 Get a Trading212 API Key
+
+- Required for:
+    - Liquidity checks
+    - Redirecting to open trades directly in the Trading212 platform
+
+---
+
+## 3. 🔔 Install and Configure PushCut
+
+- [PushCut](https://www.pushcut.io/) is used for sending real-time trade alerts.
+- Setup instructions:
+    1. Create an account
+    2. Go to the **first tab** and create a new notification
+    3. Grant **notification** and **sensitive notification** permissions
+    4. Give the notification a **clear and useful name**
+    5. Enable the following options:
+        - ✅ `Dynamic Text in curl`
+        - ✅ `Dynamic Title in curl`
+    6. (Optional) Subscribe to PushCut if you're bothered by extra notification banners
+    7. **Mac users:** Install [`terminal-notifier`](https://github.com/julienXX/terminal-notifier) to enable
+       system-level push notifications:
+       ```bash
+       brew install terminal-notifier
+       ```
+
+---
+
+## 4. 💰 Set Initial Volume Settings
+
+- When launching HypeTrain for the first time, configure your **desired trading volume** in the program settings.
+- You also need to:
+    - 🔑 Set your **Trading212 API key** for trade execution and liquidity checks.
+    - 🌐 Configure the **PushCut notification endpoint URL** (you’ll find this in the PushCut app under the notification
+      settings – copy the URL provided for external triggers).
+
+---
+
+## 5. 🌐 Ensure Stable Internet
+
+- The first-time setup involves downloading a **large cache of data**
+- This process may take up to **10 minutes** depending on your connection
+
+---
+
+## 6. 🏦 Use a Broker with Low Fees
+
+- Since HypeTrain’s strategy may involve frequent trades, **low fees are essential**
+- **Recommended Broker:** [Trading212](https://www.trading212.com/)
+
+---
+
+You're now ready to ride the HypeTrain! 🚀📈
+
 # 📈 Stock Tracker – Feature Overview
 
 A fully-featured real-time and historical stock analytics tool built for fast, intelligent market monitoring.

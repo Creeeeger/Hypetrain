@@ -40,7 +40,8 @@ import java.util.stream.Collectors;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
-import static org.crecker.mainUI.*;
+import static org.crecker.mainUI.addNotification;
+import static org.crecker.mainUI.logTextArea;
 
 /**
  * pLTester is the primary entry point and main orchestrator for
@@ -196,7 +197,7 @@ public class pLTester {
             }
 
             // --- GUI NOTIFICATION DISPLAY ---
-            if (gui != null) createNotification(notification); // (If using GUI, pop up the notification event panel)
+            // if (gui != null) createNotification(notification); // (If using GUI, pop up the notification event panel) disable Notification requests fist before uncommenting
 
             // --- GET SYMBOL TIMELINE ---
             String symbol = notification.getSymbol();
