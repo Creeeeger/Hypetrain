@@ -1,7 +1,6 @@
 TODO
 Version 1.0:
 - squeeze everything out of spike and improve precision
-- add counter for web requests.
 
 Version 1.5:
 - Improve speed of spike up percentage change detection by supportive second data framework
