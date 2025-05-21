@@ -108,7 +108,7 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 30000;
+    private final static int cut = 7500;
 
     /**
      * Program entry point.
@@ -824,7 +824,7 @@ public class pLTester {
         renderer.setUpPaint(Color.GREEN);    // Candle color for up (close >= open)
         renderer.setDownPaint(Color.RED);    // Candle color for down (close < open)
         renderer.setUseOutlinePaint(true);   // Draw black border around candles
-        renderer.setDrawVolume(true);        // Show volume as an overlay if present
+        renderer.setDrawVolume(false);
         return renderer;
     }
 

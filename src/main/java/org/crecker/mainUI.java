@@ -16,6 +16,7 @@ import org.jfree.data.time.ohlc.OHLCItem;
 import org.jfree.data.time.ohlc.OHLCSeries;
 import org.jfree.data.time.ohlc.OHLCSeriesCollection;
 import org.json.JSONArray;
+import org.json.JSONException;
 import org.json.JSONObject;
 
 import javax.swing.*;
@@ -109,6 +110,11 @@ public class mainUI extends JFrame {
      * Flag indicating whether the candlestick chart view is enabled (true for OHLC, false for line chart).
      */
     public static boolean useCandles;
+
+    /**
+     * Flag indicating whether the greed Mode is enabled.
+     */
+    public static boolean greed;
 
     /**
      * Current volume parameter for algorithms (user-configurable).
@@ -294,6 +300,7 @@ public class mainUI extends JFrame {
             useCandles = Boolean.parseBoolean(settingData[6][1]);
             t212ApiToken = settingData[7][1];
             pushCutUrlEndpoint = settingData[8][1];
+            greed = Boolean.parseBoolean(settingData[9][1]);
         } catch (Exception e) {
             System.out.println("Config error - Create new config " + e.getMessage());
             createConfig();
@@ -334,7 +341,7 @@ public class mainUI extends JFrame {
             loadTable(symbols);
 
             // Immediately open settings so user can edit config before using the app
-            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint);
+            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed);
             guiSetting.setSize(500, 700);
             guiSetting.setAlwaysOnTop(true);
             guiSetting.setModalityType(Dialog.ModalityType.APPLICATION_MODAL); // makes it blocking
@@ -550,7 +557,8 @@ public class mainUI extends JFrame {
                 {"algo", String.valueOf(aggressiveness)},
                 {"candle", String.valueOf(useCandles)},
                 {"T212", t212ApiToken},
-                {"push", pushCutUrlEndpoint}
+                {"push", pushCutUrlEndpoint},
+                {"greed", String.valueOf(greed)}
         };
     }
 
@@ -1590,8 +1598,17 @@ public class mainUI extends JFrame {
         // Execute the request and extract the JSON response as a String
         String body = httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
 
-        // Parse the returned string into a JSONArray for processing
-        JSONArray instruments = new JSONArray(body);
+        // Attempt to parse the API response body into a JSON array of instruments
+        JSONArray instruments = null;
+        try {
+            // Parse the string into a JSONArray for structured access to each instrument object
+            instruments = new JSONArray(body);
+        } catch (JSONException e) {
+            // If parsing fails (invalid JSON, wrong structure, etc.), print the raw response for debugging
+            System.out.println("Failed to parse response as JSONArray. Raw response:");
+            System.out.println(body);
+            instruments = new JSONArray();
+        }
 
         // Iterate through every instrument (stock, index, etc.) in the JSON array
         for (int i = 0; i < instruments.length(); i++) {
@@ -2802,7 +2819,7 @@ public class mainUI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint);
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed);
             gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
             gui.setTitle("Config handler ");  // Dialog window title

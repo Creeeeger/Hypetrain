@@ -82,7 +82,7 @@ public class Notification {
         this.config = config;
 
         /*
-          config 0 dip         - bright red (major drop)
+          config 0 GREED       - bright red
           config 1 gap filler  - deep orange
           config 2 R-line spike- blue
           config 3 spike       - green
