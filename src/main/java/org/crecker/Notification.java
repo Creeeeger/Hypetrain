@@ -86,7 +86,8 @@ public class Notification {
           config 1 gap filler  - deep orange
           config 2 R-line spike- blue
           config 3 spike       - green
-          else                 - royal purple
+          config 4 uptrend     - royal purple
+          other                - gray
          */
         if (config == 0) {
             this.color = new Color(255, 0, 0);         // Bright Red
@@ -96,8 +97,10 @@ public class Notification {
             this.color = new Color(0, 128, 255);       // Sky Blue
         } else if (config == 3) {
             this.color = new Color(34, 177, 76);       // Leaf Green
-        } else {
+        } else if (config == 4) {
             this.color = new Color(128, 0, 128);       // Royal Purple
+        } else {
+            this.color = new Color(89, 89, 97);        // Gray
         }
 
         // Build series for chart plotting

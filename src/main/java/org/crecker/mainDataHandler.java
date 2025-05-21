@@ -2247,8 +2247,7 @@ public class mainDataHandler {
         }
 
         // Uptrend line detector
-        boolean uptrend = isInUptrend(stocks, 7, 3.0, 0.75);
-        System.out.println(uptrend + " " + stocks.get(stocks.size() - 1).getDateDate());
+        boolean uptrend = isInUptrend(stocks, 5, 1.5, 0.80);
 
         // === 7. Strict "all conditions met" trigger for classic spike event alert ===
         //   (a) features[4] == 1   : Binary "spike" anomaly active
@@ -2266,26 +2265,32 @@ public class mainDataHandler {
                         changeUp2 >= 1.5 * manualAggressiveness &&            // 2-bar momentum strong enough
                         changeUp3 >= 1.5 * manualAggressiveness;              // 3-bar momentum strong enough
 
+        int notificationCode = -1; // -1 means no notification
+
         // === 8. Only if all strict spike conditions are satisfied, trigger a classic alert notification ===
         // - Config code: 3 ("spike" alert) if not near resistance; 2 ("R-Line" alert) if near resistance.
         if (isTriggered) {
+            notificationCode = (nearRes == 0) ? 3 : 2; // 3 = Spike, 2 = R-Line near resistance
+        }
+
+        // === 9. Upwards movements which are not categorized as spikes but still steady upwards ===
+        else if (uptrend) {
+            notificationCode = 4;
+        }
+
+        // === 10. If Greed Mode is active, allow high-confidence FOMO/greed alerts (less strict) ===
+        // - If score exceeds 1.4 but strict trigger not met, fire a FOMO-style notification (config=0).
+        else if (greed && score > 1.4) {
+            notificationCode = 0;
+        }
+
+        // If a notification is to be sent, send it once:
+        if (notificationCode != -1) {
             createNotification(
                     symbol, changeUp3, alertsList,
                     stocks, stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                    prediction, (nearRes == 0) ? 3 : 2
+                    prediction, notificationCode
             );
-        }
-
-        // === 9. If Greed Mode is active, allow high-confidence FOMO/greed alerts (less strict) ===
-        // - If score exceeds 1.4 but strict trigger not met, fire a FOMO-style notification (config=0).
-        if (greed) {
-            if (score > 1.4 && !isTriggered) {
-                createNotification(
-                        symbol, changeUp3, alertsList,
-                        stocks, stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                        prediction, 0 // 0: Greed/FOMO alert
-                );
-            }
         }
     }
 
@@ -2335,8 +2340,16 @@ public class mainDataHandler {
         // Check that no single red candle erases more than a third of the window's total gain
         boolean noBigPullback = maxRed < (lastClose - firstClose) / 3.0;
 
+        boolean result = percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
+
+        // One-line summary debug print:
+        System.out.printf(
+                "percentChange=%.2f%%, greenCount=%d, greenRatio=%.2f, maxRed=%.2f, noBigPullback=%b, result=%b %s%n",
+                percentChange, greenCount, greenRatio, maxRed, noBigPullback, result, stocks.get(stocks.size() - 1).getDateDate()
+        );
+
         // Must satisfy: (1) big enough gain, (2) enough green candles, (3) no big pullbacks
-        return percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
+        return result;
     }
 
     /**
@@ -2628,6 +2641,34 @@ public class mainDataHandler {
     }
 
     /**
+     * Determines if the cumulative sum of percentage changes in a window
+     * exceeds a given threshold. Used to detect 'spikes' in cumulative returns.
+     *
+     * @param window    List of StockUnit objects, most recent last.
+     * @param period    Number of periods to sum for the spike check.
+     * @param threshold Threshold (as a raw sum) to determine a spike event.
+     * @return 1 if sum >= threshold (spike detected), 0 otherwise.
+     *
+     * <p>
+     * - Adds up the 'percentageChange' values of the most recent N bars.
+     * - If sum exceeds threshold, a spike is flagged.
+     * </p>
+     */
+    public static int isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
+        // Not enough bars to check spike
+        if (window.size() < period) return 0;
+
+        // Sum up the percentageChange field for last 'period' bars
+        double sum = window.stream()
+                .skip(window.size() - period)    // Keep only last 'period' entries
+                .mapToDouble(StockUnit::getPercentageChange)
+                .sum();
+
+        // 1 = spike detected, 0 = not detected
+        return sum >= threshold ? 1 : 0;
+    }
+
+    /**
      * Calculates the TRIX indicator value for a list of stock prices.
      * TRIX is the percentage rate-of-change of a triple-smoothed Exponential Moving Average (EMA).
      *
@@ -2698,34 +2739,6 @@ public class mainDataHandler {
         double past = closes[0];                     // Close N periods ago
 
         return ((current - past) / past) * 100;      // Percent change (positive or negative)
-    }
-
-    /**
-     * Determines if the cumulative sum of percentage changes in a window
-     * exceeds a given threshold. Used to detect 'spikes' in cumulative returns.
-     *
-     * @param window    List of StockUnit objects, most recent last.
-     * @param period    Number of periods to sum for the spike check.
-     * @param threshold Threshold (as a raw sum) to determine a spike event.
-     * @return 1 if sum >= threshold (spike detected), 0 otherwise.
-     *
-     * <p>
-     * - Adds up the 'percentageChange' values of the most recent N bars.
-     * - If sum exceeds threshold, a spike is flagged.
-     * </p>
-     */
-    public static int isCumulativeSpike(List<StockUnit> window, int period, double threshold) {
-        // Not enough bars to check spike
-        if (window.size() < period) return 0;
-
-        // Sum up the percentageChange field for last 'period' bars
-        double sum = window.stream()
-                .skip(window.size() - period)    // Keep only last 'period' entries
-                .mapToDouble(StockUnit::getPercentageChange)
-                .sum();
-
-        // 1 = spike detected, 0 = not detected
-        return sum >= threshold ? 1 : 0;
     }
 
     /**
@@ -3268,6 +3281,12 @@ public class mainDataHandler {
                     String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 3));
+        } else if (config == 4) {
+            // Uptrend movement which is not categorized as a hardcore spike
+            alertsList.add(new Notification(
+                    String.format("%.3f%% %s Uptrend %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Uptrend slope: %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    stockUnitList, date, symbol, totalChange, 4));
         }
     }
 
