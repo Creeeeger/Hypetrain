@@ -53,17 +53,6 @@ import static org.crecker.pLTester.*;
 public class mainDataHandler {
 
     /**
-     * Stores precomputed min/max ranges for each technical indicator per symbol.
-     * <p>
-     * Data structure: Map&lt;SYMBOL, Map&lt;INDICATOR, Map&lt;"min"/"max", value&gt;&gt;&gt;
-     * - Key: Uppercase symbol name (e.g., "AAPL")
-     * - Value: For each indicator, holds a map containing robust minimum and maximum values, used to normalize raw feature data.
-     * <p>
-     * Populated by {@link #precomputeIndicatorRanges(boolean)} and consumed by {@link #normalizeScore(String, double, String)}
-     */
-    private static final Map<String, Map<String, Map<String, Double>>> SYMBOL_INDICATOR_RANGES = new ConcurrentHashMap<>();
-
-    /**
      * The ordered list of all technical indicator keys that will be extracted from each window of stock data.
      * <ul>
      *   <li>Order is CRITICAL; indexes correspond to downstream feature processing.</li>
@@ -80,7 +69,6 @@ public class mainDataHandler {
             "KELTNER",                // 6: Keltner channel breakout (binary)
             "ELDER_RAY"               // 7: Elder Ray Index (numeric)
     );
-
     /**
      * Set of technical indicators that should be interpreted as binary (0 or 1) in the normalization process.
      * <p>
@@ -92,7 +80,40 @@ public class mainDataHandler {
             "KELTNER",                // Keltner breakout: 1 if present, else 0
             "CUMULATIVE_PERCENTAGE"   // Cumulative spike: 1 if present, else 0
     );
-
+    /**
+     * Directory path for disk cache of stock data (e.g., "cache/" in current working directory).
+     * <p>
+     * Used for storing and retrieving locally cached minute-bar or indicator data to minimize API calls.
+     */
+    public static final String CACHE_DIR = Paths.get(System.getProperty("user.dir"), "cache").toString();
+    /**
+     * Central timeline map: stores the loaded or downloaded time series for each stock symbol.
+     * <ul>
+     *   <li>Key: Stock symbol (always uppercase, e.g., "AAPL")</li>
+     *   <li>Value: List of {@link StockUnit} representing each time bar (chronological order)</li>
+     * </ul>
+     * <p>
+     * This is the primary in-memory data store for the entire pipeline, used for all technical indicator calculation.
+     * <p>
+     * Thread-safe for concurrent reads and writes.
+     */
+    static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
+    /**
+     * Stores all generated {@link Notification} objects relevant to PL (Profit & Loss) analysis or spike detection.
+     * <p>
+     * Populated throughout analytics; used for summary UI panels, notification feeds, or backtesting.
+     */
+    static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
+    /**
+     * Stores precomputed min/max ranges for each technical indicator per symbol.
+     * <p>
+     * Data structure: Map&lt;SYMBOL, Map&lt;INDICATOR, Map&lt;"min"/"max", value&gt;&gt;&gt;
+     * - Key: Uppercase symbol name (e.g., "AAPL")
+     * - Value: For each indicator, holds a map containing robust minimum and maximum values, used to normalize raw feature data.
+     * <p>
+     * Populated by {@link #precomputeIndicatorRanges(boolean)} and consumed by {@link #normalizeScore(String, double, String)}
+     */
+    private static final Map<String, Map<String, Map<String, Double>>> SYMBOL_INDICATOR_RANGES = new ConcurrentHashMap<>();
     /**
      * Category weights for calculating final 'aggressiveness' score for a stock signal.
      * <p>
@@ -118,7 +139,6 @@ public class mainDataHandler {
         put("STATISTICAL", 0.45);// Features 4-5 (Spike, Cumulative) - Highest in 'scraper' regime
         put("ADVANCED", 0.35);   // Features 6-7 (Keltner, Elder) - Secondary importance
     }};
-
     /**
      * Maps feature index to its category for weighted scoring.
      * <p>
@@ -138,34 +158,6 @@ public class mainDataHandler {
         put(6, "ADVANCED");     // Keltner
         put(7, "ADVANCED");     // Elder Ray
     }};
-
-    /**
-     * Directory path for disk cache of stock data (e.g., "cache/" in current working directory).
-     * <p>
-     * Used for storing and retrieving locally cached minute-bar or indicator data to minimize API calls.
-     */
-    public static final String CACHE_DIR = Paths.get(System.getProperty("user.dir"), "cache").toString();
-
-    /**
-     * Central timeline map: stores the loaded or downloaded time series for each stock symbol.
-     * <ul>
-     *   <li>Key: Stock symbol (always uppercase, e.g., "AAPL")</li>
-     *   <li>Value: List of {@link StockUnit} representing each time bar (chronological order)</li>
-     * </ul>
-     * <p>
-     * This is the primary in-memory data store for the entire pipeline, used for all technical indicator calculation.
-     * <p>
-     * Thread-safe for concurrent reads and writes.
-     */
-    static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
-
-    /**
-     * Stores all generated {@link Notification} objects relevant to PL (Profit & Loss) analysis or spike detection.
-     * <p>
-     * Populated throughout analytics; used for summary UI panels, notification feeds, or backtesting.
-     */
-    static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
-
     /**
      * State-tracking map for per-symbol SMA crossover state.
      * <ul>
@@ -201,16 +193,72 @@ public class mainDataHandler {
      * Set to 100 to provide a robust estimate across typical trading weeks.
      */
     private static final int HISTORICAL_LOOK_BACK = 100;
-
     /**
-     * Number of bars in each analysis window (frame) for main technical signal generation.
-     * <ul>
-     *   <li>Controls the minimum data size for feature calculation and spike detection.</li>
-     *   <li>Adjustable for tuning short-term vs. long-term strategy.</li>
-     * </ul>
+     * Number of minutes to aggregate per bar in rally analysis compression.
+     * <p>
+     * Used for grouping high-frequency bars into multi-minute "super-bars"
+     * to smooth noise in trend and channel calculations.
+     * Typical value: 120 minutes (2 hours per bar).
      */
-    static int frameSize = 30; // Frame size for analysis (default: 30 bars, typically minutes)
+    private static final int MINUTES = 120;
+    /**
+     * Number of look-back days for rally detection algorithms.
+     * <p>
+     * Defines window size for regression analysis and uptrend confirmation.
+     */
+    private static final int DAYS = 12;
 
+    // ==================== RALLY PIPELINE PARAMETERS =====================
+    /**
+     * Total number of bars in full rally detection window.
+     * <p>
+     * Assumes ~8 bars per day (based on 2-hour bars, standard US session).
+     * Used for window slicing in regression and channel width calculations.
+     */
+    private static final int W = DAYS * 8;
+    /**
+     * Minimum required regression slope (in percent per bar) for a rally to qualify as an "uptrend".
+     * <p>
+     * Used to reject trends that are too flat to be significant.
+     */
+    private static final double SLOPE_MIN = 0.1;
+    /**
+     * Maximum allowable regression channel width as percent of price.
+     * <p>
+     * Rejects "rallies" where the price action is too volatile or inconsistent with a clean trend.
+     */
+    private static final double WIDTH_MAX = 0.06;
+    /**
+     * Array of different day-based windows for multi-horizon rally checking.
+     * <p>
+     * E.g., checks consistency of uptrend over 4, 6, 8, 10, and 14 day spans.
+     * Each is mapped to a number of bars for regression analysis.
+     */
+    private static final int[] DAYS_OPTIONS = {4, 6, 8, 10, 14};
+    /**
+     * Minimum R^2 (coefficient of determination) for accepting a regression trend as meaningful.
+     * <p>
+     * Rejects trends with too much scatter or inconsistency.
+     */
+    private static final double R2_MIN = 0.6;
+    /**
+     * Allowed tolerance as a percent for checking alignment of price to regression line at rally end.
+     * <p>
+     * If actual prices are outside this band, trend is considered broken.
+     */
+    private static final double TOLERANCE_PCT = 0.03;
+    /**
+     * Market open time (assumed for all data, in 24hr format).
+     * <p>
+     * Filters out pre-market and after-hours bars.
+     */
+    private static final LocalTime MARKET_OPEN = LocalTime.of(4, 0);
+    /**
+     * Market close time (assumed for all data, in 24hr format).
+     * <p>
+     * Used to identify valid in-session bars.
+     */
+    private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
     public static String[] stockSymbols = {
             "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
             , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
@@ -234,82 +282,14 @@ public class mainDataHandler {
             , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
             , "ZIM", "ZTO", "ZTS", "ВТВТ"
     };
-
-    // ==================== RALLY PIPELINE PARAMETERS =====================
-
     /**
-     * Number of minutes to aggregate per bar in rally analysis compression.
-     * <p>
-     * Used for grouping high-frequency bars into multi-minute "super-bars"
-     * to smooth noise in trend and channel calculations.
-     * Typical value: 120 minutes (2 hours per bar).
+     * Number of bars in each analysis window (frame) for main technical signal generation.
+     * <ul>
+     *   <li>Controls the minimum data size for feature calculation and spike detection.</li>
+     *   <li>Adjustable for tuning short-term vs. long-term strategy.</li>
+     * </ul>
      */
-    private static final int MINUTES = 120;
-
-    /**
-     * Number of look-back days for rally detection algorithms.
-     * <p>
-     * Defines window size for regression analysis and uptrend confirmation.
-     */
-    private static final int DAYS = 12;
-
-    /**
-     * Total number of bars in full rally detection window.
-     * <p>
-     * Assumes ~8 bars per day (based on 2-hour bars, standard US session).
-     * Used for window slicing in regression and channel width calculations.
-     */
-    private static final int W = DAYS * 8;
-
-    /**
-     * Minimum required regression slope (in percent per bar) for a rally to qualify as an "uptrend".
-     * <p>
-     * Used to reject trends that are too flat to be significant.
-     */
-    private static final double SLOPE_MIN = 0.1;
-
-    /**
-     * Maximum allowable regression channel width as percent of price.
-     * <p>
-     * Rejects "rallies" where the price action is too volatile or inconsistent with a clean trend.
-     */
-    private static final double WIDTH_MAX = 0.06;
-
-    /**
-     * Array of different day-based windows for multi-horizon rally checking.
-     * <p>
-     * E.g., checks consistency of uptrend over 4, 6, 8, 10, and 14 day spans.
-     * Each is mapped to a number of bars for regression analysis.
-     */
-    private static final int[] DAYS_OPTIONS = {4, 6, 8, 10, 14};
-
-    /**
-     * Minimum R^2 (coefficient of determination) for accepting a regression trend as meaningful.
-     * <p>
-     * Rejects trends with too much scatter or inconsistency.
-     */
-    private static final double R2_MIN = 0.6;
-
-    /**
-     * Allowed tolerance as a percent for checking alignment of price to regression line at rally end.
-     * <p>
-     * If actual prices are outside this band, trend is considered broken.
-     */
-    private static final double TOLERANCE_PCT = 0.03;
-
-    /**
-     * Market open time (assumed for all data, in 24hr format).
-     * <p>
-     * Filters out pre-market and after-hours bars.
-     */
-    private static final LocalTime MARKET_OPEN = LocalTime.of(4, 0);
-
-    /**
-     * Market close time (assumed for all data, in 24hr format).
-     * <p>
-     * Used to identify valid in-session bars.
-     */
-    private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
+    static int frameSize = 30; // Frame size for analysis (default: 30 bars, typically minutes)
 
     // ====================================================================
 
@@ -1737,7 +1717,7 @@ public class mainDataHandler {
      *   <li><b>Require at least two valid window confirmations</b> for robustness.</li>
      *   <li><b>Test the recency and noise</b> in the second half of the window, including channel width.</li>
      *   <li><b>Check trend continuation</b> into the very last bars—rejects faded or choppy moves.</li>
-     *   <li><b>Compare recent slope to historical</b> to ensure the rally isn’t losing strength.</li>
+     *   <li><b>Compare recent slope too historical</b> to ensure the rally isn’t losing strength.</li>
      *   <li><b>Return only tickers passing <i>all</i> the above</b>—maximizing precision and minimizing
      *   false positives.</li>
      * </ol>
@@ -2021,7 +2001,7 @@ public class mainDataHandler {
      * or to check if recent prices are still "in alignment" with the trend.
      *
      * @param lr The regression object (contains mean x, mean y, and slope in price units/bar)
-     * @param i  The target index within the window (0 = start of window, etc)
+     * @param i  The target index within the window (0 = start of window, etc.)
      * @return The predicted close price at index i, according to the regression line
      */
     private static double predictSlope(LR lr, int i) {
@@ -2088,7 +2068,7 @@ public class mainDataHandler {
                         .high(stockUnit.getHigh())           // High so far is the current bar's high
                         .low(stockUnit.getLow())             // Low so far is the current bar's low
                         .close(stockUnit.getClose())         // Close is the current bar's close (will be updated)
-                        .adjustedClose(stockUnit.getClose()) // Adjusted close starts same as close (may be updated)
+                        .adjustedClose(stockUnit.getClose()) // Adjusted close starts same as close (maybe updated)
                         .volume(stockUnit.getVolume())       // Initial volume is just this bar's volume
                         .dividendAmount(0)                   // Default for synthetic bars
                         .splitCoefficient(0)                 // Default for synthetic bars
@@ -2190,111 +2170,238 @@ public class mainDataHandler {
     }
 
     /**
-     * Tests for rapid bullish "spike" events and R-Line (resistance-line) confirmations.
-     * - Only triggers a notification when multiple technical + statistical conditions are met
-     * - Dynamically adapts thresholds and required price changes based on the current "aggressiveness" parameter
-     * - Designed to filter for the highest-confidence breakouts, reducing noise/false positives
+     * Detects rapid bullish "spike" events and R-Line (resistance-line) confirmations on stock price data.
+     * <ul>
+     *     <li>Fires notifications only when strict technical and statistical criteria are met.</li>
+     *     <li>Adapts sensitivity dynamically based on a user-defined "aggressiveness" parameter.</li>
+     *     <li>Filters for high-confidence breakouts, minimizing noise and false positives.</li>
+     *     <li>When "Greed Mode" is active, a secondary scoring system can trigger additional FOMO-style alerts.</li>
+     * </ul>
+     *
+     * @param prediction           ML model prediction confidence, from 0.0 to 1.0
+     * @param stocks               List of recent StockUnit bars (candles/frames)
+     * @param symbol               Ticker symbol (e.g., "AAPL")
+     * @param features             Raw indicator feature values (see computeFeatures for order/meaning)
+     * @param alertsList           List to append new Notification objects if an alert is triggered
+     * @param nearRes              1.0 if price is near resistance, 0.0 otherwise
+     * @param manualAggressiveness User/system-level aggressiveness multiplier (risk tolerance, 0.1–2.0)
+     * @param normalizedFeatures   Feature vector, normalized to [0,1], for dynamic scoring
      */
     private static void spikeUp(
-            double prediction,                  // ML model prediction confidence [0-1]
-            List<StockUnit> stocks,             // List of recent OHLCV bars (frame)
-            String symbol,                      // Ticker symbol (for notification context)
-            double[] features,                  // Raw indicator feature values (see computeFeatures)
-            List<Notification> alertsList,      // List to append alerts if triggered
-            double nearRes,                     // 1.0 if price is near resistance, 0.0 otherwise
-            float manualAggressiveness,         // User/system-level aggressiveness multiplier (risk tolerance)
-            float[] normalizedFeatures          // Feature vector, normalized [0-1] for dynamic scoring
+            double prediction, List<StockUnit> stocks, String symbol, double[] features,
+            List<Notification> alertsList, double nearRes, float manualAggressiveness,
+            float[] normalizedFeatures
     ) {
+        // === 1. Calculate dynamic composite "aggressiveness" based on active feature weights ===
+        // - Uses all normalized features and their respective category weights.
+        double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness); // Higher manualAgg increases sensitivity
 
-        // === 1. Calculate "inverse" aggressiveness: used to scale minimum required price moves ===
-        // - Higher aggressiveness means smaller price moves will trigger; lower means stricter thresholds
-        double inverseAggressiveness = 1 / manualAggressiveness;
-
-        // === 2. Dynamic composite "aggressiveness" based on active feature weights ===
-        // - Uses all normalized features and their respective category weights
-        double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness);
-
-        // === 3. Set adaptive threshold for cumulative percentage move, based on feature activations ===
-        // - The more active/bullish features, the more willing to accept smaller price moves as significant
+        // === 2. Set adaptive threshold for cumulative percentage move, based on feature activations ===
+        // - The more bullish the features, the smaller the required cumulative gain for an alert
         double cumulativeThreshold = 0.6 * dynamicAggro;
 
-        // === 4. Compute rolling sum of percentage changes for last 2, 3, 4, 6 bars ===
+        // === 3. Compute rolling sum of percentage changes for last 2 and 3 bars ===
         // - Used to detect sudden strong upward momentum
-        // - Only the last N bars in the window are summed
-        double changeUp2 = stocks.stream().skip(stocks.size() - 2).mapToDouble(StockUnit::getPercentageChange).sum();
-        double changeUp3 = stocks.stream().skip(stocks.size() - 3).mapToDouble(StockUnit::getPercentageChange).sum();
-        double changeUp4 = stocks.stream().skip(stocks.size() - 4).mapToDouble(StockUnit::getPercentageChange).sum();
-        double changeUp6 = stocks.stream().skip(stocks.size() - 6).mapToDouble(StockUnit::getPercentageChange).sum();
+        double changeUp2 = calculateWindowChange(stocks, 2);
+        double changeUp3 = calculateWindowChange(stocks, 3);
 
-        // === 5. Prepare "test pass" flag for logging ===
-        String istrue = "❌";
-
-        if (
-                features[4] == 1 &&
-                        features[5] > cumulativeThreshold &&
-                        dynamicAggro > 2.5 &&
-                        prediction > 0.9 &&
-                        features[6] == 1 &&
-                        (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
-        ) {
-            istrue = "✅";
-        }
-
-        System.out.printf(
-                "2:%.2f 3:%.2f 4:%.2f 6:%.2f %s %s %s%n",
-                changeUp2,
-                changeUp3,
-                changeUp4,
-                changeUp6,
-                stocks.get(stocks.size() - 1).getVolume(),
-                istrue,
-                stocks.get(stocks.size() - 1).getDateDate()
+        // === 4. Define weighted scores for each feature category (used in "Greed Mode" scoring) ===
+        final Map<String, Double> WEIGHTS = Map.of(
+                "spikeFeature", 0.3,
+                "keltner", 0.3,
+                "prediction", 0.3,
+                "dynamicAggro", 0.3,
+                "cumulativeGain", 0.2,
+                "momentum2", 0.10,
+                "momentum3", 0.10
         );
 
-        // === 6. Primary bullish spike event logic ===
-        // - All conditions must be satisfied for an alert to fire:
-        //   (a) features[4] == 1   : Binary "spike" feature active (statistical anomaly)
-        //   (b) features[5] > cumulativeThreshold : Large cumulative percentage gain
-        //   (c) dynamicAggro > 2.5 : Strong overall feature activation (robustness check)
-        //   (d) prediction > 0.9   : ML model must be highly confident (>90%)
-        //   (e) features[6] == 1   : Keltner channel breakout detected
-        //   (f) changeUp2 and changeUp3 > 1.5 * inverseAggressiveness : Last 2-3 bars have strong % gains
+        // === 5. Compute adaptive activation thresholds for dynamicAggro using percentile mapping ===
+        // - The threshold adapts to the user's aggressiveness setting.
+        double pMin = 0.65;
+        double pMax = 0.95;
+        double dynamicPercentile = computeDynamicPercentile(manualAggressiveness, pMin, pMax);
+        double threshold = computeDynamicThreshold(manualAggressiveness, dynamicPercentile);
 
-        // === 7. Only if all above conditions are met, trigger alert notification ===
-        // - If not near resistance, config=3 ("spike" alert)
-        // - If near resistance, config=2 ("R-Line" alert)
-        if (
-                features[4] == 1 &&
-                        features[5] > cumulativeThreshold &&
-                        dynamicAggro > 2.5 &&
-                        prediction > 0.9 &&
-                        features[6] == 1 &&
-                        (changeUp2 > 1.5 * inverseAggressiveness && changeUp3 > 1.5 * inverseAggressiveness)
-        ) {
-            if (nearRes == 0) {
-                // Normal spike event (not at resistance)
+        double score = 0.0; // Will hold the total weighted confidence score (for Greed Mode)
+
+        if (greed) {
+            // === 6. Compute weighted confidence score when Greed Mode is active ===
+            // Each condition contributes to the overall score if active or sufficiently strong.
+
+            double spikeScore = (features[4] == 1) ? WEIGHTS.get("spikeFeature") : 0; // Spike anomaly
+            double keltnerScore = (features[6] == 1) ? WEIGHTS.get("keltner") : 0; // Keltner channel breakout
+            double predictionScore = WEIGHTS.get("prediction") * softScore(prediction, 0.9, 0.1); // ML model confidence
+            double dynamicAggroScore = WEIGHTS.get("dynamicAggro") * softScore(dynamicAggro, threshold, 0.5); // Composite aggressiveness score
+            double cumulativeGainScore = WEIGHTS.get("cumulativeGain") * softScore(features[5], cumulativeThreshold, 0.6 * dynamicAggro); // Cumulative gain
+            double momentum2Score = WEIGHTS.get("momentum2") * softScore(changeUp2, 1.5 * manualAggressiveness, 0.5); // 2-bar momentum
+            double momentum3Score = WEIGHTS.get("momentum3") * softScore(changeUp3, 1.5 * manualAggressiveness, 0.5); // 3-bar momentum
+
+            // Total confidence score (sum of all weighted components)
+            score = spikeScore + cumulativeGainScore + dynamicAggroScore + predictionScore + keltnerScore + momentum2Score + momentum3Score;
+
+            // If momentum is basically absent, prevent noise/FOMO on no actual move
+            if (changeUp2 < 0.1 || changeUp3 < 0.1) {
+                score = 0.0;
+            }
+        }
+
+        // Uptrend line detector
+        boolean uptrend = isInUptrend(stocks, 7, 3.0, 0.75);
+        System.out.println(uptrend + " " + stocks.get(stocks.size() - 1).getDateDate());
+
+        // === 7. Strict "all conditions met" trigger for classic spike event alert ===
+        //   (a) features[4] == 1   : Binary "spike" anomaly active
+        //   (b) features[5] >= cumulativeThreshold : Large enough cumulative percentage gain
+        //   (c) dynamicAggro >= threshold : Strong overall feature activation (robustness)
+        //   (d) prediction >= 0.9   : ML model must be highly confident (>90%)
+        //   (e) features[6] == 1   : Keltner channel breakout detected
+        //   (f) changeUp2 and changeUp3 >= 1.5 * manualAggressiveness : Last 2-3 bars have strong % gains
+        boolean isTriggered =
+                features[4] == 1 &&                                   // Spike anomaly detected
+                        features[5] >= cumulativeThreshold &&                 // Sufficient cumulative gain
+                        dynamicAggro >= threshold &&                          // Strong feature activation
+                        prediction >= 0.9 &&                                  // ML prediction is highly confident
+                        features[6] == 1 &&                                   // Keltner channel breakout
+                        changeUp2 >= 1.5 * manualAggressiveness &&            // 2-bar momentum strong enough
+                        changeUp3 >= 1.5 * manualAggressiveness;              // 3-bar momentum strong enough
+
+        // === 8. Only if all strict spike conditions are satisfied, trigger a classic alert notification ===
+        // - Config code: 3 ("spike" alert) if not near resistance; 2 ("R-Line" alert) if near resistance.
+        if (isTriggered) {
+            createNotification(
+                    symbol, changeUp3, alertsList,
+                    stocks, stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                    prediction, (nearRes == 0) ? 3 : 2
+            );
+        }
+
+        // === 9. If Greed Mode is active, allow high-confidence FOMO/greed alerts (less strict) ===
+        // - If score exceeds 1.4 but strict trigger not met, fire a FOMO-style notification (config=0).
+        if (greed) {
+            if (score > 1.4 && !isTriggered) {
                 createNotification(
-                        symbol,
-                        changeUp4, // Total percentage gain over 4 bars
-                        alertsList,
-                        stocks,
-                        stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                        prediction,
-                        3 // Config for spike
-                );
-            } else {
-                // R-Line event (at/near resistance)
-                createNotification(
-                        symbol,
-                        changeUp4,
-                        alertsList,
-                        stocks,
-                        stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                        prediction,
-                        2 // Config for R-Line
+                        symbol, changeUp3, alertsList,
+                        stocks, stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
+                        prediction, 0 // 0: Greed/FOMO alert
                 );
             }
         }
+    }
+
+    /**
+     * Determines if the market is in a sustained uptrend over the given window.
+     *
+     * @param stocks    List of StockUnit candles (chronological order).
+     * @param window    How many most recent bars to consider (e.g., 10 or 20).
+     * @param minChange Minimum net percentage change over window to qualify as uptrend (e.g., 10 for +10%).
+     * @param minGreen  Minimum % of green candles (0.0–1.0) to qualify (e.g., 0.6 means at least 60% green bars).
+     * @return True if in uptrend, otherwise false.
+     */
+    public static boolean isInUptrend(List<StockUnit> stocks, int window, double minChange, double minGreen) {
+        // Defensive: Make sure we have enough bars to check the window
+        if (stocks == null || stocks.size() < window + 1) return false;
+
+        int start = stocks.size() - window - 1; // First index in the window (oldest bar in window)
+        int end = stocks.size() - 1;            // Last index in the window (most recent bar)
+
+        // Get closing prices for start and end of window
+        double firstClose = stocks.get(start).getClose();
+        double lastClose = stocks.get(end).getClose();
+
+        // Calculate total percent change from first to last close in window
+        double percentChange = ((lastClose - firstClose) / firstClose) * 100.0;
+
+        // Count number of green (bullish) candles in the window
+        int greenCount = 0;
+        for (int i = start + 1; i <= end; i++) {
+            // A candle is green if close > open (bullish)
+            if (stocks.get(i).getClose() > stocks.get(i).getOpen()) {
+                greenCount++;
+            }
+        }
+
+        // Compute the ratio of green candles to total candles in the window
+        double greenRatio = greenCount / (double) window;
+
+        // Find the largest single red (bearish) candle in the window
+        double maxRed = 0;
+        for (int i = start + 1; i <= end; i++) {
+            // Red candle size = open - close (only positive if it's red)
+            double red = stocks.get(i).getOpen() - stocks.get(i).getClose();
+            if (red > maxRed) maxRed = red;
+        }
+
+        // Check that no single red candle erases more than a third of the window's total gain
+        boolean noBigPullback = maxRed < (lastClose - firstClose) / 3.0;
+
+        // Must satisfy: (1) big enough gain, (2) enough green candles, (3) no big pullbacks
+        return percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
+    }
+
+    /**
+     * Maps manualAggressiveness ∈ [0.1, 2.0] to a dynamic percentile ∈ [pMin, pMax].
+     * Used to determine how "deep" into the possible aggressiveness band to set alert thresholds.
+     *
+     * @param manualAgg User-chosen aggressiveness value (0.1 to 2.0)
+     * @param pMin      Minimum percentile (e.g. 0.65)
+     * @param pMax      Maximum percentile (e.g. 0.95)
+     * @return Interpolated percentile between pMin and pMax
+     */
+    private static double computeDynamicPercentile(double manualAgg, double pMin, double pMax) {
+        // Normalize manualAgg into [0, 1] where 0.1 is min and 2.0 is max
+        double t = (manualAgg - 0.1) / (2.0 - 0.1);
+        // Interpolate percentile
+        return pMin + t * (pMax - pMin);
+    }
+
+    /**
+     * Computes a dynamic activation threshold for feature activation,
+     * given manual aggressiveness and a target percentile.
+     *
+     * @param manualAgg User aggressiveness value (0.1 to 2.0)
+     * @param p         Target percentile (computed via computeDynamicPercentile, range 0.0 to 1.0)
+     * @return Dynamic feature activation threshold
+     */
+    private static double computeDynamicThreshold(double manualAgg, double p) {
+        // The dynamicAggro range is [manualAgg, manualAgg * 2.9]
+        double maxAgg = manualAgg * 2.9;
+        // Activation threshold is at percentile 'p' in that range
+        return manualAgg + (maxAgg - manualAgg) * p;
+    }
+
+    /**
+     * Calculates the rolling sum of percentage price changes for the last N bars in a list.
+     *
+     * @param stocks List of recent stock bars.
+     * @param window Number of most recent bars to sum.
+     * @return Cumulative percentage change over the specified window.
+     */
+    private static double calculateWindowChange(List<StockUnit> stocks, int window) {
+        // Sums the percentage changes over the last 'window' bars in the stocks list
+        return stocks.stream()
+                .skip(stocks.size() - window)      // Skip to the last 'window' elements
+                .mapToDouble(StockUnit::getPercentageChange) // Get percentage change for each
+                .sum();                            // Sum the changes
+    }
+
+    /**
+     * Smoothly scores a value against a threshold with a soft margin.
+     * Returns 1.0 if value >= threshold, 0.0 if below (threshold - margin),
+     * and linearly interpolates in between.
+     *
+     * @param value     The feature or metric value to score.
+     * @param threshold The primary threshold for a "full score".
+     * @param margin    The range below the threshold where the score interpolates from 0 to 1.
+     * @return A score between 0.0 and 1.0 reflecting closeness to threshold.
+     */
+    private static double softScore(double value, double threshold, double margin) {
+        // Full score if value meets or exceeds the threshold
+        if (value >= threshold) return 1.0;
+        // Zero score if value is less than the minimum cutoff (threshold - margin)
+        if (value < (threshold - margin)) return 0.0;
+        // Otherwise, return a linearly interpolated score within the margin range
+        return (value - (threshold - margin)) / margin;
     }
 
     /**
@@ -2343,7 +2450,7 @@ public class mainDataHandler {
      * </ol>
      *
      * <p>
-     * <b>Summary:</b> The power of this method is in its strict combination of adaptive, multi-factor statistical and technical tests.
+     * <b>Summary:</b> The power of this method is in its strict combination of adaptive, multifactor statistical and technical tests.
      * Each component guards against a different type of false positive, making it extremely effective at only flagging genuine
      * gap fill opportunities with a high probability of mean-reversion.
      *
@@ -3021,7 +3128,7 @@ public class mainDataHandler {
 
         // Check for a sharp drop from any of the previous {lookBack} closes to current
         for (int i = 1; i <= lookBack; i++) {
-            // Close price i bars before the latest
+            // Close price I bar before the latest
             double previousClose = stocks.get(stocks.size() - 1 - i).getClose();
 
             // Calculate percent drop from previousClose to currentClose
@@ -3138,19 +3245,19 @@ public class mainDataHandler {
                                            double prediction, int config) {
         // Depending on config, use different message formats for type of event
         if (config == 0) {
-            // Dip (sharp downward movement)
+            // Greed Alert 🔥
             alertsList.add(new Notification(
-                    String.format("%.3f%% %s ↓ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("Decreased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    String.format("🔥PURE GREED Alert %s %.2f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Pure greed at the %s, direction unknown", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 0));
         } else if (config == 1) {
             // Gap fill (move filling a previous price gap)
             alertsList.add(new Notification(
                     String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("Will fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    String.format("Fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 1));
         } else if (config == 2) {
-            // R-line spike (rapid upward price movement with caution warning)
+            // R-line spike (upward price movement with caution warning since close to previous bar hence might be the top and reverse point)
             alertsList.add(new Notification(
                     String.format("%.3f%% %s R-Line %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("R-Line Spike Proceed with caution by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
@@ -3245,6 +3352,74 @@ public class mainDataHandler {
     }
 
     /**
+     * Callback interface for retrieving an array of fundamental/price data values for a symbol.
+     * Used in asynchronous API calls to receive data when ready.
+     */
+    public interface DataCallback {
+        void onDataFetched(Double[] values);
+    }
+
+    /**
+     * Callback for receiving a timeline (list of StockUnit bars) for a symbol.
+     * Used when historical or intraday price data has been fetched.
+     */
+    public interface TimelineCallback {
+        void onTimeLineFetched(List<StockUnit> stocks);
+    }
+
+    // ==== Callback interfaces for async operations ====
+
+    /**
+     * Callback for results from a symbol search API call (partial match / search bar, etc.).
+     * Provides a list of matching symbol strings.
+     */
+    public interface SymbolSearchCallback {
+        /**
+         * Called when symbol search succeeds.
+         *
+         * @param symbols List of matching symbols.
+         */
+        void onSuccess(List<String> symbols);
+
+        /**
+         * Called if symbol search fails (e.g., network/API error).
+         *
+         * @param e Exception describing the failure.
+         */
+        void onFailure(Exception e);
+    }
+
+    /**
+     * Callback for retrieving a list of news items for a symbol.
+     */
+    public interface ReceiveNewsCallback {
+        void onNewsReceived(List<NewsResponse.NewsItem> news);
+    }
+
+    /**
+     * Callback for when a set of symbols (matching filter/criteria) becomes available.
+     * Used for bulk symbol filtering (e.g., liquidity scan).
+     */
+    public interface SymbolCallback {
+        void onSymbolsAvailable(List<String> symbols);
+    }
+
+    /**
+     * Callback for when a real-time price/bar update is received.
+     * Used by the realTimeDataCollector and other streaming modules.
+     */
+    public interface RealTimeCallback {
+        void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
+    }
+
+    /**
+     * Callback for when company/fundamental overview data has been retrieved.
+     */
+    public interface OverviewCallback {
+        void onOverviewReceived(CompanyOverviewResponse value);
+    }
+
+    /**
      * Swing dialog to visually track the progress of background data fetching tasks.
      * Displays a progress bar and a status label showing (current/total) count.
      * Intended to be used from the EDT (Event Dispatch Thread).
@@ -3298,73 +3473,5 @@ public class mainDataHandler {
      * xBar     - Mean X value (index)
      */
     private record LR(double slopePct, double slopePpu, double r2, double yBar, double xBar) {
-    }
-
-    // ==== Callback interfaces for async operations ====
-
-    /**
-     * Callback interface for retrieving an array of fundamental/price data values for a symbol.
-     * Used in asynchronous API calls to receive data when ready.
-     */
-    public interface DataCallback {
-        void onDataFetched(Double[] values);
-    }
-
-    /**
-     * Callback for receiving a timeline (list of StockUnit bars) for a symbol.
-     * Used when historical or intraday price data has been fetched.
-     */
-    public interface TimelineCallback {
-        void onTimeLineFetched(List<StockUnit> stocks);
-    }
-
-    /**
-     * Callback for results from a symbol search API call (partial match / search bar, etc).
-     * Provides a list of matching symbol strings.
-     */
-    public interface SymbolSearchCallback {
-        /**
-         * Called when symbol search succeeds.
-         *
-         * @param symbols List of matching symbols.
-         */
-        void onSuccess(List<String> symbols);
-
-        /**
-         * Called if symbol search fails (e.g., network/API error).
-         *
-         * @param e Exception describing the failure.
-         */
-        void onFailure(Exception e);
-    }
-
-    /**
-     * Callback for retrieving a list of news items for a symbol.
-     */
-    public interface ReceiveNewsCallback {
-        void onNewsReceived(List<NewsResponse.NewsItem> news);
-    }
-
-    /**
-     * Callback for when a set of symbols (matching filter/criteria) becomes available.
-     * Used for bulk symbol filtering (e.g., liquidity scan).
-     */
-    public interface SymbolCallback {
-        void onSymbolsAvailable(List<String> symbols);
-    }
-
-    /**
-     * Callback for when a real-time price/bar update is received.
-     * Used by the realTimeDataCollector and other streaming modules.
-     */
-    public interface RealTimeCallback {
-        void onRealTimeReceived(RealTimeResponse.RealTimeMatch value);
-    }
-
-    /**
-     * Callback for when company/fundamental overview data has been retrieved.
-     */
-    public interface OverviewCallback {
-        void onOverviewReceived(CompanyOverviewResponse value);
     }
 }

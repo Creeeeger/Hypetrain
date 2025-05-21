@@ -4,6 +4,8 @@ import javax.swing.*;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
+import java.util.Dictionary;
+import java.util.Hashtable;
 
 import static org.crecker.mainUI.*;
 
@@ -18,13 +20,14 @@ public class settingsHandler extends JDialog {
     public static JPanel settingsPanel;
     // Labels and input fields for each setting
     static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel, candleLabel, T212Label, pushCutLabel;
-    static JTextField volumeText, keyText, algoAggressivenessText, T212textField, pushCutTextField;
-    static JCheckBox sortCheckBox, realtimeBox, candleBox;
+    static JTextField volumeText, keyText, T212textField, pushCutTextField;
+    static JSlider algoAggressivenessSlider;
+    static JCheckBox sortCheckBox, realtimeBox, candleBox, greedCheckBox;
     // Internal variables to hold settings values
     int vol;
     float aggressiveness;
     String sym, key, T212, push;
-    boolean sort, realtime, useCandles;
+    boolean sort, realtime, useCandles, greed;
 
     /**
      * Constructs a new settingsHandler dialog with the current config values.
@@ -39,8 +42,9 @@ public class settingsHandler extends JDialog {
      * @param useCandles     Use candle charts.
      * @param T212           Trading212 Api Key
      * @param push           PushCut URL endpoint
+     * @param greed          Whether Greed Mode is turned on
      */
-    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness, boolean useCandles, String T212, String push) {
+    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness, boolean useCandles, String T212, String push, boolean greed) {
         // Set layout manager for this JFrame: BorderLayout allows a central content area
         setLayout(new BorderLayout(10, 10));
 
@@ -54,6 +58,7 @@ public class settingsHandler extends JDialog {
         this.useCandles = useCandles;
         this.T212 = T212;
         this.push = push;
+        this.greed = greed;
 
         // Initialize main settings panel with vertical layout (BoxLayout.Y_AXIS stacks items top to bottom)
         settingsPanel = new JPanel();
@@ -106,11 +111,50 @@ public class settingsHandler extends JDialog {
         realtimeBox.setSelected(realtime);
         realtimeBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Hype algorithm aggressiveness label and field
+        // Label for the hype aggressiveness setting, with explanation using HTML formatting for line break
+        // This explains to users that lower values produce more (but potentially less accurate) entries.
         algoLabel = new JLabel("<html>Hype aggressiveness<br>(lower number for more but less precise entries, vice versa)</html>");
-        algoLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
-        algoAggressivenessText = new JTextField(String.valueOf(aggressiveness));
-        algoAggressivenessText.setAlignmentX(Component.LEFT_ALIGNMENT);
+        algoLabel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align label to the left within its container
+
+        // Convert the initial aggressiveness (float between 0.1 and 2.0) to an integer scale for the slider
+        // We multiply by 10 to map the 0.1–2.0 range to slider values 1–20 (e.g., 1.0 becomes 10)
+        int sliderValue = (int) (aggressiveness * 10);
+
+        // Clamp the value to ensure it's within the valid range [1, 20] to avoid out-of-bounds slider initialization
+        sliderValue = Math.max(1, Math.min(20, sliderValue));
+
+        // Create the aggressiveness slider with a range from 1 (represents 0.1) to 20 (represents 2.0)
+        // The initial value is based on the mapped sliderValue
+        algoAggressivenessSlider = new JSlider(1, 20, sliderValue);
+        algoAggressivenessSlider.setAlignmentX(Component.LEFT_ALIGNMENT); // Left-align the slider
+
+        // Configure the slider to show ticks and labels for user clarity
+        algoAggressivenessSlider.setMajorTickSpacing(5);  // Major ticks every 5 units (0.5 scale step)
+        algoAggressivenessSlider.setMinorTickSpacing(1);  // Minor ticks every 1 unit (0.1 scale step)
+        algoAggressivenessSlider.setPaintTicks(true);     // Show tick marks
+        algoAggressivenessSlider.setPaintLabels(true);    // Show number labels
+
+        // Attach custom labels to key slider values so users can interpret the scale
+        Dictionary<Integer, JLabel> labelTable = new Hashtable<>();
+        labelTable.put(1, new JLabel("0.1"));    // Minimum aggressiveness
+        labelTable.put(10, new JLabel("1.0"));   // Default/mid-level aggressiveness
+        labelTable.put(20, new JLabel("2.0"));   // Maximum aggressiveness
+        algoAggressivenessSlider.setLabelTable(labelTable); // Assign the label map to the slider
+
+        // --- Group the aggressiveness slider and Greed Mode checkbox in a single horizontal panel ---
+        JPanel algoControlPanel = new JPanel();
+        algoControlPanel.setLayout(new BoxLayout(algoControlPanel, BoxLayout.X_AXIS)); // Horizontal layout
+        algoControlPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align the group to the left of parent panel
+
+        // Add the aggressiveness slider to the control panel
+        algoControlPanel.add(algoAggressivenessSlider);
+        algoControlPanel.add(Box.createRigidArea(new Dimension(10, 0))); // Add horizontal spacing between slider and checkbox
+
+        // Create the "Greed Mode" checkbox next to the slider
+        greedCheckBox = new JCheckBox("Greed Mode");
+        greedCheckBox.setSelected(greed);                     // Set its initial state based on passed config value
+        greedCheckBox.setAlignmentY(Component.CENTER_ALIGNMENT); // Vertically center it relative to the slider
+        algoControlPanel.add(greedCheckBox);                  // Add the checkbox to the control panel
 
         // Candle chart option label and checkbox
         candleLabel = new JLabel("Use candles instead of a line chart:");
@@ -146,7 +190,7 @@ public class settingsHandler extends JDialog {
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(algoLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(algoAggressivenessText);
+        settingsPanel.add(algoControlPanel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(candleLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -183,10 +227,11 @@ public class settingsHandler extends JDialog {
                         {"sort", String.valueOf(sortCheckBox.isSelected())},
                         {"key", keyText.getText()},
                         {"realtime", String.valueOf(realtimeBox.isSelected())},
-                        {"algo", String.valueOf(algoAggressivenessText.getText())},
+                        {"algo", String.valueOf(algoAggressivenessSlider.getValue() / 10.0)},
                         {"candle", String.valueOf(candleBox.isSelected())},
                         {"T212", T212textField.getText()},
-                        {"push", pushCutTextField.getText()}
+                        {"push", pushCutTextField.getText()},
+                        {"greed", String.valueOf(greedCheckBox.isSelected())}
                 };
 
                 // Save updated settings to the config XML file
