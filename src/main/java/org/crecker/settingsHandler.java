@@ -168,12 +168,23 @@ public class settingsHandler extends JDialog {
         candleBox.setSelected(useCandles);
         candleBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        // Create a JLabel to prompt the user to select a market regime
         JLabel marketRegimeLabel = new JLabel("Select market regime:");
+        // Align the label to the left within its parent container
         marketRegimeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
 
-        // Create a ComboBox for selecting market regime
+        // --- ComboBox Creation for Market Regimes ---
+
+        // Initialize the ComboBox that will allow the user to select a market regime.
+        // The options in the ComboBox are taken from the keys of 'stockCategoryMap',
+        // which presumably maps each market regime (String) to a set or list of stocks/categories.
         marketRegimeComboBox = new JComboBox<>(stockCategoryMap.keySet().toArray(new String[0]));
+
+        // Align the ComboBox to the left as well, ensuring it lines up visually with the label above.
         marketRegimeComboBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Set the ComboBox's initially selected item to the value of 'market'.
+        // This ensures that when the UI loads, it defaults to the market regime currently in use
         marketRegimeComboBox.setSelectedItem(market);
 
         // Add all components to the settings panel, with spacing for neatness

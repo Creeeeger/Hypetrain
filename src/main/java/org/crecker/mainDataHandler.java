@@ -2289,6 +2289,17 @@ public class mainDataHandler {
             List<Notification> alertsList, double nearRes, float manualAggressiveness,
             float[] normalizedFeatures
     ) {
+        // === 0. Liquidity Check: Only proceed if there is enough trading volume/capital to exit a position ===
+        // Define how much you want to be able to sell
+        double requiredNotional = volume;
+        int liquidityLookBack = 10;        // How many bars/minutes to look back for average liquidity (e.g., 10 minutes)
+
+        // Check if current and recent liquidity are sufficient to execute your trade without major slippage or waiting
+        if (!isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
+            // Not enough liquidity recently; skip all spike logic and do NOT fire notifications.
+            return;
+        }
+
         // === 1. Calculate dynamic composite "aggressiveness" based on active feature weights ===
         // - Uses all normalized features and their respective category weights.
         double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness); // Higher manualAgg increases sensitivity
@@ -2389,6 +2400,45 @@ public class mainDataHandler {
                     prediction, notificationCode
             );
         }
+    }
+
+    /**
+     * Checks if the average notional traded (price × volume) over the last 'lookBack' bars
+     * meets or exceeds the required threshold. This is less strict than requiring every bar
+     * to meet the threshold, and instead focuses on the average liquidity available.
+     *
+     * @param stocks           The list of StockUnit bars (chronological order).
+     * @param lookBack         The number of most recent bars to consider (e.g., 10 for 10 minutes).
+     * @param requiredNotional The minimum average notional value (price × volume) required.
+     * @return true if the average notional over the lookBack window is >= requiredNotional; false otherwise.
+     */
+    private static boolean isLiquiditySufficient(List<StockUnit> stocks, int lookBack, double requiredNotional) {
+        // Ensure that there are enough historical bars to perform the liquidity check.
+        // If there are fewer bars than 'lookBack', we cannot make a reliable decision, so fail fast.
+        if (stocks.size() < lookBack) return false;
+
+        // Will accumulate the sum of notional traded over the lookBack window.
+        double totalNotional = 0.0;
+
+        // Iterate over the last 'lookBack' bars in the list.
+        // This loop starts at (size - lookBack) to only include the most recent 'lookBack' bars.
+        for (int i = stocks.size() - lookBack; i < stocks.size(); i++) {
+            StockUnit bar = stocks.get(i); // Fetch the current bar (e.g., 1-min or 5-min candle).
+            double close = bar.getClose();     // Get the closing price for this bar.
+            double volume = bar.getVolume();   // Get the total volume traded in this bar.
+
+            // Compute the notional value traded in this bar (i.e., how much money changed hands).
+            // This is the "liquidity" available in this period for trading.
+            totalNotional += close * volume;
+        }
+
+        // Calculate the average notional traded per bar over the lookBack window.
+        // This represents the typical liquidity you can expect to transact without excessive impact.
+        double averageNotional = totalNotional / lookBack;
+
+        // The liquidity is sufficient if the average notional is at least as large as the required amount
+        // needed to safely trade your position. If so, return true; otherwise, return false.
+        return averageNotional >= requiredNotional;
     }
 
     /**
