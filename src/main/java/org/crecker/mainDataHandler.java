@@ -586,38 +586,50 @@ public class mainDataHandler {
     }
 
     /**
-     * Starts "Hype Mode", which automatically selects a subset of symbols for high-frequency scanning
-     * based on the specified trade volume.
+     * Starts "Hype Mode" auto-scanning for stock symbols using the specified market regime and trade volume.
      * <p>
-     * This method is designed to quickly assemble a list of stocks that match the user's trading size,
-     * ensuring sufficient liquidity for realistic simulations or scanning. It minimizes redundant API calls
-     * by using local file caching for large volumes and falls back to a pre-set symbol list for lower volumes.
-     * <ul>
-     *   <li>For trade volumes above 90,000, the function uses a cache file (named "[tradeVolume].txt").</li>
-     *   <li>If the file exists, it loads symbols directly from disk, saving time and API quota.</li>
-     *   <li>If the file does not exist, it dynamically filters symbols using {@link #getAvailableSymbols},
-     *       then writes them to the cache for future use.</li>
-     *   <li>For trade volumes 90,000 or below, it simply uses the full list of {@code stockSymbols}.</li>
-     *   <li>In all cases, the function calls {@link #hypeModeFinder(List)} with the resulting symbol set.</li>
-     * </ul>
-     * Progress and status updates are shown in the UI's {@code logTextArea} in real time.
+     * This method dynamically assembles a list of stock symbols tailored to both the user-selected market regime
+     * and trading volume, ensuring sufficient liquidity for realistic simulations or scanning.
+     * It uses per-(regime+volume) local file caching to minimize redundant API calls, and always invokes
+     * {@link #hypeModeFinder(List)} with the selected symbol set.
      *
-     * @param tradeVolume The user-selected trade volume for filtering stocks (e.g., 10,000, 100,000, etc.)
+     * <ul>
+     *   <li><b>For trade volumes above 90,000</b>, the function uses a regime-specific cache file
+     *       (named "{@code [marketRegime]_[tradeVolume].txt}").</li>
+     *   <li>If the file exists, it loads symbols for that regime directly from disk to save time and API quota.</li>
+     *   <li>If the file does not exist, it dynamically filters symbols for that regime via
+     *       {@link #getAvailableSymbols}, then writes them to the cache for future use.</li>
+     *   <li><b>For trade volumes 90,000 or below</b>, it simply uses the full list of symbols for the
+     *       current regime (from {@code stockCategoryMap}).</li>
+     *   <li>In all cases, the resulting list is passed to {@link #hypeModeFinder(List)} for analysis.</li>
+     * </ul>
+     * <p>
+     * All progress and status updates are shown in the UI's {@code logTextArea} in real time, and
+     * all file operations and symbol selection are now <b>regime-aware</b>.
+     *
+     * @param marketRegime The currently selected market regime/category (e.g., "aiStocks", "bigCaps", etc.)
+     * @param tradeVolume  The user-selected trade volume for filtering stocks (e.g., 10,000, 100,000, etc.)
      */
-    public static void startHypeMode(int tradeVolume) {
-        // Log start message: indicates hype mode activation and initial parameters
+    public static void startHypeMode(String marketRegime, int tradeVolume) {
+        // --- 1. Get symbol list for the active market regime ---
+        // Uses the stockCategoryMap to fetch only the symbols relevant to the selected regime
+        String[] symbolsForRegime = stockCategoryMap.getOrDefault(marketRegime, new String[0]);
+
+        // Log start message: indicates hype mode activation, current market regime, and initial parameters
         logTextArea.append(String.format(
-                "Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Stocks to scan\n",
-                tradeVolume, stockSymbols.length));
+                "Activating hype mode for auto Stock scanning, Settings: %s Volume, %s Market Regime, %s Stocks to scan\n",
+                tradeVolume, marketRegime, symbolsForRegime.length));
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
         // Local container for filtered or loaded symbol names (uppercased)
         List<String> possibleSymbols = new ArrayList<>();
 
+        // --- 2. Use a regime-specific cache file (e.g., "aiStocks_90000.txt") ---
+        String cacheFileName = marketRegime + "_" + tradeVolume + ".txt";
+        File file = new File(cacheFileName);
+
         // ======= MAIN LOGIC BRANCH: LARGE TRADE VOLUME =======
         if (tradeVolume > 90000) {
-            File file = new File(tradeVolume + ".txt"); // Use a dedicated file for each volume setting
-
             if (file.exists()) {
                 // ------------ [1] FILE EXISTS: LOAD SYMBOLS FROM DISK ------------
                 try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
@@ -630,8 +642,8 @@ public class mainDataHandler {
                     e.printStackTrace(); // Print to stderr for debugging if file can't be read
                 }
 
-                // Log success to UI
-                logTextArea.append("Loaded symbols from file\n");
+                // Log success to UI (shows which regime file was loaded)
+                logTextArea.append("Loaded symbols from file: " + cacheFileName + "\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
                 // Proceed to next step with the loaded symbols
@@ -639,11 +651,11 @@ public class mainDataHandler {
 
             } else {
                 // ------------ [2] FILE DOES NOT EXIST: FETCH AND CACHE SYMBOLS ------------
-                logTextArea.append("Started getting possible symbols\n");
+                logTextArea.append("Started getting possible symbols for regime: " + marketRegime + "\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-                // Dynamically fetch suitable symbols and cache to file for next run
-                getAvailableSymbols(tradeVolume, stockSymbols, result -> {
+                // Dynamically fetch suitable symbols for this regime and cache to file for next run
+                getAvailableSymbols(tradeVolume, symbolsForRegime, result -> {
                     try (FileWriter writer = new FileWriter(file)) {
                         for (String s : result) {
                             String symbol = s.toUpperCase();
@@ -654,8 +666,8 @@ public class mainDataHandler {
                         e.printStackTrace(); // Error writing cache file (still proceeds)
                     }
 
-                    // Log finish and proceed to main analysis
-                    logTextArea.append("Finished getting possible symbols\n");
+                    // Log finish and proceed to main analysis (with regime info)
+                    logTextArea.append("Finished getting possible symbols for regime: " + marketRegime + "\n");
                     logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
                     hypeModeFinder(possibleSymbols); // Continue with filtered set
@@ -663,11 +675,11 @@ public class mainDataHandler {
             }
         } else {
             // ======= MAIN LOGIC BRANCH: SMALL OR DEFAULT TRADE VOLUME =======
-            // No filtering or API hit—simply use all available symbols
-            possibleSymbols.addAll(Arrays.asList(stockSymbols));
+            // No filtering or API hit—simply use all available symbols for the selected regime
+            possibleSymbols.addAll(Arrays.asList(symbolsForRegime));
 
-            // Log to UI for transparency
-            logTextArea.append("Use pre set symbols\n");
+            // Log to UI for transparency (regime-aware)
+            logTextArea.append("Using pre-set symbols for regime: " + marketRegime + "\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
             // Begin hype mode scan on the unfiltered set

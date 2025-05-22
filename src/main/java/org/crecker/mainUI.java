@@ -2806,7 +2806,7 @@ public class mainUI extends JFrame {
             executorService.submit(() -> {
                 try {
                     // Kick off the mainDataHandler's hype mode analysis
-                    mainDataHandler.startHypeMode(volume);
+                    mainDataHandler.startHypeMode(market, volume);
                 } catch (Exception ex) {
                     // Log any error (for debugging)
                     ex.printStackTrace();
