@@ -22,7 +22,7 @@ public class ADResponse extends SimpleIndicatorResponse {
         return parser.parse(stringObjectMap);
     }
 
-    public static class ADParser extends SimpleIndicatorParser<ADResponse>{
+    public static class ADParser extends SimpleIndicatorParser<ADResponse> {
 
         @Override
         public ADResponse get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData) {

@@ -28,5 +28,5 @@ public class STOCHRSIIndicatorUnit {
     public String toString() {
         return "STOCHRSIndicatorUnit {date=" + date + ", fastKValue=" + fastKValue + ", fastDValue=" + fastDValue + "}";
     }
-    
+
 }

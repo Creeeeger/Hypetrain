@@ -17,7 +17,7 @@ public class MOMResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static MOMResponse of(Map<String, Object> stringObjectMap){
+    public static MOMResponse of(Map<String, Object> stringObjectMap) {
         Parser<MOMResponse> parser = new MOMResponseParser();
         return parser.parse(stringObjectMap);
     }

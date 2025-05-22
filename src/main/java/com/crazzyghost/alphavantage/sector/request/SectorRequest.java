@@ -5,13 +5,13 @@ import com.crazzyghost.alphavantage.parameters.Function;
 /**
  * @author crazzyghost
  * @since 1.4.0
- * A Sector request 
+ * A Sector request
  */
 public final class SectorRequest {
 
     private Function function;
 
-    private SectorRequest(Builder builder){
+    private SectorRequest(Builder builder) {
         this.function = builder.function;
     }
 
@@ -19,11 +19,11 @@ public final class SectorRequest {
 
         private Function function;
 
-        public Builder(){
+        public Builder() {
             this.function = Function.SECTOR;
         }
 
-        public SectorRequest build(){
+        public SectorRequest build() {
             return new SectorRequest(this);
         }
 

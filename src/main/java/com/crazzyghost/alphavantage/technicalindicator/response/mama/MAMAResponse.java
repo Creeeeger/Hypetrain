@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.mama;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class MAMAResponse {
 
@@ -25,6 +25,11 @@ public class MAMAResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static MAMAResponse of(Map<String, Object> stringObjectMap) {
+        Parser<MAMAResponse> parser = new MAMAParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class MAMAResponse {
         return metaData;
     }
 
-    public static MAMAResponse of(Map<String, Object> stringObjectMap) {
-        Parser<MAMAResponse> parser = new MAMAParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "MAMAResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class MAMAParser extends DefaultParser<MAMAResponse> {
@@ -74,15 +83,6 @@ public class MAMAResponse {
         public MAMAResponse onParseError(String error) {
             return new MAMAResponse(error);
         }
-    }
-
-    @Override
-    public String toString() {
-        return "MAMAResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

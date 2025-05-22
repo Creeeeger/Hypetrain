@@ -10,7 +10,7 @@ public enum Maturity {
 
     private final String maturity;
 
-    Maturity(String maturity){
+    Maturity(String maturity) {
         this.maturity = maturity;
     }
 

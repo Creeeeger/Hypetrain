@@ -41,12 +41,13 @@ public class DigitalCurrencyRequest extends CryptoRequest {
     public static class Builder extends CryptoRequest.Builder<Builder> {
 
         private String market;
-        
+
+        public Builder() {
+        }
+
         public String getMarket() {
             return market;
         }
-
-        public Builder() { }
 
         public Builder market(String market) {
             this.market = market;
@@ -54,9 +55,9 @@ public class DigitalCurrencyRequest extends CryptoRequest {
         }
 
         @Override
-        public CryptoRequest build(){
+        public CryptoRequest build() {
             return new DigitalCurrencyRequest(this);
         }
     }
-    
+
 }

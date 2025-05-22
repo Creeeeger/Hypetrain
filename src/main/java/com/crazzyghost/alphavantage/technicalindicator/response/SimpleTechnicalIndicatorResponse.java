@@ -44,6 +44,15 @@ public abstract class SimpleTechnicalIndicatorResponse {
     // return parser.parse(stringObjectMap);
     // }
 
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class SimpleTechnicalIndicatorParser<T> extends DefaultParser<T> {
 
         protected SimpleTechnicalIndicatorParser() {
@@ -82,15 +91,6 @@ public abstract class SimpleTechnicalIndicatorResponse {
         public abstract T get(String error);
 
         public abstract String getTechnicalIndicatorKey();
-    }
-
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

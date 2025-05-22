@@ -11,13 +11,13 @@ public class MetaData {
     private String timeZone;
 
     public MetaData(
-        String information,
-        String fromSymbol,
-        String toSymbol,
-        String lastRefreshed,
-        String interval,
-        String outputSize,
-        String timeZone
+            String information,
+            String fromSymbol,
+            String toSymbol,
+            String lastRefreshed,
+            String interval,
+            String outputSize,
+            String timeZone
     ) {
         this.information = information;
         this.fromSymbol = fromSymbol;
@@ -28,7 +28,7 @@ public class MetaData {
         this.timeZone = timeZone;
     }
 
-    public static MetaData empty(){
+    public static MetaData empty() {
         return new MetaData(null, null, null, null, null, null, null);
     }
 

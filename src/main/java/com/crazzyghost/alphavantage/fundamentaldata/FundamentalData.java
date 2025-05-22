@@ -49,7 +49,9 @@ public final class FundamentalData implements Fetcher {
     private Fetcher.SuccessCallback<?> successCallback;
     private Fetcher.FailureCallback failureCallback;
 
-    public FundamentalData(Config config) { this.config = config; }
+    public FundamentalData(Config config) {
+        this.config = config;
+    }
 
 
     public IncomeStatementRequestProxy incomeStatement() {
@@ -79,15 +81,15 @@ public final class FundamentalData implements Fetcher {
         config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new okhttp3.Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                if(failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
+                if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
             }
 
             @Override
-            public void onResponse(Call call,  Response response) throws IOException {
-                if(!response.isSuccessful()){
-                    if(failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
+            public void onResponse(Call call, Response response) throws IOException {
+                if (!response.isSuccessful()) {
+                    if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
                 } else {
-                    try(ResponseBody body = response.body()){
+                    try (ResponseBody body = response.body()) {
                         parseFundamentalDataResponse(Parser.parseJSON(body.string()));
                     }
                 }
@@ -98,12 +100,12 @@ public final class FundamentalData implements Fetcher {
     /**
      * Make a blocking synchronous http request to fetch the data.
      * This will be called by the {@link FundamentalData.RequestProxy#fetchSync()}.
-     *
+     * <p>
      * Using this method will overwrite any async callback
      *
-     * @since 1.6.0
      * @param successCallback internally used {@link SuccessCallback}
      * @throws AlphaVantageException exception thrown
+     * @since 1.6.0
      */
     private void fetchSync(SuccessCallback<?> successCallback) throws AlphaVantageException {
 
@@ -114,7 +116,7 @@ public final class FundamentalData implements Fetcher {
         okhttp3.OkHttpClient client = config.getOkHttpClient();
         try (Response response = client.newCall(UrlExtractor.extract(builder.build(), config.getKey())).execute()) {
             parseFundamentalDataResponse(Parser.parseJSON(response.body().string()));
-        } catch(IOException e) {
+        } catch (IOException e) {
             throw new AlphaVantageException(e.getMessage());
         }
     }
@@ -144,55 +146,55 @@ public final class FundamentalData implements Fetcher {
     @SuppressWarnings("unchecked")
     private void parseCompanyOverviewResponse(Map<String, Object> data/*Object data*/) {
         CompanyOverviewResponse response = CompanyOverviewResponse.of(data);
-        if(response.getErrorMessage() != null && failureCallback != null) {
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null){
-            ((Fetcher.SuccessCallback<CompanyOverviewResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<CompanyOverviewResponse>) successCallback).onSuccess(response);
         }
     }
 
     @SuppressWarnings("unchecked")
     private void parseBalanceSheetResponse(Map<String, Object> data) {
         BalanceSheetResponse response = BalanceSheetResponse.of(data);
-        if(response.getErrorMessage() != null && failureCallback != null) {
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null){
-            ((Fetcher.SuccessCallback<BalanceSheetResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<BalanceSheetResponse>) successCallback).onSuccess(response);
         }
     }
 
     @SuppressWarnings("unchecked")
     private void parseIncomeStatementResponse(Map<String, Object> data) {
         IncomeStatementResponse response = IncomeStatementResponse.of(data);
-        if(response.getErrorMessage() != null && failureCallback != null) {
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null){
-            ((Fetcher.SuccessCallback<IncomeStatementResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<IncomeStatementResponse>) successCallback).onSuccess(response);
         }
     }
 
     @SuppressWarnings("unchecked")
     private void parseCashFlowResponse(Map<String, Object> data) {
         CashFlowResponse response = CashFlowResponse.of(data);
-        if(response.getErrorMessage() != null && failureCallback != null) {
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null){
-            ((Fetcher.SuccessCallback<CashFlowResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<CashFlowResponse>) successCallback).onSuccess(response);
         }
     }
 
     @SuppressWarnings("unchecked")
     private void parseEarningsResponse(Map<String, Object> data) {
         EarningsResponse response = EarningsResponse.of(data);
-        if(response.getErrorMessage() != null && failureCallback != null) {
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null){
-            ((Fetcher.SuccessCallback<EarningsResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<EarningsResponse>) successCallback).onSuccess(response);
         }
     }
 
@@ -201,7 +203,8 @@ public final class FundamentalData implements Fetcher {
         protected FundamentalDataRequest.Builder<?> builder;
         protected ProxyResponse syncResponse;
 
-        private RequestProxy() {}
+        private RequestProxy() {
+        }
 
         public Proxy forSymbol(String symbol) {
             this.builder.symbol(symbol);
@@ -210,12 +213,12 @@ public final class FundamentalData implements Fetcher {
 
         public Proxy onSuccess(SuccessCallback<?> callback) {
             FundamentalData.this.successCallback = callback;
-            return (Proxy)this;
+            return (Proxy) this;
         }
 
         public Proxy onFailure(FailureCallback callback) {
             FundamentalData.this.failureCallback = callback;
-            return (Proxy)this;
+            return (Proxy) this;
         }
 
         public void fetch() {
@@ -244,35 +247,45 @@ public final class FundamentalData implements Fetcher {
 
     }
 
-    /** Proxy class for building an IncomeStatementRequests **/
+    /**
+     * Proxy class for building an IncomeStatementRequests
+     **/
     public class IncomeStatementRequestProxy extends RequestProxy<IncomeStatementRequestProxy, IncomeStatementResponse> {
         public IncomeStatementRequestProxy() {
             builder = new IncomeStatementRequest.Builder();
         }
     }
 
-    /** Proxy class for building an BalanceSheet **/
+    /**
+     * Proxy class for building an BalanceSheet
+     **/
     public class BalanceSheetRequestProxy extends RequestProxy<BalanceSheetRequestProxy, BalanceSheetResponse> {
         public BalanceSheetRequestProxy() {
             builder = new BalanceSheetRequest.Builder();
         }
     }
 
-    /** Proxy class for building an CashFlow **/
+    /**
+     * Proxy class for building an CashFlow
+     **/
     public class CashFlowRequestProxy extends RequestProxy<CashFlowRequestProxy, CashFlowResponse> {
         public CashFlowRequestProxy() {
             builder = new CashFlowRequest.Builder();
         }
     }
 
-    /** Proxy class for building an Earnings **/
+    /**
+     * Proxy class for building an Earnings
+     **/
     public class EarningsRequestProxy extends RequestProxy<EarningsRequestProxy, EarningsResponse> {
         public EarningsRequestProxy() {
             builder = new EarningsRequest.Builder();
         }
     }
 
-    /** Proxy class for building an CompanyOverview **/
+    /**
+     * Proxy class for building an CompanyOverview
+     **/
     public class CompanyOverViewRequestProxy extends RequestProxy<CompanyOverViewRequestProxy, CompanyOverviewResponse> {
         public CompanyOverViewRequestProxy() {
             builder = new CompanyOverviewRequest.Builder();

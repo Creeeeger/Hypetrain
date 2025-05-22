@@ -35,5 +35,5 @@ public class MACDIndicatorUnit {
                 + macdSignalValue + ", macdValue=" + macdValue + "}";
     }
 
-    
+
 }

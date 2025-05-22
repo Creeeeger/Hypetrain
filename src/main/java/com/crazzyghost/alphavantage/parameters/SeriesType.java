@@ -8,7 +8,7 @@ public enum SeriesType {
 
     private final String seriesType;
 
-    SeriesType(String seriesType){
+    SeriesType(String seriesType) {
         this.seriesType = seriesType;
     }
 

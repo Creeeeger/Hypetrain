@@ -17,8 +17,8 @@ public class MetaData {
         this.outputSize = outputSize;
         this.timeZone = timeZone;
     }
-    
-    public static MetaData empty(){
+
+    public static MetaData empty() {
         return new MetaData(null, null, null, null, null, null);
     }
 
@@ -54,8 +54,8 @@ public class MetaData {
         sb.append("symbol=" + symbol);
         sb.append("lastRefreshed=" + lastRefreshed);
         sb.append("timeZone=" + timeZone);
-        if(interval != null) sb.append("interval=" + interval);
-        if(outputSize != null) sb.append("outputSize=" + outputSize);
+        if (interval != null) sb.append("interval=" + interval);
+        if (outputSize != null) sb.append("outputSize=" + outputSize);
         sb.append("}");
         return sb.toString();
     }

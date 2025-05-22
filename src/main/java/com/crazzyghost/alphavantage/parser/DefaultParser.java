@@ -5,18 +5,17 @@ import java.util.List;
 import java.util.Map;
 
 /**
+ * @param <T> Response Type
  * @author crazzyghost
  * @since 1.4.0
- * @param <T> Response Type
- *
- * */
+ */
 public abstract class DefaultParser<T> extends Parser<T> {
 
     public abstract T parse(Map<String, String> metaData, Map<String, Map<String, String>> data);
 
     @Override
     @SuppressWarnings("unchecked")
-    public T parse(Map<String, Object> object){
+    public T parse(Map<String, Object> object) {
         List<String> keys = new ArrayList<>(object.keySet());
 
         if (keys.isEmpty()) {
@@ -25,10 +24,10 @@ public abstract class DefaultParser<T> extends Parser<T> {
             Map<String, String> metaData;
             Map<String, Map<String, String>> units;
 
-            try{
+            try {
                 metaData = (Map<String, String>) object.get(keys.get(0));
-                units = (Map<String, Map<String,String>>) object.get(keys.get(1));
-            }catch (ClassCastException ex){
+                units = (Map<String, Map<String, String>>) object.get(keys.get(1));
+            } catch (ClassCastException ex) {
                 return onParseError(object.get(keys.get(0)).toString());
             }
 

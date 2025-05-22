@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.indicator.response.mama;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class MAMAResponse {
 
@@ -13,16 +13,21 @@ public class MAMAResponse {
     private List<MAMAIndicatorUnit> indicatorUnits;
     private String errorMessage;
 
-    private MAMAResponse(List<MAMAIndicatorUnit> indicatorUnits, MetaData metaData){
+    private MAMAResponse(List<MAMAIndicatorUnit> indicatorUnits, MetaData metaData) {
         this.metaData = metaData;
         this.indicatorUnits = indicatorUnits;
         this.errorMessage = null;
     }
 
-    private MAMAResponse(String errorMessage){
+    private MAMAResponse(String errorMessage) {
         this.metaData = new MetaData();
         this.indicatorUnits = new ArrayList<>();
         this.errorMessage = errorMessage;
+    }
+
+    public static MAMAResponse of(Map<String, Object> stringObjectMap) {
+        Parser<MAMAResponse> parser = new MAMAParser();
+        return parser.parse(stringObjectMap);
     }
 
     public String getErrorMessage() {
@@ -32,14 +37,18 @@ public class MAMAResponse {
     public List<MAMAIndicatorUnit> getIndicatorUnits() {
         return indicatorUnits;
     }
-    
+
     public MetaData getMetaData() {
         return metaData;
     }
-    
-    public static MAMAResponse of(Map<String, Object> stringObjectMap){
-        Parser<MAMAResponse> parser = new MAMAParser();
-        return parser.parse(stringObjectMap);
+
+    @Override
+    public String toString() {
+        return "MAMAResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class MAMAParser extends DefaultParser<MAMAResponse> {
@@ -48,24 +57,24 @@ public class MAMAResponse {
         public MAMAResponse parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
 
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")),
-                String.valueOf(metaDataMap.get("2: Indicator")),
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.1: Fast Limit"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.2: Slow Limit"))),
-                String.valueOf(metaDataMap.get("6: Series Type")),
-                String.valueOf(metaDataMap.get("7: Time Zone"))            
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.1: Fast Limit"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.2: Slow Limit"))),
+                    String.valueOf(metaDataMap.get("6: Series Type")),
+                    String.valueOf(metaDataMap.get("7: Time Zone"))
             );
 
-            List<MAMAIndicatorUnit> indicatorUnits =  new ArrayList<>();
+            List<MAMAIndicatorUnit> indicatorUnits = new ArrayList<>();
 
-            for (Map.Entry<String,Map<String,String>> e: indicatorData.entrySet()) {
-                Map<String, String> m = e.getValue();     
+            for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
+                Map<String, String> m = e.getValue();
                 MAMAIndicatorUnit indicatorUnit = new MAMAIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get("FAMA")),
-                    Double.parseDouble(m.get("MAMA"))
+                        e.getKey(),
+                        Double.parseDouble(m.get("FAMA")),
+                        Double.parseDouble(m.get("MAMA"))
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -78,16 +87,6 @@ public class MAMAResponse {
         }
     }
 
-
-    @Override
-    public String toString() {
-        return "MAMAResponse{" +
-            "metaData=" + metaData +
-            ",indicatorUnits=" + indicatorUnits.size() +
-            ", errorMessage='" + errorMessage + '\'' +
-        '}';
-    }
-
     public static class MetaData {
 
         private String symbol;
@@ -98,16 +97,16 @@ public class MAMAResponse {
         private double slowLimit;
         private String timeZone;
         private String seriesType;
-        
+
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            double fastLimit,
-            double slowLimit, 
-            String seriesType,
-            String timeZone
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                double fastLimit,
+                double slowLimit,
+                String seriesType,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -118,12 +117,12 @@ public class MAMAResponse {
             this.timeZone = timeZone;
             this.seriesType = seriesType;
         }
-        
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", 0.1, 0.1, "", "");
         }
 
-        
+
         public String getSymbol() {
             return symbol;
         }
@@ -159,8 +158,8 @@ public class MAMAResponse {
         @Override
         public String toString() {
             return "MetaData {fastLimit=" + fastLimit + ", indicator=" + indicator + ", interval=" + interval
-            + ", lastRefreshed=" + lastRefreshed + ", seriesType=" + seriesType + ", slowLimit=" + slowLimit
-            + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
+                    + ", lastRefreshed=" + lastRefreshed + ", seriesType=" + seriesType + ", slowLimit=" + slowLimit
+                    + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
         }
     }
 

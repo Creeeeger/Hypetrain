@@ -1,12 +1,12 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.ultosc;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class ULTOSCResponse {
 
@@ -26,6 +26,11 @@ public class ULTOSCResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static ULTOSCResponse of(Map<String, Object> stringObjectMap) {
+        Parser<ULTOSCResponse> parser = new ULTOSCParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -38,9 +43,13 @@ public class ULTOSCResponse {
         return metaData;
     }
 
-    public static ULTOSCResponse of(Map<String, Object> stringObjectMap) {
-        Parser<ULTOSCResponse> parser = new ULTOSCParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "ULTOSCResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class ULTOSCParser extends DefaultParser<ULTOSCResponse> {
@@ -77,15 +86,6 @@ public class ULTOSCResponse {
             return new ULTOSCResponse(error);
         }
 
-    }
-
-    @Override
-    public String toString() {
-        return "ULTOSCResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

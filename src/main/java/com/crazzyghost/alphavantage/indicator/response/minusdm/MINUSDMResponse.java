@@ -17,7 +17,7 @@ public class MINUSDMResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static MINUSDMResponse of(Map<String, Object> stringObjectMap){
+    public static MINUSDMResponse of(Map<String, Object> stringObjectMap) {
         Parser<MINUSDMResponse> parser = new MINUSDMParser();
         return parser.parse(stringObjectMap);
     }

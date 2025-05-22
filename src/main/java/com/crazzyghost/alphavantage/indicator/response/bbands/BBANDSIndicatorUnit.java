@@ -12,7 +12,7 @@ public class BBANDSIndicatorUnit {
         this.realLowerBandValue = realLowerBandValue;
         this.realMiddleBandValue = realMiddleBandValue;
     }
-    
+
     public String getDate() {
         return date;
     }
@@ -20,11 +20,11 @@ public class BBANDSIndicatorUnit {
     public double getRealUpperBandValue() {
         return realUpperBandValue;
     }
-    
+
     public double getRealLowerBandValue() {
         return realLowerBandValue;
     }
-    
+
     public double getRealMiddleBandValue() {
         return realMiddleBandValue;
     }
@@ -34,6 +34,6 @@ public class BBANDSIndicatorUnit {
         return "BBANDSIndicatorUnit {date=" + date + ", realLowerBandValue=" + realLowerBandValue
                 + ", realMiddleBandValue=" + realMiddleBandValue + ", realUpperBandValue=" + realUpperBandValue + "}";
     }
- 
-    
+
+
 }

@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.sector.response;
 
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.Parser;
 
 /**
  * @author crazzyghost
@@ -18,16 +18,16 @@ public final class SectorResponse {
     private Map<String, SectorUnit> sectorUnits;
     private String errorMessage;
 
-    private SectorResponse(MetaData metaData, Map<String, SectorUnit> sectorUnits){
+    private SectorResponse(MetaData metaData, Map<String, SectorUnit> sectorUnits) {
         this.metaData = metaData;
         this.sectorUnits = sectorUnits;
     }
 
-    private SectorResponse(String errorMessage){
+    private SectorResponse(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
-    public static SectorResponse of(Map<String, Object> stringObjectMap){
+    public static SectorResponse of(Map<String, Object> stringObjectMap) {
         Parser<SectorResponse> parser = new SectorParser();
         return parser.parse(stringObjectMap);
     }
@@ -40,47 +40,51 @@ public final class SectorResponse {
         return metaData;
     }
 
-    public SectorUnit getRealTimePerformance(){
+    public SectorUnit getRealTimePerformance() {
         return sectorUnits.getOrDefault("Rank A: Real-Time Performance", null);
     }
 
-    public SectorUnit getOneDayPerformance(){
+    public SectorUnit getOneDayPerformance() {
         return sectorUnits.getOrDefault("Rank B: 1 Day Performance", null);
     }
 
-    public SectorUnit getFiveDayPerformance(){
+    public SectorUnit getFiveDayPerformance() {
         return sectorUnits.getOrDefault("Rank C: 5 Day Performance", null);
     }
 
-    public SectorUnit getOneMonthPerformance(){
+    public SectorUnit getOneMonthPerformance() {
         return sectorUnits.getOrDefault("Rank D: 1 Month Performance", null);
     }
 
-    public SectorUnit getThreeMonthPerformance(){
+    public SectorUnit getThreeMonthPerformance() {
         return sectorUnits.getOrDefault("Rank E: 3 Month Performance", null);
     }
 
-    public SectorUnit getYearToDatePerformance(){
+    public SectorUnit getYearToDatePerformance() {
         return sectorUnits.getOrDefault("Rank F: Year-to-Date (YTD) Performance", null);
     }
 
-    public SectorUnit getOneYearPerformance(){
+    public SectorUnit getOneYearPerformance() {
         return sectorUnits.getOrDefault("Rank G: 1 Year Performance", null);
     }
 
-    public SectorUnit getThreeYearPerformance(){
+    public SectorUnit getThreeYearPerformance() {
         return sectorUnits.getOrDefault("Rank H: 3 Year Performance", null);
     }
 
-    public SectorUnit getFiveYearPerformance(){
+    public SectorUnit getFiveYearPerformance() {
         return sectorUnits.getOrDefault("Rank I: 5 Year Performance", null);
     }
 
-    public SectorUnit getTenYearPerformance(){
+    public SectorUnit getTenYearPerformance() {
         return sectorUnits.getOrDefault("Rank J: 10 Year Performance", null);
     }
 
-
+    @Override
+    public String toString() {
+        return "SectorResponse {errorMessage=" + errorMessage + ", metaData=" + metaData + ", sectorUnits="
+                + sectorUnits + "}";
+    }
 
     public static class SectorParser extends Parser<SectorResponse> {
 
@@ -161,11 +165,5 @@ public final class SectorResponse {
             return "MetaData {information=" + information + ", lastRefreshed=" + lastRefreshed + "}";
         }
 
-    }
-
-    @Override
-    public String toString() {
-        return "SectorResponse {errorMessage=" + errorMessage + ", metaData=" + metaData + ", sectorUnits="
-                + sectorUnits + "}";
     }
 }

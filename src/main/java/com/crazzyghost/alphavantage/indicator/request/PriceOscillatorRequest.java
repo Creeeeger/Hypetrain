@@ -8,7 +8,7 @@ public class PriceOscillatorRequest extends IndicatorRequest {
     private SeriesType series_type;
     private int fastPeriod;
     private int slowPeriod;
-    private MAType maType; 
+    private MAType maType;
 
     private PriceOscillatorRequest(Builder builder) {
         super(builder);
@@ -25,22 +25,22 @@ public class PriceOscillatorRequest extends IndicatorRequest {
         private MAType maType = MAType.SMA;
         private SeriesType seriesType;
 
-        public Builder fastPeriod(int fastPeriod){
+        public Builder fastPeriod(int fastPeriod) {
             this.fastPeriod = fastPeriod;
             return this;
         }
 
-        public Builder slowPeriod(int slowPeriod){
+        public Builder slowPeriod(int slowPeriod) {
             this.slowPeriod = slowPeriod;
             return this;
         }
 
-        public Builder seriesType(SeriesType seriesType){
+        public Builder seriesType(SeriesType seriesType) {
             this.seriesType = seriesType;
             return this;
         }
 
-        public Builder maType(MAType maType){
+        public Builder maType(MAType maType) {
             this.maType = maType;
             return this;
         }
@@ -49,7 +49,7 @@ public class PriceOscillatorRequest extends IndicatorRequest {
         public IndicatorRequest build() {
             return new PriceOscillatorRequest(this);
         }
-        
-    }   
+
+    }
 
 }

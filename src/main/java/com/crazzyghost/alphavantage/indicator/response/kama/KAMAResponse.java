@@ -17,7 +17,7 @@ public class KAMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static KAMAResponse of(Map<String, Object> stringObjectMap){
+    public static KAMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<KAMAResponse> parser = new KAMAResponseParser();
         return parser.parse(stringObjectMap);
     }

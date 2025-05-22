@@ -17,7 +17,7 @@ public class RSIResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static RSIResponse of(Map<String, Object> stringObjectMap){
+    public static RSIResponse of(Map<String, Object> stringObjectMap) {
         Parser<RSIResponse> parser = new RSIResponseParser();
         return parser.parse(stringObjectMap);
     }

@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.stochf;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class STOCHFResponse {
 
@@ -25,6 +25,11 @@ public class STOCHFResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static STOCHFResponse of(Map<String, Object> stringObjectMap) {
+        Parser<STOCHFResponse> parser = new STOCHFParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class STOCHFResponse {
         return metaData;
     }
 
-    public static STOCHFResponse of(Map<String, Object> stringObjectMap) {
-        Parser<STOCHFResponse> parser = new STOCHFParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "STOCHFResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class STOCHFParser extends DefaultParser<STOCHFResponse> {
@@ -71,15 +80,6 @@ public class STOCHFResponse {
         public STOCHFResponse onParseError(String error) {
             return new STOCHFResponse(error);
         }
-    }
-
-    @Override
-    public String toString() {
-        return "STOCHFResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

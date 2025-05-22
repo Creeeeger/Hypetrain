@@ -39,13 +39,13 @@ public class MetaData {
     private final String timeZone;
 
     public MetaData(
-        String information,
-        String digitalCurrencyCode,
-        String digitalCurrencyName,
-        String marketCode,
-        String marketName,
-        String lastRefreshed,
-        String timeZone
+            String information,
+            String digitalCurrencyCode,
+            String digitalCurrencyName,
+            String marketCode,
+            String marketName,
+            String lastRefreshed,
+            String timeZone
     ) {
         this.information = information;
         this.digitalCurrencyCode = digitalCurrencyCode;
@@ -57,8 +57,8 @@ public class MetaData {
     }
 
 
-    public static MetaData empty(){
-        return new MetaData("","","","", "", "", "");
+    public static MetaData empty() {
+        return new MetaData("", "", "", "", "", "", "");
     }
 
     public String getDigitalCurrencyCode() {
@@ -72,7 +72,7 @@ public class MetaData {
     public String getInformation() {
         return information;
     }
-    
+
     public String getLastRefreshed() {
         return lastRefreshed;
     }
@@ -84,11 +84,11 @@ public class MetaData {
     public String getMarketCode() {
         return marketCode;
     }
-    
+
     public String getMarketName() {
         return marketName;
     }
-    
+
 
     @Override
     public String toString() {

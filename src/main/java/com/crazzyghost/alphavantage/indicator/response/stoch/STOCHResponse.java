@@ -1,27 +1,32 @@
 package com.crazzyghost.alphavantage.indicator.response.stoch;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class STOCHResponse {
     private MetaData metaData;
     private List<STOCHIndicatorUnit> indicatorUnits;
     private String errorMessage;
 
-    private STOCHResponse(List<STOCHIndicatorUnit> indicatorUnits, MetaData metaData){
+    private STOCHResponse(List<STOCHIndicatorUnit> indicatorUnits, MetaData metaData) {
         this.metaData = metaData;
         this.indicatorUnits = indicatorUnits;
         this.errorMessage = null;
     }
 
-    private STOCHResponse(String errorMessage){
+    private STOCHResponse(String errorMessage) {
         this.metaData = new MetaData();
         this.indicatorUnits = new ArrayList<>();
         this.errorMessage = errorMessage;
+    }
+
+    public static STOCHResponse of(Map<String, Object> stringObjectMap) {
+        Parser<STOCHResponse> parser = new STOCHParser();
+        return parser.parse(stringObjectMap);
     }
 
     public String getErrorMessage() {
@@ -31,14 +36,18 @@ public class STOCHResponse {
     public List<STOCHIndicatorUnit> getIndicatorUnits() {
         return indicatorUnits;
     }
-   
+
     public MetaData getMetaData() {
         return metaData;
     }
-    
-    public static STOCHResponse of(Map<String, Object> stringObjectMap){
-        Parser<STOCHResponse> parser = new STOCHParser();
-        return parser.parse(stringObjectMap);
+
+    @Override
+    public String toString() {
+        return "STOCHResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class STOCHParser extends DefaultParser<STOCHResponse> {
@@ -46,26 +55,26 @@ public class STOCHResponse {
         @Override
         public STOCHResponse parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")),
-                String.valueOf(metaDataMap.get("2: Indicator")),
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.1: FastK Period"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.2: SlowK Period"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.3: SlowK MA Type"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.4: SlowD Period"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.5: SlowD MA Type"))),
-                String.valueOf(metaDataMap.get("6: Time Zone"))            
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.1: FastK Period"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.2: SlowK Period"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.3: SlowK MA Type"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.4: SlowD Period"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.5: SlowD MA Type"))),
+                    String.valueOf(metaDataMap.get("6: Time Zone"))
             );
 
-            List<STOCHIndicatorUnit> indicatorUnits =  new ArrayList<>();
+            List<STOCHIndicatorUnit> indicatorUnits = new ArrayList<>();
 
-            for (Map.Entry<String,Map<String,String>> e: indicatorData.entrySet()) {
-                Map<String, String> m = e.getValue();     
+            for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
+                Map<String, String> m = e.getValue();
                 STOCHIndicatorUnit indicatorUnit = new STOCHIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get("SlowK")),
-                    Double.parseDouble(m.get("SlowD"))
+                        e.getKey(),
+                        Double.parseDouble(m.get("SlowK")),
+                        Double.parseDouble(m.get("SlowD"))
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -75,20 +84,10 @@ public class STOCHResponse {
 
         @Override
         public STOCHResponse onParseError(String error) {
-           return new STOCHResponse(error);
+            return new STOCHResponse(error);
         }
 
 
-    }
-
-
-    @Override
-    public String toString() {
-        return "STOCHResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {
@@ -103,18 +102,18 @@ public class STOCHResponse {
         private double slowDPeriod;
         private double slowDMaType;
         private String timeZone;
-        
+
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            double fastKPeriod,
-            double slowKPeriod,
-            double slowKMaType,
-            double slowDPeriod,
-            double slowDMaType,        
-            String timeZone 
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                double fastKPeriod,
+                double slowKPeriod,
+                double slowKMaType,
+                double slowDPeriod,
+                double slowDMaType,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -127,8 +126,8 @@ public class STOCHResponse {
             this.slowDMaType = slowDMaType;
             this.timeZone = timeZone;
         }
-        
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", 5, 3, 0, 3, 0, "");
         }
 
@@ -147,7 +146,7 @@ public class STOCHResponse {
         public String getInterval() {
             return interval;
         }
- 
+
         public double getFastKPeriod() {
             return fastKPeriod;
         }

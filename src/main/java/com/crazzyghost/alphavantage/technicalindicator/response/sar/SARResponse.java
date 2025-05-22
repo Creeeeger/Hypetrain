@@ -1,12 +1,12 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.sar;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class SARResponse {
 
@@ -26,6 +26,11 @@ public class SARResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static SARResponse of(Map<String, Object> stringObjectMap) {
+        Parser<SARResponse> parser = new SARParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -38,9 +43,13 @@ public class SARResponse {
         return metaData;
     }
 
-    public static SARResponse of(Map<String, Object> stringObjectMap) {
-        Parser<SARResponse> parser = new SARParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "SARResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class SARParser extends DefaultParser<SARResponse> {
@@ -75,15 +84,6 @@ public class SARResponse {
             return new SARResponse(error);
         }
 
-    }
-
-    @Override
-    public String toString() {
-        return "SARResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

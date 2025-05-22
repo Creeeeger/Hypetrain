@@ -4,7 +4,7 @@ import com.crazzyghost.alphavantage.parameters.Function;
 import com.crazzyghost.alphavantage.parameters.MAType;
 import com.crazzyghost.alphavantage.parameters.SeriesType;
 
-public class MACDEXTRequest extends IndicatorRequest{
+public class MACDEXTRequest extends IndicatorRequest {
 
     private SeriesType series_type;
     private int fastPeriod;
@@ -32,44 +32,44 @@ public class MACDEXTRequest extends IndicatorRequest{
         private int signalPeriod = 9;
         private MAType fastMaType = MAType.SMA;
         private MAType slowMaType = MAType.SMA;
-        private MAType signalMaType = MAType.SMA;    
+        private MAType signalMaType = MAType.SMA;
         private SeriesType seriesType;
 
-        public Builder(){
+        public Builder() {
             this.function(Function.MACDEXT);
         }
 
-        public Builder fastPeriod(int fastPeriod){
+        public Builder fastPeriod(int fastPeriod) {
             this.fastPeriod = fastPeriod;
             return this;
         }
 
-        public Builder slowPeriod(int slowPeriod){
+        public Builder slowPeriod(int slowPeriod) {
             this.slowPeriod = slowPeriod;
             return this;
         }
 
-        public Builder signalPeriod(int signalPeriod){
+        public Builder signalPeriod(int signalPeriod) {
             this.signalPeriod = signalPeriod;
             return this;
         }
 
-        public Builder fastMaType(MAType type){
+        public Builder fastMaType(MAType type) {
             this.fastMaType = type;
             return this;
         }
 
-        public Builder slowMaType(MAType type){
+        public Builder slowMaType(MAType type) {
             this.slowMaType = type;
             return this;
         }
 
-        public Builder signalMaType(MAType type){
+        public Builder signalMaType(MAType type) {
             this.signalMaType = type;
             return this;
         }
 
-        public Builder seriesType(SeriesType seriesType){
+        public Builder seriesType(SeriesType seriesType) {
             this.seriesType = seriesType;
             return this;
         }
@@ -78,6 +78,6 @@ public class MACDEXTRequest extends IndicatorRequest{
         public IndicatorRequest build() {
             return new MACDEXTRequest(this);
         }
-        
-    }   
+
+    }
 }

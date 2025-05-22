@@ -37,6 +37,7 @@ import java.util.Objects;
  * @since 1.7.0
  */
 public class EconomicIndicatorResponse {
+    private final String errorMessage;
     @Json(name = "name")
     private String name;
     @Json(name = "interval")
@@ -45,7 +46,6 @@ public class EconomicIndicatorResponse {
     private String unit;
     @Json(name = "data")
     private List<EconomicIndicatorUnit> data;
-    private final String errorMessage;
 
     private EconomicIndicatorResponse(String name, String interval, String unit, List<EconomicIndicatorUnit> data) {
         this.name = name;
@@ -57,6 +57,11 @@ public class EconomicIndicatorResponse {
 
     private EconomicIndicatorResponse(String errorMessage) {
         this.errorMessage = errorMessage;
+    }
+
+    public static EconomicIndicatorResponse of(Map<String, Object> stringObjectMap) {
+        Parser<EconomicIndicatorResponse> parser = new EconomicIndicatorResponse.EconomicIndicatorParser();
+        return parser.parse(stringObjectMap);
     }
 
     public String getName() {
@@ -77,11 +82,6 @@ public class EconomicIndicatorResponse {
 
     public String getErrorMessage() {
         return errorMessage;
-    }
-
-    public static EconomicIndicatorResponse of(Map<String, Object> stringObjectMap) {
-        Parser<EconomicIndicatorResponse> parser = new EconomicIndicatorResponse.EconomicIndicatorParser();
-        return parser.parse(stringObjectMap);
     }
 
     public static class EconomicIndicatorParser extends Parser<EconomicIndicatorResponse> {
@@ -105,12 +105,14 @@ public class EconomicIndicatorResponse {
                 }
 
                 String name = String.valueOf(data.getOrDefault("name", ""));
-                String interval = String.valueOf(data.getOrDefault("interval", ""));;
-                String unit = String.valueOf(data.getOrDefault("unit", ""));;
+                String interval = String.valueOf(data.getOrDefault("interval", ""));
+                ;
+                String unit = String.valueOf(data.getOrDefault("unit", ""));
+                ;
                 List<EconomicIndicatorUnit> unitList = Parser.parseJSONList(data.get("data"),
                         EconomicIndicatorUnit.class);
                 return new EconomicIndicatorResponse(name, interval, unit, unitList);
-            }catch (ClassCastException | IndexOutOfBoundsException e) {
+            } catch (ClassCastException | IndexOutOfBoundsException e) {
                 return onParseError(data.get(keys.get(0)).toString());
             }
         }

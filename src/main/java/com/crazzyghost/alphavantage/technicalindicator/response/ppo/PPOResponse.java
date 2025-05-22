@@ -1,9 +1,8 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.ppo;
 
+import com.crazzyghost.alphavantage.parser.Parser;
 import com.crazzyghost.alphavantage.technicalindicator.response.PriceOscillatorResponse;
 import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
-import com.crazzyghost.alphavantage.technicalindicator.response.roc.ROCResponse;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 import java.util.List;
 import java.util.Map;
@@ -14,13 +13,13 @@ public class PPOResponse extends PriceOscillatorResponse {
         super(indicatorUnits, metaData);
     }
 
+    private PPOResponse(String errorMessage) {
+        super(errorMessage);
+    }
+
     public static PPOResponse of(Map<String, Object> stringObjectMap) {
         Parser<PPOResponse> parser = new PPOParser();
         return parser.parse(stringObjectMap);
-    }
-
-    private PPOResponse(String errorMessage) {
-        super(errorMessage);
     }
 
     public static class PPOParser extends PriceOscillatorParser<PPOResponse> {

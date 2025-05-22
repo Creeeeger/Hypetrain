@@ -1,8 +1,8 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.plusdm;
 
+import com.crazzyghost.alphavantage.parser.Parser;
 import com.crazzyghost.alphavantage.technicalindicator.response.PeriodicResponse;
 import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 import java.util.List;
 import java.util.Map;

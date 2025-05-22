@@ -70,6 +70,16 @@ public class EarningsResponse {
         return quarterlyReports;
     }
 
+    @Override
+    public String toString() {
+        return "EarningResponse{" +
+                "symbol='" + symbol + '\'' +
+                ", annualReports=" + annualReports +
+                ", quarterlyReports=" + quarterlyReports +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static class EarningParser extends Parser<EarningsResponse> {
 
         @Override
@@ -85,7 +95,7 @@ public class EarningsResponse {
                 return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
             }
             try {
-                String symbol = (String)object.get(keys.get(0));
+                String symbol = (String) object.get(keys.get(0));
                 List<AnnualEarning> annualReports = Parser.parseJSONList(object.get(keys.get(1)), AnnualEarning.class);
                 List<QuarterlyEarning> quarterlyReports = Parser.parseJSONList(object.get(keys.get(2)), QuarterlyEarning.class);
                 return new EarningsResponse(symbol, annualReports, quarterlyReports);
@@ -93,15 +103,5 @@ public class EarningsResponse {
                 return onParseError(object.get(keys.get(0)).toString());
             }
         }
-    }
-
-    @Override
-    public String toString() {
-        return "EarningResponse{" +
-                "symbol='" + symbol + '\'' +
-                ", annualReports=" + annualReports +
-                ", quarterlyReports=" + quarterlyReports +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 }

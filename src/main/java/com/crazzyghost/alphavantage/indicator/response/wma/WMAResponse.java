@@ -17,7 +17,7 @@ public class WMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static WMAResponse of(Map<String, Object> stringObjectMap){
+    public static WMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<WMAResponse> parser = new WMAResponseParser();
         return parser.parse(stringObjectMap);
     }

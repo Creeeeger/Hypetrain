@@ -5,9 +5,9 @@ import com.squareup.moshi.Json;
 
 public class AnnualEarning {
 
-    @Json(name="fiscalDateEnding")
+    @Json(name = "fiscalDateEnding")
     private String fiscalDateEnding;
-    @Json(name="reportedEPS")
+    @Json(name = "reportedEPS")
     @NoneableDouble
     private Double reportedEPS;
 

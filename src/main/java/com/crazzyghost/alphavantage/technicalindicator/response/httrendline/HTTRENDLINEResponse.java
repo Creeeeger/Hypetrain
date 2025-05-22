@@ -1,8 +1,8 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.httrendline;
 
+import com.crazzyghost.alphavantage.parser.Parser;
 import com.crazzyghost.alphavantage.technicalindicator.response.SeriesResponse;
 import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 import java.util.List;
 import java.util.Map;

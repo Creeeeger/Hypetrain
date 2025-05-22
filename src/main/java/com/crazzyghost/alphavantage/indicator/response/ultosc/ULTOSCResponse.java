@@ -1,12 +1,12 @@
 package com.crazzyghost.alphavantage.indicator.response.ultosc;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-
 import com.crazzyghost.alphavantage.indicator.response.SimpleIndicatorUnit;
 import com.crazzyghost.alphavantage.parser.DefaultParser;
 import com.crazzyghost.alphavantage.parser.Parser;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class ULTOSCResponse {
 
@@ -14,16 +14,21 @@ public class ULTOSCResponse {
     private List<SimpleIndicatorUnit> indicatorUnits;
     private String errorMessage;
 
-    private ULTOSCResponse(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData){
+    private ULTOSCResponse(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData) {
         this.metaData = metaData;
         this.indicatorUnits = indicatorUnits;
         this.errorMessage = null;
     }
 
-    private ULTOSCResponse(String errorMessage){
+    private ULTOSCResponse(String errorMessage) {
         this.metaData = new MetaData();
         this.indicatorUnits = new ArrayList<>();
         this.errorMessage = errorMessage;
+    }
+
+    public static ULTOSCResponse of(Map<String, Object> stringObjectMap) {
+        Parser<ULTOSCResponse> parser = new ULTOSCParser();
+        return parser.parse(stringObjectMap);
     }
 
     public String getErrorMessage() {
@@ -33,40 +38,44 @@ public class ULTOSCResponse {
     public List<SimpleIndicatorUnit> getIndicatorUnits() {
         return indicatorUnits;
     }
-    
+
     public MetaData getMetaData() {
         return metaData;
     }
-    
-    public static ULTOSCResponse of(Map<String, Object> stringObjectMap){
-        Parser<ULTOSCResponse> parser = new ULTOSCParser();
-        return parser.parse(stringObjectMap);
+
+    @Override
+    public String toString() {
+        return "ULTOSCResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class ULTOSCParser extends DefaultParser<ULTOSCResponse> {
 
         @Override
         public ULTOSCResponse parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
-            
+
             MetaData metaData = new MetaData(
-                metaDataMap.get("1: Symbol").toString(),
-                metaDataMap.get("2: Indicator").toString(),
-                metaDataMap.get("3: Last Refreshed").toString(),
-                metaDataMap.get("4: Interval").toString(),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.1: Time Period 1"))).intValue(),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.2: Time Period 2"))).intValue(),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.3: Time Period 3"))).intValue(),
-                metaDataMap.get("6: Time Zone").toString()
+                    metaDataMap.get("1: Symbol").toString(),
+                    metaDataMap.get("2: Indicator").toString(),
+                    metaDataMap.get("3: Last Refreshed").toString(),
+                    metaDataMap.get("4: Interval").toString(),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.1: Time Period 1"))).intValue(),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.2: Time Period 2"))).intValue(),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.3: Time Period 3"))).intValue(),
+                    metaDataMap.get("6: Time Zone").toString()
             );
 
-            List<SimpleIndicatorUnit> indicatorUnits =  new ArrayList<>();
+            List<SimpleIndicatorUnit> indicatorUnits = new ArrayList<>();
 
-            for (Map.Entry<String,Map<String,String>> e: indicatorData.entrySet()) {
-                Map<String, String> m = e.getValue();     
+            for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
+                Map<String, String> m = e.getValue();
                 SimpleIndicatorUnit indicatorUnit = new SimpleIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get("ULTOSC")),
-                    "ULTOSC"
+                        e.getKey(),
+                        Double.parseDouble(m.get("ULTOSC")),
+                        "ULTOSC"
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -81,16 +90,6 @@ public class ULTOSCResponse {
 
     }
 
-
-    @Override
-    public String toString() {
-        return "ULTOSCResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
-    }
-
     public static class MetaData {
 
         private String symbol;
@@ -101,20 +100,20 @@ public class ULTOSCResponse {
         private int timePeriod2;
         private int timePeriod3;
         private String timeZone;
-        
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", 0, 0, 0, "");
         }
 
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval,
-            int timePeriod1,
-            int timePeriod2,
-            int timePeriod3, 
-            String timeZone
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                int timePeriod1,
+                int timePeriod2,
+                int timePeriod3,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -164,7 +163,7 @@ public class ULTOSCResponse {
                     + ", symbol=" + symbol + ", timePeriod1=" + timePeriod1 + ", timePeriod2=" + timePeriod2
                     + ", timePeriod3=" + timePeriod3 + ", timeZone=" + timeZone + "}";
         }
-        
+
     }
 
 }

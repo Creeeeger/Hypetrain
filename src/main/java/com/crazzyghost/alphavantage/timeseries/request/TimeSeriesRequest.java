@@ -18,9 +18,9 @@ public abstract class TimeSeriesRequest {
 
     public static abstract class Builder<T extends Builder<T>> {
 
+        public Function function;
         protected DataType dataType = DataType.JSON;
         protected String symbol;
-        public Function function;
 
         public Builder() {
 

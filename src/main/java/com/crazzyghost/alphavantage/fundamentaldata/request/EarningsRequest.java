@@ -32,11 +32,15 @@ import com.crazzyghost.alphavantage.parameters.Function;
  */
 public class EarningsRequest extends FundamentalDataRequest {
 
-    protected EarningsRequest(Builder builder) { super(builder); }
+    protected EarningsRequest(Builder builder) {
+        super(builder);
+    }
 
     public static class Builder extends FundamentalDataRequest.Builder<Builder> {
 
-        public Builder() { this.function(Function.EARNINGS); }
+        public Builder() {
+            this.function(Function.EARNINGS);
+        }
 
         @Override
         public EarningsRequest build() {

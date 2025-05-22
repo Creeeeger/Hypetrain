@@ -38,7 +38,9 @@ public class CashFlowRequest extends FundamentalDataRequest {
 
     public static class Builder extends FundamentalDataRequest.Builder<Builder> {
 
-        public Builder() { this.function(Function.CASH_FLOW); }
+        public Builder() {
+            this.function(Function.CASH_FLOW);
+        }
 
         @Override
         public CashFlowRequest build() {

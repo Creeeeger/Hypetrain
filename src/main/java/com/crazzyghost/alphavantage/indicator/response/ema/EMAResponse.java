@@ -17,7 +17,7 @@ public class EMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static EMAResponse of(Map<String, Object> stringObjectMap){
+    public static EMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<EMAResponse> parser = new EMAResponseParser();
         return parser.parse(stringObjectMap);
     }

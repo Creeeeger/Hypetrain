@@ -53,7 +53,7 @@ public final class Crypto implements Fetcher {
     private Fetcher.SuccessCallback<?> successCallback;
     private Fetcher.FailureCallback failureCallback;
 
-    public Crypto(Config config){
+    public Crypto(Config config) {
         this.config = config;
     }
 
@@ -62,7 +62,7 @@ public final class Crypto implements Fetcher {
      *
      * @return {@link DailyRequestProxy} instance
      */
-    public DailyRequestProxy daily(){
+    public DailyRequestProxy daily() {
         return new DailyRequestProxy();
     }
 
@@ -71,7 +71,7 @@ public final class Crypto implements Fetcher {
      *
      * @return {@link WeeklyRequestProxy} instance
      */
-    public WeeklyRequestProxy weekly(){
+    public WeeklyRequestProxy weekly() {
         return new WeeklyRequestProxy();
     }
 
@@ -80,7 +80,7 @@ public final class Crypto implements Fetcher {
      *
      * @return {@link MonthlyRequestProxy} instance
      */
-    public MonthlyRequestProxy monthly(){
+    public MonthlyRequestProxy monthly() {
         return new MonthlyRequestProxy();
     }
 
@@ -89,20 +89,22 @@ public final class Crypto implements Fetcher {
      *
      * @return {@link RatingRequestProxy} instance
      */
-    public RatingRequestProxy rating(){
+    public RatingRequestProxy rating() {
         return new RatingRequestProxy();
     }
 
-    /** Fetches Crypto Currency data */
+    /**
+     * Fetches Crypto Currency data
+     */
     @Override
     public void fetch() {
 
         Config.checkNotNullOrKeyEmpty(config);
-        
+
         config.getOkHttpClient().newCall(UrlExtractor.extract(builder.build(), config.getKey())).enqueue(new okhttp3.Callback() {
             @Override
             public void onFailure(Call call, IOException e) {
-                if(failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
+                if (failureCallback != null) failureCallback.onFailure(new AlphaVantageException());
             }
 
             @Override
@@ -122,26 +124,26 @@ public final class Crypto implements Fetcher {
 
     /**
      * Make a blocking synchronous http request to fetch the data.
-     * This will be called by the {@link RequestProxy#fetchSync()}. 
-     *
+     * This will be called by the {@link RequestProxy#fetchSync()}.
+     * <p>
      * Using this method will overwrite any async callback
      *
-     * @since 1.5.0
      * @param successCallback internally used {@link SuccessCallback}
      * @throws AlphaVantageException exception thrown
+     * @since 1.5.0
      */
     private void fetchSync(SuccessCallback<?> successCallback) throws AlphaVantageException {
 
         Config.checkNotNullOrKeyEmpty(config);
-        
+
         this.successCallback = successCallback;
         this.failureCallback = null;
         okhttp3.OkHttpClient client = config.getOkHttpClient();
         try (Response response = client.newCall(UrlExtractor.extract(builder.build(), config.getKey())).execute()) {
             parseCryptoResponse(Parser.parseJSON(response.body().string()));
-        } catch(IOException e) {
+        } catch (IOException e) {
             throw new AlphaVantageException(e.getMessage());
-        }        
+        }
     }
 
 
@@ -173,13 +175,13 @@ public final class Crypto implements Fetcher {
      * @param data parsed JSON data
      */
     @SuppressWarnings("unchecked")
-    private void parseDigitalCurrencyResponse(Map<String, Object> data){
-        CryptoResponse response = CryptoResponse.of(data, ((DigitalCurrencyRequest.Builder)builder).getMarket());
-        if(response.getErrorMessage() != null && failureCallback != null) {
+    private void parseDigitalCurrencyResponse(Map<String, Object> data) {
+        CryptoResponse response = CryptoResponse.of(data, ((DigitalCurrencyRequest.Builder) builder).getMarket());
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null) {
-            ((Fetcher.SuccessCallback<CryptoResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<CryptoResponse>) successCallback).onSuccess(response);
         }
     }
 
@@ -189,17 +191,15 @@ public final class Crypto implements Fetcher {
      * @param data parsed JSON data
      */
     @SuppressWarnings("unchecked")
-    private void parseRatingResponse(Map<String, Object> data){
+    private void parseRatingResponse(Map<String, Object> data) {
         RatingResponse response = RatingResponse.of(data);
-        if(response.getErrorMessage() != null && failureCallback != null) {
+        if (response.getErrorMessage() != null && failureCallback != null) {
             failureCallback.onFailure(new AlphaVantageException(response.getErrorMessage()));
         }
-        if(successCallback != null) {
-            ((Fetcher.SuccessCallback<RatingResponse>)successCallback).onSuccess(response);
+        if (successCallback != null) {
+            ((Fetcher.SuccessCallback<RatingResponse>) successCallback).onSuccess(response);
         }
     }
-    
-
 
 
     /**
@@ -215,21 +215,22 @@ public final class Crypto implements Fetcher {
         protected CryptoRequest.Builder<?> builder;
         protected U syncResponse; // a synchronous response
 
-        private RequestProxy() { }
+        private RequestProxy() {
+        }
 
         public T forSymbol(String symbol) {
             this.builder.symbol(symbol);
-            return (T)this;
+            return (T) this;
         }
 
         public T onSuccess(SuccessCallback<?> callback) {
             Crypto.this.successCallback = callback;
-            return (T)this;
+            return (T) this;
         }
 
         public T onFailure(FailureCallback callback) {
             Crypto.this.failureCallback = callback;
-            return (T)this;
+            return (T) this;
         }
 
         public void fetch() {
@@ -253,12 +254,14 @@ public final class Crypto implements Fetcher {
             SuccessCallback<U> callback = this::setSyncResponse;
             Crypto.this.builder = this.builder;
             Crypto.this.fetchSync(callback);
-            return this.syncResponse;            
+            return this.syncResponse;
         }
 
     }
 
-    /** Proxy for building a DailyRequest */
+    /**
+     * Proxy for building a DailyRequest
+     */
     public class DailyRequestProxy extends RequestProxy<DailyRequestProxy, CryptoResponse> {
 
         public DailyRequestProxy() {
@@ -266,15 +269,17 @@ public final class Crypto implements Fetcher {
             builder = new DigitalCurrencyRequest.Builder();
             builder = builder.function(Function.DIGITAL_CURRENCY_DAILY);
         }
- 
+
         public DailyRequestProxy market(String market) {
-            ((DigitalCurrencyRequest.Builder)builder).market(market);
+            ((DigitalCurrencyRequest.Builder) builder).market(market);
             return this;
         }
 
     }
 
-    /** Proxy for building a WeeklyRequest */
+    /**
+     * Proxy for building a WeeklyRequest
+     */
     public class WeeklyRequestProxy extends RequestProxy<WeeklyRequestProxy, CryptoResponse> {
 
         public WeeklyRequestProxy() {
@@ -283,13 +288,15 @@ public final class Crypto implements Fetcher {
         }
 
         public WeeklyRequestProxy market(String market) {
-            ((DigitalCurrencyRequest.Builder)builder).market(market);
+            ((DigitalCurrencyRequest.Builder) builder).market(market);
             return this;
         }
 
     }
 
-    /** Proxy for building a MonthlyRequest */
+    /**
+     * Proxy for building a MonthlyRequest
+     */
     public class MonthlyRequestProxy extends RequestProxy<MonthlyRequestProxy, CryptoResponse> {
 
         public MonthlyRequestProxy() {
@@ -298,15 +305,17 @@ public final class Crypto implements Fetcher {
         }
 
         public MonthlyRequestProxy market(String market) {
-            ((DigitalCurrencyRequest.Builder)builder).market(market);
+            ((DigitalCurrencyRequest.Builder) builder).market(market);
             return this;
         }
 
     }
 
-    /** Proxy for building a {@link RatingRequest} */
+    /**
+     * Proxy for building a {@link RatingRequest}
+     */
     public class RatingRequestProxy extends RequestProxy<RatingRequestProxy, RatingResponse> {
-        public  RatingRequestProxy(){
+        public RatingRequestProxy() {
             builder = new RatingRequest.Builder();
         }
     }

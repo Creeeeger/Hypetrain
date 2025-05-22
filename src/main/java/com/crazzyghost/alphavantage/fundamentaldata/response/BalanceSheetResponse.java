@@ -22,11 +22,11 @@
  */
 package com.crazzyghost.alphavantage.fundamentaldata.response;
 
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class BalanceSheetResponse {
 
@@ -70,6 +70,16 @@ public class BalanceSheetResponse {
         return quarterlyReports;
     }
 
+    @Override
+    public String toString() {
+        return "BalanceSheetResponse{" +
+                "symbol='" + symbol + '\'' +
+                ", annualReports=" + annualReports +
+                ", quarterlyReports=" + quarterlyReports +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static class BalanceSheetParser extends Parser<BalanceSheetResponse> {
 
         @Override
@@ -85,7 +95,7 @@ public class BalanceSheetResponse {
                 return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
             }
             try {
-                String symbol = (String)object.get(keys.get(0));
+                String symbol = (String) object.get(keys.get(0));
                 List<BalanceSheet> annualReports = Parser.parseJSONList(object.get(keys.get(1)), BalanceSheet.class);
                 List<BalanceSheet> quarterlyReports = Parser.parseJSONList(object.get(keys.get(2)), BalanceSheet.class);
                 return new BalanceSheetResponse(symbol, annualReports, quarterlyReports);
@@ -93,15 +103,5 @@ public class BalanceSheetResponse {
                 return onParseError(object.get(keys.get(0)).toString());
             }
         }
-    }
-
-    @Override
-    public String toString() {
-        return "BalanceSheetResponse{" +
-                "symbol='" + symbol + '\'' +
-                ", annualReports=" + annualReports +
-                ", quarterlyReports=" + quarterlyReports +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 }

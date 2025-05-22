@@ -4,116 +4,116 @@ import com.crazzyghost.alphavantage.parser.NoneableLong;
 import com.squareup.moshi.Json;
 
 public class CashFlow {
-    @Json(name="fiscalDateEnding")
+    @Json(name = "fiscalDateEnding")
     private String fiscalDateEnding;
-    @Json(name="reportedCurrency")
+    @Json(name = "reportedCurrency")
     private String reportedCurrency;
 
-    @Json(name="operatingCashflow")
+    @Json(name = "operatingCashflow")
     @NoneableLong
     private Long operatingCashflow;
 
-    @Json(name="paymentsForOperatingActivities")
+    @Json(name = "paymentsForOperatingActivities")
     @NoneableLong
     private Long paymentsForOperatingActivities;
 
-    @Json(name="proceedsFromOperatingActivities")
+    @Json(name = "proceedsFromOperatingActivities")
     @NoneableLong
     private Long proceedsFromOperatingActivities;
 
-    @Json(name="changeInOperatingLiabilities")
+    @Json(name = "changeInOperatingLiabilities")
     @NoneableLong
     private Long changeInOperatingLiabilities;
 
-    @Json(name="changeInOperatingAssets")
+    @Json(name = "changeInOperatingAssets")
     @NoneableLong
     private Long changeInOperatingAssets;
 
-    @Json(name="depreciationDepletionAndAmortization")
+    @Json(name = "depreciationDepletionAndAmortization")
     @NoneableLong
     private Long depreciationDepletionAndAmortization;
 
-    @Json(name="capitalExpenditures")
+    @Json(name = "capitalExpenditures")
     @NoneableLong
     private Long capitalExpenditures;
 
-    @Json(name="changeInReceivables")
+    @Json(name = "changeInReceivables")
     @NoneableLong
     private Long changeInReceivables;
 
-    @Json(name="changeInInventory")
+    @Json(name = "changeInInventory")
     @NoneableLong
     private Long changeInInventory;
 
-    @Json(name="profitLoss")
+    @Json(name = "profitLoss")
     @NoneableLong
     private Long profitLoss;
 
-    @Json(name="cashflowFromInvestment")
+    @Json(name = "cashflowFromInvestment")
     @NoneableLong
     private Long cashflowFromInvestment;
 
-    @Json(name="cashflowFromFinancing")
+    @Json(name = "cashflowFromFinancing")
     @NoneableLong
     private Long cashflowFromFinancing;
 
-    @Json(name="proceedsFromRepaymentsOfShortTermDebt")
+    @Json(name = "proceedsFromRepaymentsOfShortTermDebt")
     @NoneableLong
     private Long proceedsFromRepaymentsOfShortTermDebt;
 
-    @Json(name="paymentsForRepurchaseOfCommonStock")
+    @Json(name = "paymentsForRepurchaseOfCommonStock")
     @NoneableLong
     private Long paymentsForRepurchaseOfCommonStock;
 
-    @Json(name="paymentsForRepurchaseOfEquity")
+    @Json(name = "paymentsForRepurchaseOfEquity")
     @NoneableLong
     private Long paymentsForRepurchaseOfEquity;
 
-    @Json(name="paymentsForRepurchaseOfPreferredStock")
+    @Json(name = "paymentsForRepurchaseOfPreferredStock")
     @NoneableLong
     private Long paymentsForRepurchaseOfPreferredStock;
 
-    @Json(name="dividendPayout")
+    @Json(name = "dividendPayout")
     @NoneableLong
     private Long dividendPayout;
 
-    @Json(name="dividendPayoutCommonStock")
+    @Json(name = "dividendPayoutCommonStock")
     @NoneableLong
     private Long dividendPayoutCommonStock;
 
-    @Json(name="dividendPayoutPreferredStock")
+    @Json(name = "dividendPayoutPreferredStock")
     @NoneableLong
     private Long dividendPayoutPreferredStock;
 
-    @Json(name="proceedsFromIssuanceOfCommonStock")
+    @Json(name = "proceedsFromIssuanceOfCommonStock")
     @NoneableLong
     private Long proceedsFromIssuanceOfCommonStock;
 
-    @Json(name="proceedsFromIssuanceOfLongTermDebtAndCapitalSecuritiesNet")
+    @Json(name = "proceedsFromIssuanceOfLongTermDebtAndCapitalSecuritiesNet")
     @NoneableLong
     private Long proceedsFromIssuanceOfLongTermDebtAndCapitalSecuritiesNet;
 
-    @Json(name="proceedsFromIssuanceOfPreferredStock")
+    @Json(name = "proceedsFromIssuanceOfPreferredStock")
     @NoneableLong
     private Long proceedsFromIssuanceOfPreferredStock;
 
-    @Json(name="proceedsFromRepurchaseOfEquity")
+    @Json(name = "proceedsFromRepurchaseOfEquity")
     @NoneableLong
     private Long proceedsFromRepurchaseOfEquity;
 
-    @Json(name="proceedsFromSaleOfTreasuryStock")
+    @Json(name = "proceedsFromSaleOfTreasuryStock")
     @NoneableLong
     private Long proceedsFromSaleOfTreasuryStock;
 
-    @Json(name="changeInCashAndCashEquivalents")
+    @Json(name = "changeInCashAndCashEquivalents")
     @NoneableLong
     private Long changeInCashAndCashEquivalents;
 
-    @Json(name="changeInExchangeRate")
+    @Json(name = "changeInExchangeRate")
     @NoneableLong
     private Long changeInExchangeRate;
 
-    @Json(name="netIncome")
+    @Json(name = "netIncome")
     @NoneableLong
     private Long netIncome;
 

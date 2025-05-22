@@ -17,7 +17,7 @@ public class CMOResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static CMOResponse of(Map<String, Object> stringObjectMap){
+    public static CMOResponse of(Map<String, Object> stringObjectMap) {
         Parser<CMOResponse> parser = new CMOResponseParser();
         return parser.parse(stringObjectMap);
     }

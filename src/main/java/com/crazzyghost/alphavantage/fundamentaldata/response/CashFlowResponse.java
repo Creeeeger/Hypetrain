@@ -70,6 +70,16 @@ public class CashFlowResponse {
         return quarterlyReports;
     }
 
+    @Override
+    public String toString() {
+        return "CashFlowResponse{" +
+                "symbol='" + symbol + '\'' +
+                ", annualReports=" + annualReports +
+                ", quarterlyReports=" + quarterlyReports +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static class CashFlowParser extends Parser<CashFlowResponse> {
 
         @Override
@@ -85,7 +95,7 @@ public class CashFlowResponse {
                 return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
             }
             try {
-                String symbol = (String)object.get(keys.get(0));
+                String symbol = (String) object.get(keys.get(0));
                 List<CashFlow> annualReports = Parser.parseJSONList(object.get(keys.get(1)), CashFlow.class);
                 List<CashFlow> quarterlyReports = Parser.parseJSONList(object.get(keys.get(2)), CashFlow.class);
                 return new CashFlowResponse(symbol, annualReports, quarterlyReports);
@@ -93,15 +103,5 @@ public class CashFlowResponse {
                 return onParseError(object.get(keys.get(0)).toString());
             }
         }
-    }
-
-    @Override
-    public String toString() {
-        return "CashFlowResponse{" +
-                "symbol='" + symbol + '\'' +
-                ", annualReports=" + annualReports +
-                ", quarterlyReports=" + quarterlyReports +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 }

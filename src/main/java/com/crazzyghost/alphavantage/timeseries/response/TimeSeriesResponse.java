@@ -42,6 +42,15 @@ public class TimeSeriesResponse {
         return stockUnits;
     }
 
+    @Override
+    public String toString() {
+        return "TimeSeriesResponse{" +
+                "metaData=" + metaData +
+                ", stockUnits=" + stockUnits +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static class TimeSeriesParser extends DefaultParser<TimeSeriesResponse> {
 
         private boolean adjusted;
@@ -104,16 +113,6 @@ public class TimeSeriesResponse {
             return new TimeSeriesResponse(error);
         }
 
-    }
-
-
-    @Override
-    public String toString() {
-        return "TimeSeriesResponse{" +
-                "metaData=" + metaData +
-                ", stockUnits=" + stockUnits +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 }
 

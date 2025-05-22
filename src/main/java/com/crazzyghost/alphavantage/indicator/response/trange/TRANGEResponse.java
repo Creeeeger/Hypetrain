@@ -22,7 +22,7 @@ public class TRANGEResponse extends SimpleIndicatorResponse {
         return parser.parse(stringObjectMap);
     }
 
-    public static class TRANGEParser extends SimpleIndicatorParser<TRANGEResponse>{
+    public static class TRANGEParser extends SimpleIndicatorParser<TRANGEResponse> {
 
         @Override
         public TRANGEResponse get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData) {

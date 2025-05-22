@@ -22,7 +22,7 @@ public class VWAPResponse extends SimpleIndicatorResponse {
         return parser.parse(stringObjectMap);
     }
 
-    public static class VWAPParser extends SimpleIndicatorParser<VWAPResponse>{
+    public static class VWAPParser extends SimpleIndicatorParser<VWAPResponse> {
 
         @Override
         public VWAPResponse get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData) {

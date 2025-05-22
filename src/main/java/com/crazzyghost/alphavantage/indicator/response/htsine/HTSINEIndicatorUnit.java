@@ -5,7 +5,7 @@ public class HTSINEIndicatorUnit {
     private double leadSineValue;
     private double sineValue;
 
-    public HTSINEIndicatorUnit(String date, double leadSine, double sine){
+    public HTSINEIndicatorUnit(String date, double leadSine, double sine) {
         this.date = date;
         this.leadSineValue = leadSine;
         this.sineValue = sine;
@@ -29,5 +29,5 @@ public class HTSINEIndicatorUnit {
                 + "}";
     }
 
-    
+
 }

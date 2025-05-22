@@ -93,16 +93,16 @@ import java.util.Objects;
 
 /**
  * Access to Technical TechnicalIndicator Data
- * 
+ *
  * @author crazzyghost
  * @since 1.1.0
  */
 public final class TechnicalIndicator implements Fetcher {
 
+    private final Config config;
     private TechnicalIndicatorRequest.Builder<?> builder;
     private Fetcher.SuccessCallback<?> successCallback;
     private Fetcher.FailureCallback failureCallback;
-    private final Config config;
 
     public TechnicalIndicator(Config config) {
         this.config = config;
@@ -147,14 +147,14 @@ public final class TechnicalIndicator implements Fetcher {
      * should handle this on
      * another thread
      * </p>
-     * 
+     *
      * <p>
      * Using this method will overwrite any async callback
      * </p>
-     * 
-     * @since 1.4.1
+     *
      * @param successCallback internally used {@link SuccessCallback}
      * @throws AlphaVantageException exception thrown
+     * @since 1.4.1
      */
     private void fetchSync(SuccessCallback<?> successCallback) throws AlphaVantageException {
 
@@ -838,7 +838,7 @@ public final class TechnicalIndicator implements Fetcher {
      * An base proxy for building requests. Adds the functionality of adding
      * callbacks and a terminal method for
      * fetching data.
-     * 
+     *
      * @param <T> A Concrete {@link SimpleTechnicalIndicatorRequestProxy}
      *            Implementation
      */
@@ -889,7 +889,7 @@ public final class TechnicalIndicator implements Fetcher {
 
         /**
          * Set the response during a synchronous call
-         * 
+         *
          * @param response
          */
         private void setSyncResponse(U response) {
@@ -902,7 +902,7 @@ public final class TechnicalIndicator implements Fetcher {
          * <p>
          * When calling this method, any async callbacks will be overwritten
          * </p>
-         * 
+         *
          * @return The api response
          * @throws AlphaVantageException
          */

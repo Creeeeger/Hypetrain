@@ -5,7 +5,7 @@ public class HTPHASORIndicatorUnit {
     private double phaseValue;
     private double quadratureValue;
 
-    public HTPHASORIndicatorUnit(String date, double leadSine, double sine){
+    public HTPHASORIndicatorUnit(String date, double leadSine, double sine) {
         this.date = date;
         this.phaseValue = leadSine;
         this.quadratureValue = sine;
@@ -29,5 +29,5 @@ public class HTPHASORIndicatorUnit {
                 + "}";
     }
 
-    
+
 }

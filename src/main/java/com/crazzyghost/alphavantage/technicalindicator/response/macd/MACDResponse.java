@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.macd;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class MACDResponse {
 
@@ -25,6 +25,11 @@ public class MACDResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static MACDResponse of(Map<String, Object> stringObjectMap) {
+        Parser<MACDResponse> parser = new MACDParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class MACDResponse {
         return metaData;
     }
 
-    public static MACDResponse of(Map<String, Object> stringObjectMap) {
-        Parser<MACDResponse> parser = new MACDParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "MACDResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class MACDParser extends DefaultParser<MACDResponse> {
@@ -76,15 +85,6 @@ public class MACDResponse {
         public MACDResponse onParseError(String error) {
             return new MACDResponse(error);
         }
-    }
-
-    @Override
-    public String toString() {
-        return "MACDResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

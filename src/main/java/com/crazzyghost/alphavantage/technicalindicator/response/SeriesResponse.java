@@ -36,6 +36,15 @@ public abstract class SeriesResponse {
         return metaData;
     }
 
+    @Override
+    public String toString() {
+        return "SeriesResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class SeriesParser<T> extends DefaultParser<T> {
 
         protected SeriesParser() {
@@ -75,15 +84,6 @@ public abstract class SeriesResponse {
         public abstract T get(String error);
 
         public abstract String getTechnicalIndicatorKey();
-    }
-
-    @Override
-    public String toString() {
-        return "SeriesResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

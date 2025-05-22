@@ -17,7 +17,7 @@ public class DXResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static DXResponse of(Map<String, Object> stringObjectMap){
+    public static DXResponse of(Map<String, Object> stringObjectMap) {
         Parser<DXResponse> parser = new DXParser();
         return parser.parse(stringObjectMap);
     }

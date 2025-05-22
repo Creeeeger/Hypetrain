@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.indicator.response.htphasor;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class HTPHASORResponse {
 
@@ -13,16 +13,21 @@ public class HTPHASORResponse {
     private List<HTPHASORIndicatorUnit> indicatorUnits;
     private String errorMessage;
 
-    private HTPHASORResponse(List<HTPHASORIndicatorUnit> indicatorUnits, MetaData metaData){
+    private HTPHASORResponse(List<HTPHASORIndicatorUnit> indicatorUnits, MetaData metaData) {
         this.metaData = metaData;
         this.indicatorUnits = indicatorUnits;
         this.errorMessage = null;
     }
 
-    private HTPHASORResponse(String errorMessage){
+    private HTPHASORResponse(String errorMessage) {
         this.metaData = new MetaData();
         this.indicatorUnits = new ArrayList<>();
         this.errorMessage = errorMessage;
+    }
+
+    public static HTPHASORResponse of(Map<String, Object> stringObjectMap) {
+        Parser<HTPHASORResponse> parser = new HTPHASORParser();
+        return parser.parse(stringObjectMap);
     }
 
     public String getErrorMessage() {
@@ -32,14 +37,18 @@ public class HTPHASORResponse {
     public List<HTPHASORIndicatorUnit> getIndicatorUnits() {
         return indicatorUnits;
     }
-    
+
     public MetaData getMetaData() {
         return metaData;
     }
-    
-    public static HTPHASORResponse of(Map<String, Object> stringObjectMap){
-        Parser<HTPHASORResponse> parser = new HTPHASORParser();
-        return parser.parse(stringObjectMap);
+
+    @Override
+    public String toString() {
+        return "HTPHASORResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class HTPHASORParser extends DefaultParser<HTPHASORResponse> {
@@ -48,22 +57,22 @@ public class HTPHASORResponse {
         public HTPHASORResponse parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
 
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")),
-                String.valueOf(metaDataMap.get("2: Indicator")),
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")),
-                String.valueOf(metaDataMap.get("5: Series Type")),
-                String.valueOf(metaDataMap.get("6: Time Zone"))
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    String.valueOf(metaDataMap.get("5: Series Type")),
+                    String.valueOf(metaDataMap.get("6: Time Zone"))
             );
 
-            List<HTPHASORIndicatorUnit> indicatorUnits =  new ArrayList<>();
+            List<HTPHASORIndicatorUnit> indicatorUnits = new ArrayList<>();
 
-            for (Map.Entry<String,Map<String,String>> e: indicatorData.entrySet()) {
-                Map<String, String> m = e.getValue();     
+            for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
+                Map<String, String> m = e.getValue();
                 HTPHASORIndicatorUnit indicatorUnit = new HTPHASORIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get("PHASE")),
-                    Double.parseDouble(m.get("QUADRATURE"))
+                        e.getKey(),
+                        Double.parseDouble(m.get("PHASE")),
+                        Double.parseDouble(m.get("QUADRATURE"))
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -76,16 +85,6 @@ public class HTPHASORResponse {
         }
     }
 
-
-    @Override
-    public String toString() {
-        return "HTPHASORResponse{" +
-            "metaData=" + metaData +
-            ",indicatorUnits=" + indicatorUnits.size() +
-            ", errorMessage='" + errorMessage + '\'' +
-        '}';
-    }
-
     public static class MetaData {
 
         private String symbol;
@@ -94,18 +93,18 @@ public class HTPHASORResponse {
         private String interval;
         private String seriesType;
         private String timeZone;
-     
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", "", "");
         }
 
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            String seriesType, 
-            String timeZone
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                String seriesType,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -145,7 +144,7 @@ public class HTPHASORResponse {
                     + ", seriesType=" + seriesType + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
         }
 
-        
+
     }
 }
 

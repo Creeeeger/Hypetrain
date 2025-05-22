@@ -20,17 +20,17 @@ public final class SectorUnit {
     private String energy;
 
     public SectorUnit(
-        String informationTechnology, 
-        String consumerDiscretionary, 
-        String healthCare,
-        String communicationServices, 
-        String realEstate, 
-        String utilities, 
-        String financials, 
-        String materials,
-        String industrials, 
-        String consumerStaples,
-        String energy
+            String informationTechnology,
+            String consumerDiscretionary,
+            String healthCare,
+            String communicationServices,
+            String realEstate,
+            String utilities,
+            String financials,
+            String materials,
+            String industrials,
+            String consumerStaples,
+            String energy
     ) {
         this.informationTechnology = informationTechnology;
         this.consumerDiscretionary = consumerDiscretionary;
@@ -48,7 +48,7 @@ public final class SectorUnit {
     public String getInformationTechnology() {
         return informationTechnology;
     }
-    
+
     public String getConsumerDiscretionary() {
         return consumerDiscretionary;
     }
@@ -91,19 +91,19 @@ public final class SectorUnit {
 
     @Override
     public String toString() {
-        return "SectorUnit { communicationServices=" + communicationServices + 
-            ", consumerDiscretionary=" + consumerDiscretionary + 
-            ", consumerStaples=" + consumerStaples + 
-            ", energy=" + energy + 
-            ", financials=" + financials + 
-            ", healthCare=" + healthCare + 
-            ", industrials=" + industrials + 
-            ", informationTechnology=" + informationTechnology + 
-            ", materials=" + materials + 
-            ", realEstate=" + realEstate + 
-            ", utilities=" + utilities + 
-        "}";
+        return "SectorUnit { communicationServices=" + communicationServices +
+                ", consumerDiscretionary=" + consumerDiscretionary +
+                ", consumerStaples=" + consumerStaples +
+                ", energy=" + energy +
+                ", financials=" + financials +
+                ", healthCare=" + healthCare +
+                ", industrials=" + industrials +
+                ", informationTechnology=" + informationTechnology +
+                ", materials=" + materials +
+                ", realEstate=" + realEstate +
+                ", utilities=" + utilities +
+                "}";
     }
 
-    
+
 }

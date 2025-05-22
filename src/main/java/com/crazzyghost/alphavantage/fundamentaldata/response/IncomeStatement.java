@@ -5,82 +5,82 @@ import com.squareup.moshi.Json;
 
 public class IncomeStatement {
 
-    @Json(name="fiscalDateEnding")
+    @Json(name = "fiscalDateEnding")
     private String fiscalDateEnding;
-    @Json(name="reportedCurrency")
+    @Json(name = "reportedCurrency")
     private String reportedCurrency;
-    @Json(name="grossProfit")
+    @Json(name = "grossProfit")
     @NoneableLong
     private Long grossProfit;
-    @Json(name="totalRevenue")
+    @Json(name = "totalRevenue")
     @NoneableLong
-    private Long  totalRevenue;
-    @Json(name="costOfRevenue")
+    private Long totalRevenue;
+    @Json(name = "costOfRevenue")
     @NoneableLong
-    private Long  costOfRevenue;
-    @Json(name="costofGoodsAndServicesSold")
+    private Long costOfRevenue;
+    @Json(name = "costofGoodsAndServicesSold")
     @NoneableLong
-    private Long  costofGoodsAndServicesSold;
-    @Json(name="operatingIncome")
+    private Long costofGoodsAndServicesSold;
+    @Json(name = "operatingIncome")
     @NoneableLong
-    private Long  operatingIncome;
-    @Json(name="sellingGeneralAndAdministrative")
+    private Long operatingIncome;
+    @Json(name = "sellingGeneralAndAdministrative")
     @NoneableLong
-    private Long  sellingGeneralAndAdministrative;
-    @Json(name="researchAndDevelopment")
+    private Long sellingGeneralAndAdministrative;
+    @Json(name = "researchAndDevelopment")
     @NoneableLong
-    private Long  researchAndDevelopment;
-    @Json(name="operatingExpenses")
+    private Long researchAndDevelopment;
+    @Json(name = "operatingExpenses")
     @NoneableLong
-    private Long  operatingExpenses;
-    @Json(name="investmentIncomeNet")
+    private Long operatingExpenses;
+    @Json(name = "investmentIncomeNet")
     @NoneableLong
-    private Long  investmentIncomeNet;
-    @Json(name="netInterestIncome")
+    private Long investmentIncomeNet;
+    @Json(name = "netInterestIncome")
     @NoneableLong
-    private Long  netInterestIncome;
-    @Json(name="interestIncome")
+    private Long netInterestIncome;
+    @Json(name = "interestIncome")
     @NoneableLong
-    private Long  interestIncome;
-    @Json(name="interestExpense")
+    private Long interestIncome;
+    @Json(name = "interestExpense")
     @NoneableLong
-    private Long  interestExpense;
-    @Json(name="nonInterestIncome")
+    private Long interestExpense;
+    @Json(name = "nonInterestIncome")
     @NoneableLong
-    private Long  nonInterestIncome;
-    @Json(name="otherNonOperatingIncome")
+    private Long nonInterestIncome;
+    @Json(name = "otherNonOperatingIncome")
     @NoneableLong
-    private Long  otherNonOperatingIncome;
-    @Json(name="depreciation")
+    private Long otherNonOperatingIncome;
+    @Json(name = "depreciation")
     @NoneableLong
-    private Long  depreciation;
-    @Json(name="depreciationAndAmortization")
+    private Long depreciation;
+    @Json(name = "depreciationAndAmortization")
     @NoneableLong
-    private Long  depreciationAndAmortization;
-    @Json(name="incomeBeforeTax")
+    private Long depreciationAndAmortization;
+    @Json(name = "incomeBeforeTax")
     @NoneableLong
-    private Long  incomeBeforeTax;
-    @Json(name="incomeTaxExpense")
+    private Long incomeBeforeTax;
+    @Json(name = "incomeTaxExpense")
     @NoneableLong
-    private Long  incomeTaxExpense;
-    @Json(name="interestAndDebtExpense")
+    private Long incomeTaxExpense;
+    @Json(name = "interestAndDebtExpense")
     @NoneableLong
-    private Long  interestAndDebtExpense;
-    @Json(name="netIncomeFromContinuingOperations")
+    private Long interestAndDebtExpense;
+    @Json(name = "netIncomeFromContinuingOperations")
     @NoneableLong
-    private Long  netIncomeFromContinuingOperations;
-    @Json(name="comprehensiveIncomeNetOfTax")
+    private Long netIncomeFromContinuingOperations;
+    @Json(name = "comprehensiveIncomeNetOfTax")
     @NoneableLong
-    private Long  comprehensiveIncomeNetOfTax;
-    @Json(name="ebit")
+    private Long comprehensiveIncomeNetOfTax;
+    @Json(name = "ebit")
     @NoneableLong
-    private Long  ebit;
-    @Json(name="ebitda")
+    private Long ebit;
+    @Json(name = "ebitda")
     @NoneableLong
-    private Long  ebitda;
-    @Json(name="netIncome")
+    private Long ebitda;
+    @Json(name = "netIncome")
     @NoneableLong
-    private Long  netIncome;
+    private Long netIncome;
 
     public String getFiscalDateEnding() {
         return fiscalDateEnding;

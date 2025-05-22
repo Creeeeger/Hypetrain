@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.forex.response;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class ForexResponse {
 
@@ -19,10 +19,15 @@ public class ForexResponse {
         this.errorMessage = null;
     }
 
-    private ForexResponse(String errorMessage){
+    private ForexResponse(String errorMessage) {
         this.metaData = MetaData.empty();
         this.forexUnits = new ArrayList<>();
         this.errorMessage = errorMessage;
+    }
+
+    public static ForexResponse of(Map<String, Object> stringObjectMap) {
+        Parser<ForexResponse> parser = new ForexParser();
+        return parser.parse(stringObjectMap);
     }
 
     public String getErrorMessage() {
@@ -37,9 +42,13 @@ public class ForexResponse {
         return forexUnits;
     }
 
-    public static ForexResponse of(Map<String, Object> stringObjectMap){
-        Parser<ForexResponse> parser = new ForexParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "ForexResponse{" +
+                "metaData=" + metaData +
+                ", forexUnits=" + forexUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class ForexParser extends DefaultParser<ForexResponse> {
@@ -59,26 +68,26 @@ public class ForexResponse {
             String interval = metaDataMap.getOrDefault("5. Interval", null);
             String outputSize = metaDataMap.getOrDefault("6. Output Size", null);
             String timeZone = metaDataMap.getOrDefault("7. Time Zone", null);
- 
-            if(metaDataMap.get("4. Last Refreshed") == null){
+
+            if (metaDataMap.get("4. Last Refreshed") == null) {
                 outputSize = metaDataMap.get("4. Output Size");
                 lastRefreshed = metaDataMap.get("5. Last Refreshed");
-                timeZone = metaDataMap.get("6. Time Zone");           
+                timeZone = metaDataMap.get("6. Time Zone");
             }
-           
+
             MetaData metaData = new MetaData(
-                information, 
-                fromSymbol, 
-                toSymbol, 
-                lastRefreshed,
-                interval,
-                outputSize,
-                timeZone
+                    information,
+                    fromSymbol,
+                    toSymbol,
+                    lastRefreshed,
+                    interval,
+                    outputSize,
+                    timeZone
             );
 
-            List<ForexUnit> forexUnits =  new ArrayList<>();
+            List<ForexUnit> forexUnits = new ArrayList<>();
 
-            for (Map.Entry<String,Map<String,String>> e: units.entrySet()) {
+            for (Map.Entry<String, Map<String, String>> e : units.entrySet()) {
                 ForexUnit.Builder forexUnit = new ForexUnit.Builder();
                 Map<String, String> m = e.getValue();
                 forexUnit.date(e.getKey());
@@ -88,17 +97,7 @@ public class ForexResponse {
                 forexUnit.close(Double.parseDouble(m.get("4. close")));
                 forexUnits.add(forexUnit.build());
             }
-            return  new ForexResponse(metaData, forexUnits);
+            return new ForexResponse(metaData, forexUnits);
         }
-    }
-
-
-    @Override
-    public String toString() {
-        return "ForexResponse{" +
-            "metaData=" + metaData +
-            ", forexUnits=" + forexUnits.size() +
-            ", errorMessage='" + errorMessage + '\'' +
-        '}';
     }
 }

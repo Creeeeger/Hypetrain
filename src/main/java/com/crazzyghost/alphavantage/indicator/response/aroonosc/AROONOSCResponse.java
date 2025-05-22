@@ -17,7 +17,7 @@ public class AROONOSCResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static AROONOSCResponse of(Map<String, Object> stringObjectMap){
+    public static AROONOSCResponse of(Map<String, Object> stringObjectMap) {
         Parser<AROONOSCResponse> parser = new AROONOSCParser();
         return parser.parse(stringObjectMap);
     }

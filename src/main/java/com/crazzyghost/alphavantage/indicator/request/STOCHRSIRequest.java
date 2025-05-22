@@ -20,7 +20,7 @@ public class STOCHRSIRequest extends IndicatorRequest {
         this.time_period = builder.timePeriod;
         this.series_type = builder.seriesType;
     }
-    
+
     public static class Builder extends IndicatorRequest.Builder<Builder> {
 
         private int fastKPeriod = 5;
@@ -28,32 +28,32 @@ public class STOCHRSIRequest extends IndicatorRequest {
         private MAType fastDMaType = MAType.SMA;
         private int timePeriod;
         private SeriesType seriesType;
-        
-        public Builder(){
+
+        public Builder() {
             this.function(Function.STOCHRSI);
         }
-    
-        public Builder fastKPeriod(int fastKPeriod){
+
+        public Builder fastKPeriod(int fastKPeriod) {
             this.fastKPeriod = fastKPeriod;
             return this;
         }
 
-        public Builder fastDPeriod(int fastDPeriod){
+        public Builder fastDPeriod(int fastDPeriod) {
             this.fastDPeriod = fastDPeriod;
             return this;
         }
 
-        public Builder fastDMaType(MAType type){
+        public Builder fastDMaType(MAType type) {
             this.fastDMaType = type;
             return this;
         }
 
-        public Builder timePeriod(int timePeriod){
+        public Builder timePeriod(int timePeriod) {
             this.timePeriod = timePeriod;
             return this;
         }
 
-        public Builder seriesType(SeriesType seriesType){
+        public Builder seriesType(SeriesType seriesType) {
             this.seriesType = seriesType;
             return this;
         }
@@ -62,6 +62,6 @@ public class STOCHRSIRequest extends IndicatorRequest {
         public IndicatorRequest build() {
             return new STOCHRSIRequest(this);
         }
-        
-    }   
+
+    }
 }

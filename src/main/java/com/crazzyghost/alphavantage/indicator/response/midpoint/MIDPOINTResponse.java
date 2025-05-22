@@ -17,7 +17,7 @@ public class MIDPOINTResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static MIDPOINTResponse of(Map<String, Object> stringObjectMap){
+    public static MIDPOINTResponse of(Map<String, Object> stringObjectMap) {
         Parser<MIDPOINTResponse> parser = new MIDPOINTResponseParser();
         return parser.parse(stringObjectMap);
     }

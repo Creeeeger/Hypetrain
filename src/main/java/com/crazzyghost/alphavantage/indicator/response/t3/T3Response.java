@@ -17,7 +17,7 @@ public class T3Response extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static T3Response of(Map<String, Object> stringObjectMap){
+    public static T3Response of(Map<String, Object> stringObjectMap) {
         Parser<T3Response> parser = new T3ResponseParser();
         return parser.parse(stringObjectMap);
     }

@@ -2,7 +2,6 @@ package com.crazzyghost.alphavantage.indicator.response.apo;
 
 import com.crazzyghost.alphavantage.indicator.response.PriceOscillatorResponse;
 import com.crazzyghost.alphavantage.indicator.response.SimpleIndicatorUnit;
-import com.crazzyghost.alphavantage.indicator.response.ppo.PPOResponse;
 import com.crazzyghost.alphavantage.parser.Parser;
 
 import java.util.List;
@@ -18,7 +17,7 @@ public class APOResponse extends PriceOscillatorResponse {
         super(errorMessage);
     }
 
-    public static APOResponse of(Map<String, Object> stringObjectMap){
+    public static APOResponse of(Map<String, Object> stringObjectMap) {
         Parser<APOResponse> parser = new APOParser();
         return parser.parse(stringObjectMap);
     }
