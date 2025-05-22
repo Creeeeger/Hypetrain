@@ -221,6 +221,11 @@ public class configHandler {
             greed.appendChild(doc.createTextNode("false"));
             root.appendChild(greed);
 
+            // Example: Market selection
+            Element market = doc.createElement("market");
+            market.appendChild(doc.createTextNode("allSymbols"));
+            root.appendChild(market);
+
             // Add any additional default settings below as needed for the application
 
             // Prepare to write the DOM Document to XML file with indentation (pretty print)

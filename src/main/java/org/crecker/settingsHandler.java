@@ -7,6 +7,7 @@ import java.awt.event.ActionListener;
 import java.util.Dictionary;
 import java.util.Hashtable;
 
+import static org.crecker.mainDataHandler.stockCategoryMap;
 import static org.crecker.mainUI.*;
 
 /**
@@ -26,8 +27,9 @@ public class settingsHandler extends JDialog {
     // Internal variables to hold settings values
     int vol;
     float aggressiveness;
-    String sym, key, T212, push;
+    String sym, key, T212, push, market;
     boolean sort, realtime, useCandles, greed;
+    static JComboBox<String> marketRegimeComboBox;
 
     /**
      * Constructs a new settingsHandler dialog with the current config values.
@@ -43,8 +45,10 @@ public class settingsHandler extends JDialog {
      * @param T212           Trading212 Api Key
      * @param push           PushCut URL endpoint
      * @param greed          Whether Greed Mode is turned on
+     * @param market         Market to hype in.
      */
-    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness, boolean useCandles, String T212, String push, boolean greed) {
+    public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness,
+                           boolean useCandles, String T212, String push, boolean greed, String market) {
         // Set layout manager for this JFrame: BorderLayout allows a central content area
         setLayout(new BorderLayout(10, 10));
 
@@ -59,6 +63,7 @@ public class settingsHandler extends JDialog {
         this.T212 = T212;
         this.push = push;
         this.greed = greed;
+        this.market = market;
 
         // Initialize main settings panel with vertical layout (BoxLayout.Y_AXIS stacks items top to bottom)
         settingsPanel = new JPanel();
@@ -163,6 +168,14 @@ public class settingsHandler extends JDialog {
         candleBox.setSelected(useCandles);
         candleBox.setAlignmentX(Component.LEFT_ALIGNMENT);
 
+        JLabel marketRegimeLabel = new JLabel("Select market regime:");
+        marketRegimeLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Create a ComboBox for selecting market regime
+        marketRegimeComboBox = new JComboBox<>(stockCategoryMap.keySet().toArray(new String[0]));
+        marketRegimeComboBox.setAlignmentX(Component.LEFT_ALIGNMENT);
+        marketRegimeComboBox.setSelectedItem(market);
+
         // Add all components to the settings panel, with spacing for neatness
         settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -195,6 +208,10 @@ public class settingsHandler extends JDialog {
         settingsPanel.add(candleLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(candleBox);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(marketRegimeLabel);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(marketRegimeComboBox);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
 
         // "Apply Settings" button for saving and applying configuration
@@ -231,7 +248,8 @@ public class settingsHandler extends JDialog {
                         {"candle", String.valueOf(candleBox.isSelected())},
                         {"T212", T212textField.getText()},
                         {"push", pushCutTextField.getText()},
-                        {"greed", String.valueOf(greedCheckBox.isSelected())}
+                        {"greed", String.valueOf(greedCheckBox.isSelected())},
+                        {"market", marketRegimeComboBox.getSelectedItem().toString()}
                 };
 
                 // Save updated settings to the config XML file

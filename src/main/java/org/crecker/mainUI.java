@@ -146,6 +146,8 @@ public class mainUI extends JFrame {
      */
     static String selectedStock = "-Select a Stock-";
 
+    // Selection of the market to hype in
+    public static String market;
     /**
      * UI panels for layout: symbol list, chart/tool section, notifications/hype panel, and chart panel itself.
      */
@@ -301,6 +303,7 @@ public class mainUI extends JFrame {
             t212ApiToken = settingData[7][1];
             pushCutUrlEndpoint = settingData[8][1];
             greed = Boolean.parseBoolean(settingData[9][1]);
+            market = settingData[10][1];
         } catch (Exception e) {
             System.out.println("Config error - Create new config " + e.getMessage());
             createConfig();
@@ -341,7 +344,8 @@ public class mainUI extends JFrame {
             loadTable(symbols);
 
             // Immediately open settings so user can edit config before using the app
-            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed);
+            settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness,
+                    useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market);
             guiSetting.setSize(500, 700);
             guiSetting.setAlwaysOnTop(true);
             guiSetting.setModalityType(Dialog.ModalityType.APPLICATION_MODAL); // makes it blocking
@@ -558,7 +562,8 @@ public class mainUI extends JFrame {
                 {"candle", String.valueOf(useCandles)},
                 {"T212", t212ApiToken},
                 {"push", pushCutUrlEndpoint},
-                {"greed", String.valueOf(greed)}
+                {"greed", String.valueOf(greed)},
+                {"market", market}
         };
     }
 
@@ -2819,7 +2824,8 @@ public class mainUI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime, aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed);
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime,
+                    aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market);
             gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
             gui.setTitle("Config handler ");  // Dialog window title
