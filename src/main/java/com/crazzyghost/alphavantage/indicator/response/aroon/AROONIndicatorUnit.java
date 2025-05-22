@@ -28,5 +28,5 @@ public class AROONIndicatorUnit {
     public String toString() {
         return "AROONIndicatorUnit {date=" + date + ", aroonUp=" + aroonUp + ", aroonDown=" + aroonDown + "}";
     }
-    
+
 }

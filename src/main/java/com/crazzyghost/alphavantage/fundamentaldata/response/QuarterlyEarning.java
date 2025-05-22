@@ -4,20 +4,20 @@ import com.crazzyghost.alphavantage.parser.NoneableDouble;
 import com.squareup.moshi.Json;
 
 public class QuarterlyEarning {
-    @Json(name="fiscalDateEnding")
+    @Json(name = "fiscalDateEnding")
     private String fiscalDateEnding;
-    @Json(name="reportedDate")
+    @Json(name = "reportedDate")
     private String reportedDate;
-    @Json(name="reportedEPS")
+    @Json(name = "reportedEPS")
     @NoneableDouble
     private Double reportedEPS;
-    @Json(name="estimatedEPS")
+    @Json(name = "estimatedEPS")
     @NoneableDouble
     private Double estimatedEPS;
-    @Json(name="surprise")
+    @Json(name = "surprise")
     @NoneableDouble
     private Double surprise;
-    @Json(name="surprisePercentage")
+    @Json(name = "surprisePercentage")
     @NoneableDouble
     private Double surprisePercentage;
 

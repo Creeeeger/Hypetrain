@@ -1,9 +1,8 @@
 package com.crazzyghost.alphavantage.forex.request;
 
 import com.crazzyghost.alphavantage.parameters.DataType;
-import com.crazzyghost.alphavantage.parameters.OutputSize;
 
-public abstract class ForexRequest{
+public abstract class ForexRequest {
 
     protected String from_symbol;
     protected String to_symbol;
@@ -16,23 +15,23 @@ public abstract class ForexRequest{
     }
 
 
-    public abstract static class Builder <T extends Builder<?>>{
+    public abstract static class Builder<T extends Builder<?>> {
 
         private String fromSymbol;
         private String toSymbol;
         private DataType dataType = DataType.JSON;
 
-        public T fromSymbol(String fromSymbol){
+        public T fromSymbol(String fromSymbol) {
             this.fromSymbol = fromSymbol;
             return (T) this;
         }
 
-        public T toSymbol(String fromSymbol){
-            this.toSymbol =fromSymbol;
+        public T toSymbol(String fromSymbol) {
+            this.toSymbol = fromSymbol;
             return (T) this;
         }
 
-        public T dataType(DataType dataType){
+        public T dataType(DataType dataType) {
             this.dataType = dataType;
             return (T) this;
         }

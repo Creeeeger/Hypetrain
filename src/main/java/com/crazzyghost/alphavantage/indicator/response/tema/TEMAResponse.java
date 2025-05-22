@@ -17,7 +17,7 @@ public class TEMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static TEMAResponse of(Map<String, Object> stringObjectMap){
+    public static TEMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<TEMAResponse> parser = new TEMAResponseParser();
         return parser.parse(stringObjectMap);
     }

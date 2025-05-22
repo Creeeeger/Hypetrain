@@ -22,11 +22,11 @@
  */
 package com.crazzyghost.alphavantage.cryptocurrency.response;
 
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.Parser;
 
 /**
  * Crypto Currency Rating Response
@@ -49,15 +49,15 @@ public class RatingResponse {
     private String errorMessage;
 
     public RatingResponse(
-        String symbol,
-        String name,
-        String fcasRating,
-        String fcasScore,
-        String developerScore,
-        String marketMaturityScore,
-        String utilityScore,
-        String lastRefreshed,
-        String timeZone
+            String symbol,
+            String name,
+            String fcasRating,
+            String fcasScore,
+            String developerScore,
+            String marketMaturityScore,
+            String utilityScore,
+            String lastRefreshed,
+            String timeZone
     ) {
         this.symbol = symbol;
         this.name = name;
@@ -70,49 +70,13 @@ public class RatingResponse {
         this.timeZone = timeZone;
     }
 
-    private RatingResponse(String errorMessage){
+    private RatingResponse(String errorMessage) {
         this.errorMessage = errorMessage;
     }
 
-    public static RatingResponse of(Map<String, Object> stringObjectMap){
+    public static RatingResponse of(Map<String, Object> stringObjectMap) {
         Parser<RatingResponse> parser = new RatingParser();
         return parser.parse(stringObjectMap);
-    }
-
-    private static class RatingParser extends Parser<RatingResponse> {
-
-        @SuppressWarnings("unchecked")
-        @Override
-        public RatingResponse parse(Map<String, Object> stringObjectMap){
-            List<String> keys = new ArrayList<>(stringObjectMap.keySet());
-            if (keys.isEmpty()) {
-                return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
-            } else {
-                try{
-                    Map<String, String> md = (Map<String, String>) stringObjectMap.get(keys.get(0));
-                    String symbol = md.get("1. symbol");
-                    String name = md.get("2. name");
-                    String fcasRating = md.get("3. fcas rating");
-                    String fcasScore = md.get("4. fcas score");
-                    String developerScore = md.get("5. developer score");
-                    String marketMaturityScore = md.get("6. market maturity score");
-                    String utilityScore = md.get("7. utility score");
-                    String lastRefreshed = md.get("8. last refreshed");
-                    String timeZone = md.get("9. timezone");
-                    return new RatingResponse(symbol, name, fcasRating, fcasScore, developerScore, marketMaturityScore, utilityScore, lastRefreshed, timeZone);
-
-                }catch (ClassCastException e){
-                    return onParseError(stringObjectMap.get(keys.get(0)).toString());
-                }
-            }
-        }
-
-
-        @Override
-        public RatingResponse onParseError(String error) {
-            return new RatingResponse(error);
-        }
-
     }
 
     public String getErrorMessage() {
@@ -164,6 +128,41 @@ public class RatingResponse {
                 + "}";
     }
 
+    private static class RatingParser extends Parser<RatingResponse> {
+
+        @SuppressWarnings("unchecked")
+        @Override
+        public RatingResponse parse(Map<String, Object> stringObjectMap) {
+            List<String> keys = new ArrayList<>(stringObjectMap.keySet());
+            if (keys.isEmpty()) {
+                return onParseError("Empty JSON returned by the API, the symbol might not be supported.");
+            } else {
+                try {
+                    Map<String, String> md = (Map<String, String>) stringObjectMap.get(keys.get(0));
+                    String symbol = md.get("1. symbol");
+                    String name = md.get("2. name");
+                    String fcasRating = md.get("3. fcas rating");
+                    String fcasScore = md.get("4. fcas score");
+                    String developerScore = md.get("5. developer score");
+                    String marketMaturityScore = md.get("6. market maturity score");
+                    String utilityScore = md.get("7. utility score");
+                    String lastRefreshed = md.get("8. last refreshed");
+                    String timeZone = md.get("9. timezone");
+                    return new RatingResponse(symbol, name, fcasRating, fcasScore, developerScore, marketMaturityScore, utilityScore, lastRefreshed, timeZone);
+
+                } catch (ClassCastException e) {
+                    return onParseError(stringObjectMap.get(keys.get(0)).toString());
+                }
+            }
+        }
+
+
+        @Override
+        public RatingResponse onParseError(String error) {
+            return new RatingResponse(error);
+        }
+
+    }
 
 
 }

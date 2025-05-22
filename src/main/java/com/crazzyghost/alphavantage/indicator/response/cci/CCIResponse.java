@@ -17,7 +17,7 @@ public class CCIResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static CCIResponse of(Map<String, Object> stringObjectMap){
+    public static CCIResponse of(Map<String, Object> stringObjectMap) {
         Parser<CCIResponse> parser = new CCIParser();
         return parser.parse(stringObjectMap);
     }

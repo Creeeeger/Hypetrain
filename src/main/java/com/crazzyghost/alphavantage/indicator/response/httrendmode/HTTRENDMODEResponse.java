@@ -17,7 +17,7 @@ public class HTTRENDMODEResponse extends SeriesResponse {
         super(errorMessage);
     }
 
-    public static HTTRENDMODEResponse of(Map<String, Object> data){
+    public static HTTRENDMODEResponse of(Map<String, Object> data) {
         Parser<HTTRENDMODEResponse> parser = new HTTRENDMODEParser();
         return parser.parse(data);
     }

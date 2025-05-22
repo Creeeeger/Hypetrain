@@ -6,7 +6,7 @@ public class SimpleIndicatorRequest extends IndicatorRequest {
         super(builder);
     }
 
-    public static class Builder extends IndicatorRequest.Builder<Builder>{
+    public static class Builder extends IndicatorRequest.Builder<Builder> {
 
         @Override
         public IndicatorRequest build() {

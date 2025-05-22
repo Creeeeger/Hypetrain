@@ -17,7 +17,7 @@ public class ADXRResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static ADXRResponse of(Map<String, Object> stringObjectMap){
+    public static ADXRResponse of(Map<String, Object> stringObjectMap) {
         Parser<ADXRResponse> parser = new ADXRParser();
         return parser.parse(stringObjectMap);
     }

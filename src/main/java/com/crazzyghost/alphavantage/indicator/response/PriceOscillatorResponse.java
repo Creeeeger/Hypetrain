@@ -1,11 +1,10 @@
 package com.crazzyghost.alphavantage.indicator.response;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public abstract class PriceOscillatorResponse {
 
@@ -37,32 +36,42 @@ public abstract class PriceOscillatorResponse {
         return metaData;
     }
 
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class PriceOscillatorParser<T> extends DefaultParser<T> {
 
-        public PriceOscillatorParser(){}
+        public PriceOscillatorParser() {
+        }
 
         @Override
         public T parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")), 
-                String.valueOf(metaDataMap.get("2: Indicator")),
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.1: Fast Period"))).intValue(),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.2: Slow Period"))).intValue(),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.3: MA Type"))).intValue(), 
-                String.valueOf(metaDataMap.get("6: Series Type")),
-                String.valueOf(metaDataMap.get("7: Time Zone"))
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.1: Fast Period"))).intValue(),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.2: Slow Period"))).intValue(),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.3: MA Type"))).intValue(),
+                    String.valueOf(metaDataMap.get("6: Series Type")),
+                    String.valueOf(metaDataMap.get("7: Time Zone"))
             );
-            
+
             List<SimpleIndicatorUnit> indicatorUnits = new ArrayList<>();
 
             for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
                 Map<String, String> m = e.getValue();
                 SimpleIndicatorUnit indicatorUnit = new SimpleIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get(getIndicatorKey())),
-                    getIndicatorKey()
+                        e.getKey(),
+                        Double.parseDouble(m.get(getIndicatorKey())),
+                        getIndicatorKey()
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -75,18 +84,10 @@ public abstract class PriceOscillatorResponse {
         }
 
         public abstract T get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData);
+
         public abstract T get(String error);
+
         public abstract String getIndicatorKey();
-    }
-
-
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+","") +"Response{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {
@@ -100,21 +101,21 @@ public abstract class PriceOscillatorResponse {
         private int maType;
         private String seriesType;
         private String timeZone;
-        
-        public MetaData(){
-            this("", "", "", "", 0, 0, 0, "","");
+
+        public MetaData() {
+            this("", "", "", "", 0, 0, 0, "", "");
         }
 
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            int fastPeriod,
-            int slowPeriod,
-            int maType,
-            String seriesType,
-            String timeZone
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                int fastPeriod,
+                int slowPeriod,
+                int maType,
+                String seriesType,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -170,7 +171,7 @@ public abstract class PriceOscillatorResponse {
                     + ", slowPeriod=" + slowPeriod + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
         }
 
-        
+
     }
 
 }

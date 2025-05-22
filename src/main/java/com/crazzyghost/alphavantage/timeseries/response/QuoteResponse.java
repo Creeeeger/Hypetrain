@@ -45,6 +45,15 @@ public class QuoteResponse {
     }
 
 
+    public QuoteResponse(String errorMessage) {
+        this.errorMessage = errorMessage;
+    }
+
+    public static QuoteResponse of(Map<String, Object> stringObjectMap) {
+        Parser<QuoteResponse> parser = new QuoteParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getSymbol() {
         return this.symbol;
     }
@@ -87,16 +96,6 @@ public class QuoteResponse {
 
     public String getErrorMessage() {
         return this.errorMessage;
-    }
-
-
-    public QuoteResponse(String errorMessage) {
-        this.errorMessage = errorMessage;
-    }
-
-    public static QuoteResponse of(Map<String, Object> stringObjectMap) {
-        Parser<QuoteResponse> parser = new QuoteParser();
-        return parser.parse(stringObjectMap);
     }
 
     public static class QuoteParser extends Parser<QuoteResponse> {

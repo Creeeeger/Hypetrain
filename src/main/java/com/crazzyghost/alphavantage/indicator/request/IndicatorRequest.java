@@ -12,41 +12,41 @@ public abstract class IndicatorRequest {
     protected Interval interval;
     protected DataType dataType;
 
-    protected IndicatorRequest(Builder<?> builder){
+    protected IndicatorRequest(Builder<?> builder) {
         this.function = builder.function;
         this.symbol = builder.symbol;
         this.interval = builder.interval;
         this.dataType = builder.dataType;
     }
 
-    public abstract static class Builder<T extends Builder<?>>{
-        
+    public abstract static class Builder<T extends Builder<?>> {
+
         public Function function;
         protected String symbol;
         protected Interval interval = Interval.SIXTY_MIN;
         protected DataType dataType = DataType.JSON;
 
-        public T function(Function function){
+        public T function(Function function) {
             this.function = function;
             return (T) this;
         }
 
-        public T forSymbol(String symbol){
+        public T forSymbol(String symbol) {
             this.symbol = symbol;
             return (T) this;
         }
 
-        public T interval(Interval interval){
+        public T interval(Interval interval) {
             this.interval = interval;
             return (T) this;
         }
 
-        public T dataType(DataType dataType){
+        public T dataType(DataType dataType) {
             this.dataType = dataType;
             return (T) this;
         }
 
         public abstract IndicatorRequest build();
-    } 
+    }
 
 }

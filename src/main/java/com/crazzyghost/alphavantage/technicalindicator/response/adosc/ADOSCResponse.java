@@ -1,12 +1,12 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.adosc;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.technicalindicator.response.SimpleTechnicalIndicatorUnit;
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class ADOSCResponse {
 
@@ -26,6 +26,11 @@ public class ADOSCResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static ADOSCResponse of(Map<String, Object> stringObjectMap) {
+        Parser<ADOSCResponse> parser = new ADOSCParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -38,9 +43,13 @@ public class ADOSCResponse {
         return metaData;
     }
 
-    public static ADOSCResponse of(Map<String, Object> stringObjectMap) {
-        Parser<ADOSCResponse> parser = new ADOSCParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "ADOSCResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class ADOSCParser extends DefaultParser<ADOSCResponse> {
@@ -74,15 +83,6 @@ public class ADOSCResponse {
         public ADOSCResponse onParseError(String error) {
             return new ADOSCResponse(error);
         }
-    }
-
-    @Override
-    public String toString() {
-        return "ADOSCResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

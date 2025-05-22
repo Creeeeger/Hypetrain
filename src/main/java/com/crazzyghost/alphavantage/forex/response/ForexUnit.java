@@ -16,46 +16,6 @@ public class ForexUnit {
         this.date = builder.date;
     }
 
-    public static class Builder{
-
-        double open;
-        double high;
-        double low;
-        double close;
-        String date;
-
-        public Builder open(double open){
-            this.open = open;
-            return this;
-        }
-
-        public Builder high(double high){
-            this.high = high;
-            return this;
-        }
-        public Builder low(double low){
-            this.low = low;
-            return this;
-        }
-
-        public Builder close(double close){
-            this.close = close;
-            return this;
-        }
-
-        public Builder date(String date){
-            this.date = date;
-            return this;
-        }
-
-        public ForexUnit build(){
-            return new ForexUnit(this);
-        }
-
-    }
-
-    
-
     @Override
     public String toString() {
         return "\n" + "ForexUnit{" +
@@ -86,5 +46,44 @@ public class ForexUnit {
     public String getDate() {
         return date;
     }
-    
+
+    public static class Builder {
+
+        double open;
+        double high;
+        double low;
+        double close;
+        String date;
+
+        public Builder open(double open) {
+            this.open = open;
+            return this;
+        }
+
+        public Builder high(double high) {
+            this.high = high;
+            return this;
+        }
+
+        public Builder low(double low) {
+            this.low = low;
+            return this;
+        }
+
+        public Builder close(double close) {
+            this.close = close;
+            return this;
+        }
+
+        public Builder date(String date) {
+            this.date = date;
+            return this;
+        }
+
+        public ForexUnit build() {
+            return new ForexUnit(this);
+        }
+
+    }
+
 }

@@ -7,7 +7,7 @@ public enum OutputSize {
 
     private final String outputSize;
 
-    OutputSize(String outputSize){
+    OutputSize(String outputSize) {
         this.outputSize = outputSize;
     }
 

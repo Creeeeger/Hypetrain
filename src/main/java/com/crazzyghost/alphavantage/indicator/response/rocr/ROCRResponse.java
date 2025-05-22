@@ -17,7 +17,7 @@ public class ROCRResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static ROCRResponse of(Map<String, Object> stringObjectMap){
+    public static ROCRResponse of(Map<String, Object> stringObjectMap) {
         Parser<ROCRResponse> parser = new ROCRResponseParser();
         return parser.parse(stringObjectMap);
     }

@@ -17,7 +17,7 @@ public class HTTRENDLINEResponse extends SeriesResponse {
         super(errorMessage);
     }
 
-    public static HTTRENDLINEResponse of(Map<String, Object> data){
+    public static HTTRENDLINEResponse of(Map<String, Object> data) {
         Parser<HTTRENDLINEResponse> parser = new HTTRENDLINEParser();
         return parser.parse(data);
     }

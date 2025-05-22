@@ -1,11 +1,10 @@
 package com.crazzyghost.alphavantage.indicator.response;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public abstract class SeriesResponse {
 
@@ -37,6 +36,15 @@ public abstract class SeriesResponse {
         return metaData;
     }
 
+    @Override
+    public String toString() {
+        return "SeriesResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class SeriesParser<T> extends DefaultParser<T> {
 
         protected SeriesParser() {
@@ -46,12 +54,12 @@ public abstract class SeriesResponse {
         @Override
         public T parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")),
-                String.valueOf(metaDataMap.get("2: Indicator")), 
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")), 
-                String.valueOf(metaDataMap.get("5: Series Type")),
-                String.valueOf(metaDataMap.get("6: Time Zone"))
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    String.valueOf(metaDataMap.get("5: Series Type")),
+                    String.valueOf(metaDataMap.get("6: Time Zone"))
             );
 
             List<SimpleIndicatorUnit> indicatorUnits = new ArrayList<>();
@@ -59,9 +67,9 @@ public abstract class SeriesResponse {
             for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
                 Map<String, String> m = e.getValue();
                 SimpleIndicatorUnit indicatorUnit = new SimpleIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get(getIndicatorKey())),
-                    getIndicatorKey()
+                        e.getKey(),
+                        Double.parseDouble(m.get(getIndicatorKey())),
+                        getIndicatorKey()
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -74,18 +82,10 @@ public abstract class SeriesResponse {
         }
 
         public abstract T get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData);
+
         public abstract T get(String error);
+
         public abstract String getIndicatorKey();
-    }
-
-
-    @Override
-    public String toString() {
-        return "SeriesResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {
@@ -96,18 +96,18 @@ public abstract class SeriesResponse {
         private String interval;
         private String seriesType;
         private String timeZone;
-     
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", "", "");
         }
 
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            String seriesType, 
-            String timeZone
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                String seriesType,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -147,7 +147,7 @@ public abstract class SeriesResponse {
                     + ", seriesType=" + seriesType + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
         }
 
-        
+
     }
 }
 

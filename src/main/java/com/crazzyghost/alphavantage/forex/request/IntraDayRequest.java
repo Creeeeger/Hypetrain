@@ -10,24 +10,24 @@ public class IntraDayRequest extends ForexRequest {
     private Function function;
     private OutputSize outputsize;
 
-    private IntraDayRequest(Builder builder){
+    private IntraDayRequest(Builder builder) {
         super(builder);
         this.function = Function.FX_INTRADAY;
-        this.outputsize =  builder.outputsize;
+        this.outputsize = builder.outputsize;
         this.interval = builder.interval;
     }
 
-    public static class Builder extends ForexRequest.Builder<Builder>{
+    public static class Builder extends ForexRequest.Builder<Builder> {
 
         Interval interval = Interval.ONE_MIN;
         OutputSize outputsize = OutputSize.COMPACT;
 
-        public Builder interval(Interval interval){
+        public Builder interval(Interval interval) {
             this.interval = interval;
             return this;
         }
 
-        public Builder outputSize(OutputSize outputsize){
+        public Builder outputSize(OutputSize outputsize) {
             this.outputsize = outputsize;
             return this;
         }

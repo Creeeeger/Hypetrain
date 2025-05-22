@@ -6,7 +6,7 @@ public class SimpleIndicatorUnit {
     Double value;
     String indicatorKey;
 
-	public SimpleIndicatorUnit(String date, Double value) {
+    public SimpleIndicatorUnit(String date, Double value) {
         this.date = date;
         this.value = value;
     }
@@ -27,9 +27,9 @@ public class SimpleIndicatorUnit {
 
     @Override
     public String toString() {
-        String key = indicatorKey == null ? "SimpleIndicator" : indicatorKey; 
+        String key = indicatorKey == null ? "SimpleIndicator" : indicatorKey;
         return key + "Unit {date=" + date + ", value=" + value + "}";
     }
-    
-    
+
+
 }

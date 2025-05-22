@@ -7,4 +7,5 @@ import java.lang.annotation.RetentionPolicy;
 
 @Retention(RetentionPolicy.RUNTIME)
 @JsonQualifier
-public @interface NoneableDouble { }
+public @interface NoneableDouble {
+}

@@ -17,7 +17,7 @@ public class WILLRResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static WILLRResponse of(Map<String, Object> stringObjectMap){
+    public static WILLRResponse of(Map<String, Object> stringObjectMap) {
         Parser<WILLRResponse> parser = new WILLRParser();
         return parser.parse(stringObjectMap);
     }

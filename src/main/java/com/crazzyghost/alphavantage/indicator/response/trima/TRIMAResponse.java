@@ -17,7 +17,7 @@ public class TRIMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static TRIMAResponse of(Map<String, Object> stringObjectMap){
+    public static TRIMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<TRIMAResponse> parser = new TRIMAResponseParser();
         return parser.parse(stringObjectMap);
     }

@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.indicator.response.stochf;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class STOCHFResponse {
 
@@ -25,6 +25,11 @@ public class STOCHFResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static STOCHFResponse of(Map<String, Object> stringObjectMap) {
+        Parser<STOCHFResponse> parser = new STOCHFParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class STOCHFResponse {
         return metaData;
     }
 
-    public static STOCHFResponse of(Map<String, Object> stringObjectMap) {
-        Parser<STOCHFResponse> parser = new STOCHFParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "STOCHFResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class STOCHFParser extends DefaultParser<STOCHFResponse> {
@@ -47,14 +56,14 @@ public class STOCHFResponse {
         @Override
         public STOCHFResponse parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")),
-                String.valueOf(metaDataMap.get("2: Indicator")), 
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")), 
-                Double.valueOf(String.valueOf(metaDataMap.get("5.1: FastK Period"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.2: FastD Period"))),
-                Double.valueOf(String.valueOf(metaDataMap.get("5.3: FastD MA Type"))),
-                String.valueOf(metaDataMap.get("6: Time Zone"))
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.1: FastK Period"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.2: FastD Period"))),
+                    Double.valueOf(String.valueOf(metaDataMap.get("5.3: FastD MA Type"))),
+                    String.valueOf(metaDataMap.get("6: Time Zone"))
             );
 
             List<STOCHFIndicatorUnit> indicatorUnits = new ArrayList<>();
@@ -74,16 +83,6 @@ public class STOCHFResponse {
         }
     }
 
-
-    @Override
-    public String toString() {
-        return "STOCHFResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
-    }
-
     public static class MetaData {
 
         private String symbol;
@@ -94,16 +93,16 @@ public class STOCHFResponse {
         private double fastDPeriod;
         private double fastDMaType;
         private String timeZone;
-        
+
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            double fastKPeriod,
-            double fastDPeriod,
-            double fastDMaType, 
-            String timeZone 
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                double fastKPeriod,
+                double fastDPeriod,
+                double fastDMaType,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -114,48 +113,48 @@ public class STOCHFResponse {
             this.fastDMaType = fastDMaType;
             this.timeZone = timeZone;
         }
-        
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", 5, 3, 0, "");
         }
 
-       public double getFastDMaType() {
-           return fastDMaType;
-       } 
-       
-       public double getFastDPeriod() {
-           return fastDPeriod;
-       }
-        
-       public double getFastKPeriod() {
-           return fastKPeriod;
-       }
-        
-       public String getIndicator() {
-           return indicator;
-       }
+        public double getFastDMaType() {
+            return fastDMaType;
+        }
 
-       public String getInterval() {
-           return interval;
-       }
+        public double getFastDPeriod() {
+            return fastDPeriod;
+        }
 
-       public String getLastRefreshed() {
-           return lastRefreshed;
-       }
+        public double getFastKPeriod() {
+            return fastKPeriod;
+        }
 
-       public String getSymbol() {
-           return symbol;
-       }
+        public String getIndicator() {
+            return indicator;
+        }
 
-       public String getTimeZone() {
-           return timeZone;
-       }
+        public String getInterval() {
+            return interval;
+        }
 
-       @Override
-       public String toString() {
-           return "MetaData {fastDMaType=" + fastDMaType + ", fastDPeriod=" + fastDPeriod + ", fastKPeriod="
-                   + fastKPeriod + ", indicator=" + indicator + ", interval=" + interval + ", lastRefreshed="
-                   + lastRefreshed + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
-       }
+        public String getLastRefreshed() {
+            return lastRefreshed;
+        }
+
+        public String getSymbol() {
+            return symbol;
+        }
+
+        public String getTimeZone() {
+            return timeZone;
+        }
+
+        @Override
+        public String toString() {
+            return "MetaData {fastDMaType=" + fastDMaType + ", fastDPeriod=" + fastDPeriod + ", fastKPeriod="
+                    + fastKPeriod + ", indicator=" + indicator + ", interval=" + interval + ", lastRefreshed="
+                    + lastRefreshed + ", symbol=" + symbol + ", timeZone=" + timeZone + "}";
+        }
     }
 }

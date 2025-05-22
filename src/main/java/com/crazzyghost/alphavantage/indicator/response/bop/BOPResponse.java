@@ -22,7 +22,7 @@ public class BOPResponse extends SimpleIndicatorResponse {
         return parser.parse(stringObjectMap);
     }
 
-    public static class BOPParser extends SimpleIndicatorParser<BOPResponse>{
+    public static class BOPParser extends SimpleIndicatorParser<BOPResponse> {
 
         @Override
         public BOPResponse get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData) {

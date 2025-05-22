@@ -17,7 +17,7 @@ public class SMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static SMAResponse of(Map<String, Object> stringObjectMap){
+    public static SMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<SMAResponse> parser = new SMAResponseParser();
         return parser.parse(stringObjectMap);
     }

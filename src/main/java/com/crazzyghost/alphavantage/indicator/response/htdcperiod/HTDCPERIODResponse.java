@@ -17,7 +17,7 @@ public class HTDCPERIODResponse extends SeriesResponse {
         super(errorMessage);
     }
 
-    public static HTDCPERIODResponse of(Map<String, Object> data){
+    public static HTDCPERIODResponse of(Map<String, Object> data) {
         Parser<HTDCPERIODResponse> parser = new HTDCPERIODParser();
         return parser.parse(data);
     }

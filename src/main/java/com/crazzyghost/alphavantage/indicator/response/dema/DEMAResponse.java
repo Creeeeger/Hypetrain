@@ -17,7 +17,7 @@ public class DEMAResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static DEMAResponse of(Map<String, Object> stringObjectMap){
+    public static DEMAResponse of(Map<String, Object> stringObjectMap) {
         Parser<DEMAResponse> parser = new DMAResponseParser();
         return parser.parse(stringObjectMap);
     }

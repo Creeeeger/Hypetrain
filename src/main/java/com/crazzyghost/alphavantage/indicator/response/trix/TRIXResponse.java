@@ -17,7 +17,7 @@ public class TRIXResponse extends PeriodicSeriesResponse {
         super(errorMessage);
     }
 
-    public static TRIXResponse of(Map<String, Object> stringObjectMap){
+    public static TRIXResponse of(Map<String, Object> stringObjectMap) {
         Parser<TRIXResponse> parser = new TRIXResponseParser();
         return parser.parse(stringObjectMap);
     }

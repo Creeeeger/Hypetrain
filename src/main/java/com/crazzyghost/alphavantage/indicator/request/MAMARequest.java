@@ -26,17 +26,17 @@ public class MAMARequest extends IndicatorRequest {
             this.function(Function.MAMA);
         }
 
-        public Builder fastLimit(double fastLimit){
+        public Builder fastLimit(double fastLimit) {
             this.fastLimit = fastLimit;
             return this;
         }
 
-        public Builder slowLimit(double slowLimit){
+        public Builder slowLimit(double slowLimit) {
             this.slowLimit = slowLimit;
             return this;
         }
 
-        public Builder seriesType(SeriesType seriesType){
+        public Builder seriesType(SeriesType seriesType) {
             this.seriesType = seriesType;
             return this;
         }
@@ -46,9 +46,8 @@ public class MAMARequest extends IndicatorRequest {
             return new MAMARequest(this);
         }
 
-        
-    }   
 
+    }
 
 
 }

@@ -17,16 +17,16 @@ public class ADOSCRequest extends IndicatorRequest {
         private int fastPeriod = 3;
         private int slowPeriod = 10;
 
-        public Builder(){
+        public Builder() {
             this.function(Function.ADOSC);
         }
 
-        public Builder fastPeriod(int fastPeriod){
+        public Builder fastPeriod(int fastPeriod) {
             this.fastPeriod = fastPeriod;
             return this;
         }
 
-        public Builder slowPeriod(int slowPeriod){
+        public Builder slowPeriod(int slowPeriod) {
             this.slowPeriod = slowPeriod;
             return this;
         }
@@ -35,6 +35,6 @@ public class ADOSCRequest extends IndicatorRequest {
         public IndicatorRequest build() {
             return new ADOSCRequest(this);
         }
-        
-    }  
+
+    }
 }

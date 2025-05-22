@@ -38,7 +38,9 @@ public class BalanceSheetRequest extends FundamentalDataRequest {
 
     public static class Builder extends FundamentalDataRequest.Builder<Builder> {
 
-        public Builder() { this.function(Function.BALANCE_SHEET); }
+        public Builder() {
+            this.function(Function.BALANCE_SHEET);
+        }
 
         @Override
         public BalanceSheetRequest build() {

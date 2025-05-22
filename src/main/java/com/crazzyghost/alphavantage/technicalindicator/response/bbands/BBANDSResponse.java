@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.bbands;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class BBANDSResponse {
 
@@ -25,6 +25,11 @@ public class BBANDSResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static BBANDSResponse of(Map<String, Object> stringObjectMap) {
+        Parser<BBANDSResponse> parser = new BBANDSParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class BBANDSResponse {
         return metaData;
     }
 
-    public static BBANDSResponse of(Map<String, Object> stringObjectMap) {
-        Parser<BBANDSResponse> parser = new BBANDSParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class BBANDSParser extends DefaultParser<BBANDSResponse> {
@@ -78,15 +87,6 @@ public class BBANDSResponse {
         public BBANDSResponse onParseError(String error) {
             return new BBANDSResponse(error);
         }
-    }
-
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

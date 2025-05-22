@@ -57,6 +57,14 @@ public class CompanyOverviewResponse {
         return overview;
     }
 
+    @Override
+    public String toString() {
+        return "CompanyOverviewResponse{" +
+                "overview=" + overview +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static class CompanyOverviewParser extends Parser<CompanyOverviewResponse> {
 
         @Override
@@ -81,13 +89,5 @@ public class CompanyOverviewResponse {
                 return onParseError(data.get(keys.get(0)).toString());
             }
         }
-    }
-
-    @Override
-    public String toString() {
-        return "CompanyOverviewResponse{" +
-                "overview=" + overview +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 }

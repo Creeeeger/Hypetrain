@@ -30,6 +30,7 @@ import java.util.Arrays;
 
 public class FederalFundsRateRequest extends EconomicIndicatorRequest {
     private Interval interval;
+
     private FederalFundsRateRequest(Builder builder) {
         super(builder);
         this.interval = builder.interval;

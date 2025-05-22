@@ -41,17 +41,17 @@ public abstract class FundamentalDataRequest {
     }
 
 
-    public abstract static class Builder <T extends Builder<?>> {
+    public abstract static class Builder<T extends Builder<?>> {
 
-        private String symbol;
         public Function function;
+        private String symbol;
 
-        public T symbol(String symbol){
+        public T symbol(String symbol) {
             this.symbol = symbol;
             return (T) this;
         }
 
-        public T function(Function function){
+        public T function(Function function) {
             this.function = function;
             return (T) this;
         }

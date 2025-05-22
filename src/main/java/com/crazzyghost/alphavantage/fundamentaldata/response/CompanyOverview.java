@@ -6,129 +6,129 @@ import com.squareup.moshi.Json;
 
 public class CompanyOverview {
 
-    @Json(name="Symbol")
+    @Json(name = "Symbol")
     private String symbol;
-    @Json(name="AssetType")
+    @Json(name = "AssetType")
     private String assetType;
-    @Json(name="Name")
+    @Json(name = "Name")
     private String name;
-    @Json(name="Description")
+    @Json(name = "Description")
     private String description;
-    @Json(name="CIK")
+    @Json(name = "CIK")
     @NoneableLong
     private Long cik;
-    @Json(name="Exchange")
+    @Json(name = "Exchange")
     private String exchange;
-    @Json(name="Currency")
+    @Json(name = "Currency")
     private String currency;
-    @Json(name="Country")
+    @Json(name = "Country")
     private String country;
-    @Json(name="Sector")
+    @Json(name = "Sector")
     private String sector;
-    @Json(name="Industry")
+    @Json(name = "Industry")
     private String industry;
-    @Json(name="Address")
+    @Json(name = "Address")
     private String address;
-    @Json(name="FiscalYearEnd")
+    @Json(name = "FiscalYearEnd")
     private String fiscalYearEnd;
-    @Json(name="LatestQuarter")
+    @Json(name = "LatestQuarter")
     private String latestQuarter;
-    @Json(name="MarketCapitalization")
+    @Json(name = "MarketCapitalization")
     @NoneableLong
     private Long marketCapitalization;
-    @Json(name="EBITDA")
+    @Json(name = "EBITDA")
     @NoneableLong
     private Long ebitda;
-    @Json(name="PERatio")
+    @Json(name = "PERatio")
     @NoneableDouble
     private Double peRatio;
-    @Json(name="PEGRatio")
+    @Json(name = "PEGRatio")
     @NoneableDouble
     private Double pegRatio;
-    @Json(name="BookValue")
+    @Json(name = "BookValue")
     @NoneableDouble
     private Double bookValue;
-    @Json(name="DividendPerShare")
+    @Json(name = "DividendPerShare")
     @NoneableDouble
     private Double dividendPerShare;
-    @Json(name="DividendYield")
+    @Json(name = "DividendYield")
     @NoneableDouble
     private Double dividendYield;
-    @Json(name="EPS")
+    @Json(name = "EPS")
     @NoneableDouble
     private Double eps;
-    @Json(name="RevenuePerShareTTM")
+    @Json(name = "RevenuePerShareTTM")
     @NoneableDouble
     private Double revenuePerShareTTM;
-    @Json(name="ProfitMargin")
+    @Json(name = "ProfitMargin")
     @NoneableDouble
     private Double profitMargin;
-    @Json(name="OperatingMarginTTM")
+    @Json(name = "OperatingMarginTTM")
     @NoneableDouble
     private Double operatingMarginTTM;
-    @Json(name="ReturnOnAssetsTTM")
+    @Json(name = "ReturnOnAssetsTTM")
     @NoneableDouble
     private Double returnOnAssetsTTM;
-    @Json(name="ReturnOnEquityTTM")
+    @Json(name = "ReturnOnEquityTTM")
     @NoneableDouble
     private Double returnOnEquityTTM;
-    @Json(name="RevenueTTM")
+    @Json(name = "RevenueTTM")
     @NoneableLong
     private Long revenueTTM;
-    @Json(name="GrossProfitTTM")
+    @Json(name = "GrossProfitTTM")
     @NoneableLong
     private Long grossProfitTTM;
-    @Json(name="DilutedEPSTTM")
+    @Json(name = "DilutedEPSTTM")
     @NoneableDouble
     private Double dilutedEpsTTM;
-    @Json(name="QuarterlyEarningsGrowthYOY")
+    @Json(name = "QuarterlyEarningsGrowthYOY")
     @NoneableDouble
     private Double quarterlyEarningsGrowthYOY;
-    @Json(name="QuarterlyRevenueGrowthYOY")
+    @Json(name = "QuarterlyRevenueGrowthYOY")
     @NoneableDouble
     private Double quarterlyRevenueGrowthYOY;
-    @Json(name="AnalystTargetPrice")
+    @Json(name = "AnalystTargetPrice")
     @NoneableDouble
     private Double analystTargetPrice;
-    @Json(name="TrailingPE")
+    @Json(name = "TrailingPE")
     @NoneableDouble
     private Double trailingPE;
-    @Json(name="ForwardPE")
+    @Json(name = "ForwardPE")
     @NoneableDouble
     private Double forwardPE;
-    @Json(name="PriceToSalesRatioTTM")
+    @Json(name = "PriceToSalesRatioTTM")
     @NoneableDouble
     private Double priceToSaleRatioTTM;
-    @Json(name="PriceToBookRatio")
+    @Json(name = "PriceToBookRatio")
     @NoneableDouble
     private Double priceToBookRatio;
-    @Json(name="EVToRevenue")
+    @Json(name = "EVToRevenue")
     @NoneableDouble
     private Double evToRevenue;
-    @Json(name="EVToEBITDA")
+    @Json(name = "EVToEBITDA")
     @NoneableDouble
     private Double evToEBITDA;
-    @Json(name="Beta")
+    @Json(name = "Beta")
     @NoneableDouble
     private Double beta;
-    @Json(name="52WeekHigh")
+    @Json(name = "52WeekHigh")
     @NoneableDouble
     private Double fiftyTwoWeekHigh;
-    @Json(name="52WeekLow")
+    @Json(name = "52WeekLow")
     @NoneableDouble
     private Double fiftyTwoWeekLow;
-    @Json(name="50DayMovingAverage")
+    @Json(name = "50DayMovingAverage")
     @NoneableDouble
     private Double fiftyDayMovingAverage;
-    @Json(name="200DayMovingAverage")
+    @Json(name = "200DayMovingAverage")
     @NoneableDouble
     private Double twoHundredDayMovingAverage;
-    @Json(name="SharesOutstanding")
+    @Json(name = "SharesOutstanding")
     @NoneableLong
     private Long sharesOutstanding;
-    @Json(name="DividendDate")
+    @Json(name = "DividendDate")
     private String dividendDate;
-    @Json(name="ExDividendDate")
+    @Json(name = "ExDividendDate")
     private String exDividendDate;
 
     public String getSymbol() {

@@ -36,6 +36,15 @@ public abstract class PeriodicResponse {
         return metaData;
     }
 
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class PeriodicParser<T> extends DefaultParser<T> {
 
         public PeriodicParser() {
@@ -76,15 +85,6 @@ public abstract class PeriodicResponse {
         public abstract T get(String error);
 
         public abstract String getTechnicalIndicatorKey();
-    }
-
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

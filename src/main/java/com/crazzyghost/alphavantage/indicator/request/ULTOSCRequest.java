@@ -2,11 +2,11 @@ package com.crazzyghost.alphavantage.indicator.request;
 
 import com.crazzyghost.alphavantage.parameters.Function;
 
-public class ULTOSCRequest extends IndicatorRequest{
+public class ULTOSCRequest extends IndicatorRequest {
 
     private int timePeriod1;
     private int timePeriod2;
-    private int timePeriod3; 
+    private int timePeriod3;
 
     protected ULTOSCRequest(Builder builder) {
         super(builder);
@@ -19,29 +19,29 @@ public class ULTOSCRequest extends IndicatorRequest{
 
         public int timePeriod1 = 7;
         public int timePeriod2 = 14;
-        public int timePeriod3 = 28; 
+        public int timePeriod3 = 28;
 
-        public Builder(){
+        public Builder() {
             this.function(Function.ULTOSC);
         }
 
-        public Builder timePeriod1(int period){
+        public Builder timePeriod1(int period) {
             this.timePeriod1 = period;
             return this;
         }
-        
-        public Builder timePeriod2(int period){
+
+        public Builder timePeriod2(int period) {
             this.timePeriod2 = period;
             return this;
         }
 
-        public Builder timePeriod3(int period){
+        public Builder timePeriod3(int period) {
             this.timePeriod3 = period;
             return this;
         }
 
         @Override
-        public IndicatorRequest build(){
+        public IndicatorRequest build() {
             return new ULTOSCRequest(this);
         }
     }

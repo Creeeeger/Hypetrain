@@ -19,7 +19,7 @@ public class STOCHRequest extends IndicatorRequest {
         this.slowDMaType = builder.slowDMaType;
         this.slowKMaType = builder.slowKMaType;
     }
-    
+
     public static class Builder extends IndicatorRequest.Builder<Builder> {
 
         private int fastKPeriod = 5;
@@ -32,27 +32,27 @@ public class STOCHRequest extends IndicatorRequest {
             this.function(Function.STOCH);
         }
 
-        public Builder fastKPeriod(int fastKPeriod){
+        public Builder fastKPeriod(int fastKPeriod) {
             this.fastKPeriod = fastKPeriod;
             return this;
         }
 
-        public Builder slowKPeriod(int slowKPeriod){
+        public Builder slowKPeriod(int slowKPeriod) {
             this.slowKPeriod = slowKPeriod;
             return this;
         }
 
-        public Builder slowDPeriod(int slowDPeriod){
+        public Builder slowDPeriod(int slowDPeriod) {
             this.slowDPeriod = slowDPeriod;
             return this;
         }
 
-        public Builder slowKMaType(MAType type){
+        public Builder slowKMaType(MAType type) {
             this.slowKMaType = type;
             return this;
         }
 
-        public Builder slowDMaType(MAType type){
+        public Builder slowDMaType(MAType type) {
             this.slowDMaType = type;
             return this;
         }
@@ -61,6 +61,6 @@ public class STOCHRequest extends IndicatorRequest {
         public IndicatorRequest build() {
             return new STOCHRequest(this);
         }
-        
-    }   
+
+    }
 }

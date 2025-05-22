@@ -17,7 +17,7 @@ public class MIDPRICEResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static MIDPRICEResponse of(Map<String, Object> stringObjectMap){
+    public static MIDPRICEResponse of(Map<String, Object> stringObjectMap) {
         Parser<MIDPRICEResponse> parser = new MIDPRICEParser();
         return parser.parse(stringObjectMap);
     }

@@ -40,16 +40,16 @@ public abstract class EconomicIndicatorRequest {
         this.dataType = builder.dataType;
     }
 
-    public abstract static class Builder <T extends Builder<?>> {
+    public abstract static class Builder<T extends Builder<?>> {
         public Function function;
         public DataType dataType = DataType.JSON;
 
-        public T dataType(DataType dataType){
+        public T dataType(DataType dataType) {
             this.dataType = dataType;
             return (T) this;
         }
 
-        public T function(Function function){
+        public T function(Function function) {
             this.function = function;
             return (T) this;
         }

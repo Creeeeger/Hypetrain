@@ -17,7 +17,7 @@ public class HTDCPHASEResponse extends SeriesResponse {
         super(errorMessage);
     }
 
-    public static HTDCPHASEResponse of(Map<String, Object> data){
+    public static HTDCPHASEResponse of(Map<String, Object> data) {
         Parser<HTDCPHASEResponse> parser = new HTDCPHASEParser();
         return parser.parse(data);
     }

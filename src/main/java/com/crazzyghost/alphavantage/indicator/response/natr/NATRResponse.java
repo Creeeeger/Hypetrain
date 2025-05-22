@@ -17,7 +17,7 @@ public class NATRResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static NATRResponse of(Map<String, Object> stringObjectMap){
+    public static NATRResponse of(Map<String, Object> stringObjectMap) {
         Parser<NATRResponse> parser = new NATRParser();
         return parser.parse(stringObjectMap);
     }

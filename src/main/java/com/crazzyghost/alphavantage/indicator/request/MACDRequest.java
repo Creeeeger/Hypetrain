@@ -3,7 +3,7 @@ package com.crazzyghost.alphavantage.indicator.request;
 import com.crazzyghost.alphavantage.parameters.Function;
 import com.crazzyghost.alphavantage.parameters.SeriesType;
 
-public class MACDRequest extends IndicatorRequest{
+public class MACDRequest extends IndicatorRequest {
 
     private SeriesType series_type;
     private int fastPeriod;
@@ -30,22 +30,22 @@ public class MACDRequest extends IndicatorRequest{
             this.function(Function.MACD);
         }
 
-        public Builder fastPeriod(int fastPeriod){
+        public Builder fastPeriod(int fastPeriod) {
             this.fastPeriod = fastPeriod;
             return this;
         }
 
-        public Builder slowPeriod(int slowPeriod){
+        public Builder slowPeriod(int slowPeriod) {
             this.slowPeriod = slowPeriod;
             return this;
         }
 
-        public Builder signalPeriod(int signalPeriod){
+        public Builder signalPeriod(int signalPeriod) {
             this.signalPeriod = signalPeriod;
             return this;
         }
 
-        public Builder seriesType(SeriesType seriesType){
+        public Builder seriesType(SeriesType seriesType) {
             this.seriesType = seriesType;
             return this;
         }
@@ -54,6 +54,6 @@ public class MACDRequest extends IndicatorRequest{
         public IndicatorRequest build() {
             return new MACDRequest(this);
         }
-        
-    }   
+
+    }
 }

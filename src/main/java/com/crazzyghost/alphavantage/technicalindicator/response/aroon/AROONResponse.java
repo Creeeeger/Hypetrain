@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.aroon;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class AROONResponse {
 
@@ -25,6 +25,11 @@ public class AROONResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static AROONResponse of(Map<String, Object> stringObjectMap) {
+        Parser<AROONResponse> parser = new AROONParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class AROONResponse {
         return metaData;
     }
 
-    public static AROONResponse of(Map<String, Object> stringObjectMap) {
-        Parser<AROONResponse> parser = new AROONParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class AROONParser extends DefaultParser<AROONResponse> {
@@ -73,15 +82,6 @@ public class AROONResponse {
             return new AROONResponse(error);
         }
 
-    }
-
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

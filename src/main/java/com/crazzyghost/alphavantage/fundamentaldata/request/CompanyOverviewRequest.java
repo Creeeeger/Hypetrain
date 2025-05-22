@@ -38,7 +38,9 @@ public class CompanyOverviewRequest extends FundamentalDataRequest {
 
     public static class Builder extends FundamentalDataRequest.Builder<Builder> {
 
-        public Builder() { this.function(Function.OVERVIEW); }
+        public Builder() {
+            this.function(Function.OVERVIEW);
+        }
 
         @Override
         public CompanyOverviewRequest build() {

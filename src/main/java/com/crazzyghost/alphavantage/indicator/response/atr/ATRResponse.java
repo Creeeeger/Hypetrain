@@ -17,7 +17,7 @@ public class ATRResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static ATRResponse of(Map<String, Object> stringObjectMap){
+    public static ATRResponse of(Map<String, Object> stringObjectMap) {
         Parser<ATRResponse> parser = new ATRParser();
         return parser.parse(stringObjectMap);
     }

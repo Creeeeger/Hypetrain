@@ -7,7 +7,7 @@ public class BBANDSIndicatorUnit {
     private double realMiddleBandValue;
 
     public BBANDSIndicatorUnit(String date, double realUpperBandValue, double realLowerBandValue,
-            double realMiddleBandValue) {
+                               double realMiddleBandValue) {
         this.date = date;
         this.realUpperBandValue = realUpperBandValue;
         this.realLowerBandValue = realLowerBandValue;

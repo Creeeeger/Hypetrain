@@ -36,6 +36,15 @@ public abstract class PriceOscillatorResponse {
         return metaData;
     }
 
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class PriceOscillatorParser<T> extends DefaultParser<T> {
 
         public PriceOscillatorParser() {
@@ -77,15 +86,6 @@ public abstract class PriceOscillatorResponse {
         public abstract T get(String error);
 
         public abstract String getTechnicalIndicatorKey();
-    }
-
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

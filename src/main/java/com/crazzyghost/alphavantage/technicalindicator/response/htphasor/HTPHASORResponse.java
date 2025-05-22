@@ -1,11 +1,11 @@
 package com.crazzyghost.alphavantage.technicalindicator.response.htphasor;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+import com.crazzyghost.alphavantage.parser.Parser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public class HTPHASORResponse {
 
@@ -25,6 +25,11 @@ public class HTPHASORResponse {
         this.errorMessage = errorMessage;
     }
 
+    public static HTPHASORResponse of(Map<String, Object> stringObjectMap) {
+        Parser<HTPHASORResponse> parser = new HTPHASORParser();
+        return parser.parse(stringObjectMap);
+    }
+
     public String getErrorMessage() {
         return errorMessage;
     }
@@ -37,9 +42,13 @@ public class HTPHASORResponse {
         return metaData;
     }
 
-    public static HTPHASORResponse of(Map<String, Object> stringObjectMap) {
-        Parser<HTPHASORResponse> parser = new HTPHASORParser();
-        return parser.parse(stringObjectMap);
+    @Override
+    public String toString() {
+        return "HTPHASORResponse{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
     }
 
     public static class HTPHASORParser extends DefaultParser<HTPHASORResponse> {
@@ -72,15 +81,6 @@ public class HTPHASORResponse {
         public HTPHASORResponse onParseError(String error) {
             return new HTPHASORResponse(error);
         }
-    }
-
-    @Override
-    public String toString() {
-        return "HTPHASORResponse{" +
-                "metaData=" + metaData +
-                ",indicatorUnits=" + indicatorUnits.size() +
-                ", errorMessage='" + errorMessage + '\'' +
-                '}';
     }
 
     public static class MetaData {

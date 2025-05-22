@@ -17,7 +17,7 @@ public class MFIResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static MFIResponse of(Map<String, Object> stringObjectMap){
+    public static MFIResponse of(Map<String, Object> stringObjectMap) {
         Parser<MFIResponse> parser = new MFIParser();
         return parser.parse(stringObjectMap);
     }

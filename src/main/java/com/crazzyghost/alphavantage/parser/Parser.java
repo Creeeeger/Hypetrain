@@ -11,18 +11,14 @@ import java.util.Map;
 import java.util.function.Function;
 
 /**
+ * @param <T> Response Type
  * @author crazzyghost
  * @since 1.4.0
- * @param <T> Response Type
- * 
- * */
+ */
 public abstract class Parser<T> {
 
-    public abstract T onParseError(String error);
-    public abstract T parse(Map<String, Object> object);
-
     public static Map<String, Object> parseJSON(String responseBody) throws IOException {
-        if(responseBody == null) throw new IllegalArgumentException();
+        if (responseBody == null) throw new IllegalArgumentException();
         Moshi moshi = new Moshi.Builder()
                 .add(new NoneableDoubleAdapter())
                 .add(new NoneableLongAdapter())
@@ -33,7 +29,7 @@ public abstract class Parser<T> {
     }
 
     public static <U> U parseJSON(String responseBody, Class<U> c) throws IOException {
-        if(responseBody == null) throw new IllegalArgumentException();
+        if (responseBody == null) throw new IllegalArgumentException();
         Moshi moshi = new Moshi.Builder()
                 .add(new NoneableDoubleAdapter())
                 .add(new NoneableLongAdapter())
@@ -44,7 +40,7 @@ public abstract class Parser<T> {
     }
 
     public static <U> List<U> parseJSONList(Object object, Class<U> klass) {
-        if(object == null) throw new IllegalArgumentException();
+        if (object == null) throw new IllegalArgumentException();
         Moshi moshi = new Moshi.Builder()
                 .add(new NoneableDoubleAdapter())
                 .add(new NoneableLongAdapter())
@@ -55,7 +51,7 @@ public abstract class Parser<T> {
     }
 
     public static String toJSON(Map<String, Object> data) throws IOException {
-        if(data == null) throw new IllegalArgumentException();
+        if (data == null) throw new IllegalArgumentException();
         Moshi moshi = new Moshi.Builder()
                 .add(new NoneableDoubleAdapter())
                 .add(new NoneableLongAdapter())
@@ -73,4 +69,8 @@ public abstract class Parser<T> {
 
         return result;
     }
+
+    public abstract T onParseError(String error);
+
+    public abstract T parse(Map<String, Object> object);
 }

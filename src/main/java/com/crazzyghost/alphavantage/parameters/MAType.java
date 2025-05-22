@@ -14,13 +14,13 @@ public enum MAType {
 
     private final int type;
 
-    MAType(int type){
+    MAType(int type) {
         this.type = type;
     }
 
     @Override
     public String toString() {
-        return "" + this.type;    
+        return "" + this.type;
     }
 
 }

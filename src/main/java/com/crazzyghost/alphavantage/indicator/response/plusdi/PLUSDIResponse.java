@@ -17,7 +17,7 @@ public class PLUSDIResponse extends PeriodicResponse {
         super(errorMessage);
     }
 
-    public static PLUSDIResponse of(Map<String, Object> stringObjectMap){
+    public static PLUSDIResponse of(Map<String, Object> stringObjectMap) {
         Parser<PLUSDIResponse> parser = new PLUSDIParser();
         return parser.parse(stringObjectMap);
     }

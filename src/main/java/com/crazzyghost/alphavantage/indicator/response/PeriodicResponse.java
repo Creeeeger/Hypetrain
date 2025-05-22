@@ -1,11 +1,10 @@
 package com.crazzyghost.alphavantage.indicator.response;
 
+import com.crazzyghost.alphavantage.parser.DefaultParser;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-
-import com.crazzyghost.alphavantage.parser.DefaultParser;
-import com.crazzyghost.alphavantage.parser.Parser;
 
 public abstract class PeriodicResponse {
 
@@ -13,13 +12,13 @@ public abstract class PeriodicResponse {
     protected List<SimpleIndicatorUnit> indicatorUnits;
     protected String errorMessage;
 
-    protected PeriodicResponse(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData){
+    protected PeriodicResponse(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData) {
         this.metaData = metaData;
         this.indicatorUnits = indicatorUnits;
         this.errorMessage = null;
     }
 
-    protected PeriodicResponse(String errorMessage){
+    protected PeriodicResponse(String errorMessage) {
         this.metaData = new MetaData();
         this.indicatorUnits = new ArrayList<>();
         this.errorMessage = errorMessage;
@@ -33,37 +32,46 @@ public abstract class PeriodicResponse {
         return indicatorUnits;
     }
 
-    
+
     public MetaData getMetaData() {
         return metaData;
     }
 
+    @Override
+    public String toString() {
+        return metaData.indicator.replaceAll("\\s+", "") + "Response{" +
+                "metaData=" + metaData +
+                ",indicatorUnits=" + indicatorUnits.size() +
+                ", errorMessage='" + errorMessage + '\'' +
+                '}';
+    }
+
     public static abstract class PeriodicParser<T> extends DefaultParser<T> {
 
-        public PeriodicParser(){
+        public PeriodicParser() {
 
         }
 
         @Override
         public T parse(Map<String, String> metaDataMap, Map<String, Map<String, String>> indicatorData) {
-            
+
             MetaData metaData = new MetaData(
-                String.valueOf(metaDataMap.get("1: Symbol")),
-                String.valueOf(metaDataMap.get("2: Indicator")),
-                String.valueOf(metaDataMap.get("3: Last Refreshed")),
-                String.valueOf(metaDataMap.get("4: Interval")),
-                (int)Double.parseDouble(String.valueOf(metaDataMap.get("5: Time Period"))),
-                String.valueOf(metaDataMap.get("6: Time Zone"))
+                    String.valueOf(metaDataMap.get("1: Symbol")),
+                    String.valueOf(metaDataMap.get("2: Indicator")),
+                    String.valueOf(metaDataMap.get("3: Last Refreshed")),
+                    String.valueOf(metaDataMap.get("4: Interval")),
+                    (int) Double.parseDouble(String.valueOf(metaDataMap.get("5: Time Period"))),
+                    String.valueOf(metaDataMap.get("6: Time Zone"))
             );
 
-            List<SimpleIndicatorUnit> indicatorUnits =  new ArrayList<>();
+            List<SimpleIndicatorUnit> indicatorUnits = new ArrayList<>();
 
-            for (Map.Entry<String,Map<String,String>> e: indicatorData.entrySet()) {
-                Map<String, String> m = e.getValue();     
+            for (Map.Entry<String, Map<String, String>> e : indicatorData.entrySet()) {
+                Map<String, String> m = e.getValue();
                 SimpleIndicatorUnit indicatorUnit = new SimpleIndicatorUnit(
-                    e.getKey(),
-                    Double.parseDouble(m.get(getIndicatorKey())),
-                    getIndicatorKey()
+                        e.getKey(),
+                        Double.parseDouble(m.get(getIndicatorKey())),
+                        getIndicatorKey()
                 );
                 indicatorUnits.add(indicatorUnit);
             }
@@ -76,17 +84,10 @@ public abstract class PeriodicResponse {
         }
 
         public abstract T get(List<SimpleIndicatorUnit> indicatorUnits, MetaData metaData);
-        public abstract T get(String error);
-        public abstract String getIndicatorKey();
-    }
 
-    @Override
-    public String toString() {
-        return metaData.indicator.replaceAll("\\s+","") +"Response{" +
-            "metaData=" + metaData +
-            ",indicatorUnits=" + indicatorUnits.size() +
-            ", errorMessage='" + errorMessage + '\'' +
-        '}';
+        public abstract T get(String error);
+
+        public abstract String getIndicatorKey();
     }
 
     public static class MetaData {
@@ -97,18 +98,18 @@ public abstract class PeriodicResponse {
         private String interval;
         private int timePeriod;
         private String timeZone;
-        
-        public MetaData(){
+
+        public MetaData() {
             this("", "", "", "", 0, "");
         }
 
         public MetaData(
-            String symbol, 
-            String indicator, 
-            String lastRefreshed, 
-            String interval, 
-            int timePeriod,
-            String timeZone
+                String symbol,
+                String indicator,
+                String lastRefreshed,
+                String interval,
+                int timePeriod,
+                String timeZone
         ) {
             this.symbol = symbol;
             this.indicator = indicator;
@@ -144,15 +145,15 @@ public abstract class PeriodicResponse {
 
         @Override
         public String toString() {
-            return "MetaData {indicator=" + indicator +     
-                ", interval=" + interval + 
-                ", lastRefreshed=" + lastRefreshed + 
-                ", symbol=" + symbol + 
-                ", timePeriod=" + timePeriod + 
-                ", timeZone=" + timeZone +
-                 "}";
+            return "MetaData {indicator=" + indicator +
+                    ", interval=" + interval +
+                    ", lastRefreshed=" + lastRefreshed +
+                    ", symbol=" + symbol +
+                    ", timePeriod=" + timePeriod +
+                    ", timeZone=" + timeZone +
+                    "}";
         }
-        
+
     }
 
 }

@@ -15,45 +15,37 @@ import java.util.Date;
 public class StockUnit {
 
     /**
+     * Date and time of the data point, as a string (e.g., "2024-05-16 17:00:00")
+     */
+    public final String dateTime;
+    /**
      * Opening price for the period
      */
     private final double open;
-
-    /**
-     * Highest price during the period (modifiable for derived datasets)
-     */
-    private double high;
-
-    /**
-     * Lowest price during the period (modifiable for derived datasets)
-     */
-    private double low;
-
     /**
      * Adjusted closing price (includes splits/dividends)
      */
     private final double adjustedClose;
-
-    /**
-     * Trading volume during the period (modifiable for derived datasets)
-     */
-    private double volume;
-
     /**
      * Dividend amount distributed for the period
      */
     private final double dividendAmount;
-
     /**
      * Split coefficient applied in the period
      */
     private final double splitCoefficient;
-
     /**
-     * Date and time of the data point, as a string (e.g., "2024-05-16 17:00:00")
+     * Highest price during the period (modifiable for derived datasets)
      */
-    public final String dateTime;
-
+    private double high;
+    /**
+     * Lowest price during the period (modifiable for derived datasets)
+     */
+    private double low;
+    /**
+     * Trading volume during the period (modifiable for derived datasets)
+     */
+    private double volume;
     /**
      * Stock symbol (e.g., "AAPL"). Can be modified if needed
      */
@@ -109,10 +101,24 @@ public class StockUnit {
     }
 
     /**
+     * @param high Set the highest price (for derived/updated datasets)
+     */
+    public void setHigh(double high) {
+        this.high = high;
+    }
+
+    /**
      * @return The lowest price
      */
     public double getLow() {
         return low;
+    }
+
+    /**
+     * @param low Set the lowest price (for derived/updated datasets)
+     */
+    public void setLow(double low) {
+        this.low = low;
     }
 
     /**
@@ -130,27 +136,6 @@ public class StockUnit {
     }
 
     /**
-     * @param high Set the highest price (for derived/updated datasets)
-     */
-    public void setHigh(double high) {
-        this.high = high;
-    }
-
-    /**
-     * @param low Set the lowest price (for derived/updated datasets)
-     */
-    public void setLow(double low) {
-        this.low = low;
-    }
-
-    /**
-     * @param volume Set the volume (for derived/updated datasets)
-     */
-    public void setVolume(double volume) {
-        this.volume = volume;
-    }
-
-    /**
      * @return Adjusted closing price (includes splits/dividends)
      */
     public double getAdjustedClose() {
@@ -162,6 +147,13 @@ public class StockUnit {
      */
     public double getVolume() {
         return volume;
+    }
+
+    /**
+     * @param volume Set the volume (for derived/updated datasets)
+     */
+    public void setVolume(double volume) {
+        this.volume = volume;
     }
 
     /**
