@@ -259,29 +259,131 @@ public class mainDataHandler {
      * Used to identify valid in-session bars.
      */
     private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
-    public static String[] stockSymbols = {
-            "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
-            , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
-            , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
-            , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-            , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
-            , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
-            , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
-            , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
-            , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "HUT", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY", "INOD"
-            , "INSP", "INTC", "INTU", "IONQ", "IREN", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
-            , "LKNC", "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
-            , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
-            , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
-            , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PH", "PLD"
-            , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
-            , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
-            , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
-            , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
-            , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
-            , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
-            , "ZIM", "ZTO", "ZTS", "ВТВТ"
-    };
+    // Map of different markets to scan select market to get list
+    public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
+        put("allSymbols", new String[]{
+                "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
+                , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
+                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
+                , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
+                , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
+                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
+                , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
+                , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
+                , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "HUT", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY", "INOD"
+                , "INSP", "INTC", "INTU", "IONQ", "IREN", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
+                , "LKNC", "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
+                , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
+                , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
+                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PH", "PLD"
+                , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
+                , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
+                , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
+                , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
+                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
+                , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
+                , "ZIM", "ZTO", "ZTS", "ВТВТ"
+        });
+        put("aiStocks", new String[]{
+                "AMD", "CRM", "DDOG", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "SMCI", "SNOW"
+        });
+        put("autoEV", new String[]{
+                "F", "GM", "LCID", "NIO", "RIVN", "TSLA", "XPEV"
+        });
+        put("bigCaps", new String[]{
+                "AAPL", "ABBV", "ABT", "AMGN", "AMZN", "AMD", "AVGO", "AXP",
+                "BA", "BAC", "BMY", "CAT", "CSCO", "COST", "CVX",
+                "DE", "DIS", "DUK", "GE", "GOOGL", "HD", "HON", "IBM",
+                "INTC", "JNJ", "JPM", "LIN", "LLY", "LOW", "LMT", "MA",
+                "MCD", "MDT", "META", "MMM", "MRK", "MSFT", "NFLX", "NVDA",
+                "ORCL", "PEP", "PFE", "PG", "PLD", "QCOM", "RTX", "SBUX",
+                "SBUX", "TGT", "TMO", "TMUS", "TXN", "UNH", "UPS", "V", "WFC", "XOM"
+        });
+        put("chineseTech", new String[]{
+                "BABA", "BNS", "CNI", "CNQ", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
+        });
+        put("cryptoBlockchain", new String[]{
+                "BTDR", "CIFR", "CLSK", "COIN", "CORZ", "HSAI", "HUT", "IREN",
+                "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "RIOT", "SOUN", "WULF"
+        });
+        put("energy", new String[]{
+                "BP", "COP", "CVX", "ENB", "EOG", "ET", "OKE", "SLB", "VLO", "XOM"
+        });
+        put("financials", new String[]{
+                "AFL", "AXP", "BAC", "BLK", "BMO", "BNS", "C", "CB", "COF", "GS", "JPM",
+                "MET", "MMC", "MS", "PNC", "RY", "SCHW", "TD", "UBS", "USB", "WFC"
+        });
+        put("foodBeverage", new String[]{
+                "CELH", "COST", "DPZ", "GIS", "KHC", "MDLZ", "PEP", "SBUX", "TGT", "WMT", "YUM"
+        });
+        put("healthcareProviders", new String[]{
+                "ANTM", "CI", "CNC", "CVS", "ELV", "HCA", "HUM", "UHS", "UNH"
+        });
+        put("highVolatile", new String[]{
+                "ACHR", "AFRM", "AMC", "AER", "ASPI", "ASTS", "BNTX", "BTDR", "CELH",
+                "CIFR", "CLSK", "COIN", "CORZ", "CVNA", "DAVE", "DJT", "DUOL",
+                "ENPH", "FLNC", "FIVE", "FOUR", "FUTU", "GME", "GMAB", "HUT",
+                "HOOD", "INOD", "INSP", "IREN", "JOBY", "LPLA", "LCID", "LMND",
+                "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
+                "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT", "RIOT",
+                "RKLB", "ROOT", "RIVN", "RUN", "RXRX", "SHOP", "SMCI", "SMLR",
+                "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "SWKS", "TMDX",
+                "TRU", "TTD", "UPST", "VKTX", "WOLF", "WULF", "XPEV", "GME", "AMC"
+        });
+        put("industrials", new String[]{
+                "BA", "CAT", "DE", "GE", "HON", "LMT", "MMM", "NOC", "RTX", "UNP", "WM"
+        });
+        put("midCaps", new String[]{
+                "AAOI", "ACGL", "AER", "AFRM", "ALAB", "APLD", "APP", "ARWR",
+                "ASPI", "BMRN", "BN", "BNTX", "BUD", "CELH", "COHR", "CRWV",
+                "CVNA", "DOCU", "DUOL", "ENPH", "FIVE", "FOUR", "FTAI", "FUTU",
+                "GMAB", "HIMS", "HOOD", "HSY", "IEP", "INFY", "INSP", "LCID",
+                "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MT", "MTRN",
+                "NFE", "NIO", "NOVA", "ODFL", "OKLO", "OPEN", "PTON", "RIVN",
+                "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL", "SWKS",
+                "TCOM", "TEM", "TRU", "TTD", "UPST", "VKTX", "WULF", "XPO", "ZETA", "ZIM"
+        });
+        put("pharma", new String[]{
+                "ABBV", "AMGN", "AZN", "BMRN", "BMY", "BNTX", "CELH", "GILD",
+                "JNJ", "LLY", "MDGL", "MDT", "MRNA", "PFE", "REGN", "SNY", "VRTX", "ZTS"
+        });
+        put("quantum", new String[]{
+                "DXYZ", "IONQ", "QCOM", "QBTS", "QUBT", "RGTI"
+        });
+        put("retail", new String[]{
+                "AMZN", "BBY", "COST", "HD", "LOW", "LULU", "MGM", "SONY",
+                "TGT", "TJX", "ULTA", "WMT", "YUM"
+        });
+        put("robotics", new String[]{
+                "ACHR", "ISRG", "JOBY", "KODK", "MBLY", "RKLB"
+        });
+        put("semiconductors", new String[]{
+                "ADI", "AMAT", "AMD", "ARM", "ASML", "AVGO", "CDNS", "COHR",
+                "CRDO", "INNTC", "INTC", "KLAC", "LRCX", "MCHP", "MPWR", "MRVL",
+                "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
+        });
+        put("smallCaps", new String[]{
+                "1Q", "AOSL", "ACHR", "ASTS", "BE", "BTDR", "CAVA", "CIFR",
+                "CLSK", "CORZ", "CRDO", "DAVE", "DJT", "FLNC", "HUT", "IESC",
+                "INOD", "IONQ", "JOBY", "KODK", "LMND", "LUMN", "LUNR", "LX",
+                "MARA", "MBLY", "MDGL", "PLUG", "POWL", "QBTS", "QUBT", "RCAT",
+                "RDDT", "RIOT", "RKLB", "ROOT", "RXRX", "SMLR", "SMR", "SOUN",
+                "STRL", "TMDX", "UPST", "VIR", "VKTX", "WULF", "XPEV"
+        });
+        put("techGiants", new String[]{
+                "AAPL", "ADBE", "AMZN", "CRM", "CSCO", "GOOGL", "INTC",
+                "META", "MSFT", "NVDA", "ORCL"
+        });
+        put("ultraVolatile", new String[]{
+                "ACHR", "AMC", "ASTS", "BTDR", "CIFR", "CLSK", "CORZ", "DAVE", "DJT",
+                "ENPH", "FLNC", "GME", "HUT", "INOD", "IONQ", "IREN", "JOBY", "LMND",
+                "LUMN", "LUNR", "MARA", "PLUG", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
+                "RIOT", "RKLB", "ROOT", "RXRX", "SMLR", "SMR", "SOUN", "UPST", "VKTX", "WULF"
+        });
+    }};
+
+    public static String[] stockSymbols = stockCategoryMap.get(market);
+
     /**
      * Number of bars in each analysis window (frame) for main technical signal generation.
      * <ul>
@@ -1542,21 +1644,16 @@ public class mainDataHandler {
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
 
-        // Step 1: Defensive - don't process frames that span market-closure weekends (avoids spurious signals)
-        if (isWeekendSpan(stocks)) {
-            return new ArrayList<>(); // Return empty; no alerts generated for non-contiguous sessions
-        }
-
-        // Step 2: Compute all feature values (trend/momentum/spike/etc) for this frame, using latest model
+        // Step 1: Compute all feature values (trend/momentum/spike/etc) for this frame, using latest model
         double[] features = computeFeatures(stocks, symbol);
 
-        // Step 3: Normalize the feature vector for ML input/aggregation
+        // Step 2: Normalize the feature vector for ML input/aggregation
         float[] normalizedFeatures = normalizeFeatures(features, symbol);
 
-        // Step 4: Feed normalized features to ML model for a prediction score (probability of rally/event/etc)
+        // Step 3: Feed normalized features to ML model for a prediction score (probability of rally/event/etc)
         double prediction = predict(normalizedFeatures, symbol);
 
-        // Step 5: Evaluate prediction + features using custom alert logic (spikes, dips, etc)
+        // Step 4: Evaluate prediction + features using custom alert logic (spikes, dips, etc)
         return evaluateResult(prediction, stocks, symbol, features, normalizedFeatures);
     }
 
@@ -2340,16 +2437,14 @@ public class mainDataHandler {
         // Check that no single red candle erases more than a third of the window's total gain
         boolean noBigPullback = maxRed < (lastClose - firstClose) / 3.0;
 
-        boolean result = percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
-
         // One-line summary debug print:
-        System.out.printf(
-                "percentChange=%.2f%%, greenCount=%d, greenRatio=%.2f, maxRed=%.2f, noBigPullback=%b, result=%b %s%n",
-                percentChange, greenCount, greenRatio, maxRed, noBigPullback, result, stocks.get(stocks.size() - 1).getDateDate()
-        );
+//        System.out.printf(
+//                "percentChange=%.2f%%, greenCount=%d, greenRatio=%.2f, maxRed=%.2f, noBigPullback=%b, result=%b %s%n",
+//                percentChange, greenCount, greenRatio, maxRed, noBigPullback, percentChange >= minChange && greenRatio >= minGreen && noBigPullback, stocks.get(stocks.size() - 1).getDateDate()
+//        );
 
         // Must satisfy: (1) big enough gain, (2) enough green candles, (3) no big pullbacks
-        return result;
+        return percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
     }
 
     /**
@@ -3211,30 +3306,6 @@ public class mainDataHandler {
 
         // Standard %K formula
         return 100 * (lastClose - lowestLow) / (highestHigh - lowestLow);
-    }
-
-    /**
-     * Determines whether a list of StockUnits spans over a weekend or across different days.
-     * Used to avoid generating signals/notifications that erroneously combine non-contiguous periods.
-     *
-     * @param stocks List of StockUnit objects (chronological, non-empty).
-     * @return true if the window spans a weekend (Friday to Monday) or more than one calendar day; false otherwise.
-     */
-    private static boolean isWeekendSpan(List<StockUnit> stocks) {
-        // Defensive: Must have non-null and non-empty input
-        if (stocks == null || stocks.isEmpty()) {
-            throw new IllegalArgumentException("Stock list cannot be null or empty");
-        }
-
-        // Get the LocalDateTime for the first and last bars in the window
-        LocalDateTime startDate = stocks.get(0).getLocalDateTimeDate();
-        LocalDateTime endDate = stocks.get(stocks.size() - 1).getLocalDateTimeDate();
-
-        // Two checks:
-        // 1. Start is Friday, end is Monday (crosses a weekend)
-        // 2. Start date and end date are not the same calendar day
-        return (startDate.getDayOfWeek() == DayOfWeek.FRIDAY && endDate.getDayOfWeek() == DayOfWeek.MONDAY)
-                || !startDate.toLocalDate().equals(endDate.toLocalDate());
     }
 
     /**
