@@ -162,6 +162,9 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 - **Live Symbol Search** – real-time suggestions via API
 - **Watchlist Control** – add or remove tracked symbols
 - **Pre-defined & Custom Watchlists** – e.g., “Volume > 90,000 €” with ability to create your own sets
+- **Dynamic Market Regime Selection** – switch between pre-set symbol categories like "AI", "Big Caps", "Crypto", "
+  Pharma", etc., via dropdown menu
+- **Market Regime Persistence** – UI remembers your last selected regime and restores it on launch
 
 ---
 
@@ -203,6 +206,9 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 - **Hype Mode** – scan for rallying stocks
 - **Check for Rallies** – open a popup with potential candidates
 - **Notification Sorting** – by date or % change
+- **Greed Mode Alerts** – alternative scoring system triggers FOMO-style notifications when risk appetite is high
+- **Configurable Aggressiveness** – adapt alert sensitivity to your risk preference (0.1–2.0 multiplier)
+- **Liquidity-Aware Filtering** – notifications only fire when there’s enough volume to realistically trade the move
 
 ---
 
@@ -224,7 +230,8 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 ## 🔎 Volume Filtering & Customization
 
 - **Volume Filter** – only track stocks where full volume is open
-- **High-Volume Stock Filters** – pre-defined threshold (> 90,000 €)
+- **High-Volume & Regime-Specific Stock Filters** – pre-defined threshold (> 90,000 €) can be applied to the active
+  market regime for Hype Mode; symbols are cached per regime and volume for efficiency
 
 ---
 
