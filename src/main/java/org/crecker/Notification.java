@@ -88,19 +88,21 @@ public class Notification {
           config 3 spike       - green
           config 4 uptrend     - royal purple
           other                - gray
+          -- use brighter colors in order to see text better and more clear --
          */
+
         if (config == 0) {
-            this.color = new Color(255, 0, 0);         // Bright Red
+            this.color = new Color(255, 73, 73);         // Bright Red
         } else if (config == 1) {
-            this.color = new Color(255, 140, 0);       // Deep Orange
+            this.color = new Color(255, 171, 70);       // Deep Orange
         } else if (config == 2) {
-            this.color = new Color(0, 128, 255);       // Sky Blue
+            this.color = new Color(48, 149, 255);       // Sky Blue
         } else if (config == 3) {
-            this.color = new Color(34, 177, 76);       // Leaf Green
+            this.color = new Color(60, 184, 93);       // Leaf Green
         } else if (config == 4) {
-            this.color = new Color(128, 0, 128);       // Royal Purple
+            this.color = new Color(255, 58, 255);       // Royal Purple
         } else {
-            this.color = new Color(89, 89, 97);        // Gray
+            this.color = new Color(147, 147, 159);        // Gray
         }
 
         // Build series for chart plotting

@@ -1,7 +1,9 @@
 TODO
 Version 1.5:
 - Improve speed of spike up percentage change detection by supportive second data framework
-- Improve line detector
+- Improve line detector - no negatives - ROC > almost 0 - r-line check
+- add clean dark mode design
+- upgrade trend detector with correlation window api
 
 Version 2.0:
 - Add Institutional purchase Hunter

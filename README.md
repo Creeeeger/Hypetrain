@@ -301,6 +301,39 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 - **Async API Calls** – non-blocking background threads
 - **Data Caching** – faster chart redraws via cached aggregations
 
+---
+
+## 🛑 Trading Execution — Live Discipline
+
+Stay tactical. **Obey the rules, protect the account.**
+
+---
+
+### Entry Rules
+
+- **Only enter** when the *next candle* closes **higher than the previous**.  
+  *(This avoids “catching a falling knife” and minimizes entry risk.)*
+- **Never buy into a red candle** just because it “looks cheap.”
+
+---
+
+### Exit Rules
+
+- **Exit immediately** if the trend momentum **flattens out** — don’t wait for confirmation, **don’t hope**.
+- **Sell after the first sharp drop** or, better, **during the drop** — not after.  
+  *(Momentum dies fast. No mercy, no bag-holding.)*
+
+---
+
+### Mental Model
+
+- This system does **not** chase every pump.  
+  Only **clean, high-momentum entries** are allowed.
+- **Cut losers fast**. The goal is to stay in the game, not be a hero.
+- If the setup isn’t perfect, **do not trade**. Wait for the A+ scenario.
+
+---
+
 ## Indicators in use
 
 1. Simple Moving Average (SMA) Crossovers
