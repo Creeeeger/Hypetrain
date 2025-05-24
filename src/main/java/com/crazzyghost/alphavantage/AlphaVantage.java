@@ -22,6 +22,7 @@
  */
 package com.crazzyghost.alphavantage;
 
+import com.crazzyghost.alphavantage.alphaIntelligence.AlphaIntelligence;
 import com.crazzyghost.alphavantage.cryptocurrency.Crypto;
 import com.crazzyghost.alphavantage.economicindicator.EconomicIndicator;
 import com.crazzyghost.alphavantage.exchangerate.ExchangeRate;
@@ -219,5 +220,16 @@ public class AlphaVantage {
      */
     public RealTime Realtime() {
         return new RealTime(config);
+    }
+
+    /**
+     * Provides access to Alpha Intelligence endpoints.
+     * <p>
+     * Use this to get advanced analytics, news sentiment, and AI-powered insights.
+     *
+     * @return {@link AlphaIntelligence} instance for Alpha Intelligence requests.
+     */
+    public AlphaIntelligence alphaIntelligence() {
+        return new AlphaIntelligence(config);
     }
 }
