@@ -326,9 +326,23 @@ public class mainUI extends JFrame {
             FlatMacDarkLaf.setup();
 
             // --- Customise global UI appearance for a more rounded look ---
-            UIManager.put("Component.arc", 25);    // General component corners: very rounded
-            UIManager.put("Button.arc", 20);       // Buttons: rounded corners
-            UIManager.put("TextComponent.arc", 20); // Text fields/areas: rounded corners
+            UIManager.put("Component.arc", 20);         // General components
+            UIManager.put("Button.arc", 20);            // JButton
+            UIManager.put("TextComponent.arc", 20);     // JTextField, JTextArea, etc.
+            UIManager.put("ProgressBar.arc", 20);       // JProgressBar
+            UIManager.put("CheckBox.arc", 20);          // JCheckBox
+            UIManager.put("RadioButton.arc", 20);       // JRadioButton
+            UIManager.put("MenuBar.arc", 20);           // JMenuBar
+            UIManager.put("PopupMenu.arc", 20);         // JPopupMenu
+            UIManager.put("Panel.arc", 20);             // JPanel
+            UIManager.put("ScrollBar.thumbArc", 20);    // JScrollBar thumbs
+            UIManager.put("Slider.trackArc", 20);       // JSlider track
+            UIManager.put("Slider.thumbArc", 20);       // JSlider thumb
+            UIManager.put("TabbedPane.tabArc", 20);     // JTabbedPane tabs
+            UIManager.put("Table.arc", 20);             // JTable
+            UIManager.put("TableHeader.arc", 20);       // JTable header
+            UIManager.put("ToolBar.arc", 20);           // JToolBar
+            UIManager.put("ComboBox.arc", 20);          // JComboBox
 
         } catch (Exception ex) {
             // If Look and Feel setup fails, print error details for debugging
@@ -1620,7 +1634,7 @@ public class mainUI extends JFrame {
         String body = httpClient.send(request, HttpResponse.BodyHandlers.ofString()).body();
 
         // Attempt to parse the API response body into a JSON array of instruments
-        JSONArray instruments = null;
+        JSONArray instruments;
         try {
             // Parse the string into a JSONArray for structured access to each instrument object
             instruments = new JSONArray(body);
