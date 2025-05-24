@@ -382,8 +382,6 @@ public class mainDataHandler {
         });
     }};
 
-    public static String[] stockSymbols = stockCategoryMap.get(market);
-
     /**
      * Number of bars in each analysis window (frame) for main technical signal generation.
      * <ul>
@@ -1686,7 +1684,7 @@ public class mainDataHandler {
      */
     public static List<String> checkForRallies() throws InterruptedException {
         // Clone the symbol array as an ArrayList for mutability
-        List<String> stockList = new ArrayList<>(List.of(stockSymbols));
+        List<String> stockList = new ArrayList<>(Arrays.stream(stockCategoryMap.get(market)).toList());
 
         // Map for per-symbol bar data (thread safe, as many fetches run in parallel)
         Map<String, List<StockUnit>> timelines = new ConcurrentHashMap<>();

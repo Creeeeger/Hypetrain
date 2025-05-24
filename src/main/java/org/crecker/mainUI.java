@@ -1,6 +1,8 @@
 package org.crecker;
 
+import com.crazzyghost.alphavantage.news.response.NewsResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import com.formdev.flatlaf.themes.FlatMacDarkLaf;
 import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
@@ -319,6 +321,20 @@ public class mainUI extends JFrame {
      * @throws Exception If fatal error occurs during setup.
      */
     public static void main(String[] args) throws Exception {
+        try {
+            // --- Set up the FlatLaf Mac Dark Look and Feel for modern UI styling ---
+            FlatMacDarkLaf.setup();
+
+            // --- Customise global UI appearance for a more rounded look ---
+            UIManager.put("Component.arc", 25);    // General component corners: very rounded
+            UIManager.put("Button.arc", 20);       // Buttons: rounded corners
+            UIManager.put("TextComponent.arc", 20); // Text fields/areas: rounded corners
+
+        } catch (Exception ex) {
+            // If Look and Feel setup fails, print error details for debugging
+            ex.printStackTrace();
+        }
+
         // Ensure the cache directory for downloaded data exists
         File cacheDir = new File(CACHE_DIR);
         if (!cacheDir.exists()) cacheDir.mkdirs();
@@ -1839,12 +1855,15 @@ public class mainUI extends JFrame {
 
                 // 3. === Fetch and display latest news headlines for the selected symbol ===
                 mainDataHandler.receiveNews(selectedStock, values -> {
+                    // Sort values by highest relevance score
+                    values.sort((a, b) -> Double.compare(b.getSentimentForTicker(selectedStock).getRelevanceScore(), a.getSentimentForTicker(selectedStock).getRelevanceScore()));
+
                     // All UI updates must run on the Event Dispatch Thread (EDT)
                     SwingUtilities.invokeLater(() -> {
                         NewsListModel.clear(); // Wipe previous news (for another stock)
                         for (com.crazzyghost.alphavantage.news.response.NewsResponse.NewsItem value : values) {
                             // Add each headline and summary as a News object
-                            addNews(value.getTitle(), value.getSummary(), value.getUrl());
+                            addNews(value.getTitle(), value.getSummary(), value.getUrl(), value.getSentimentForTicker(selectedStock));
                         }
                     });
                 });
@@ -2288,41 +2307,8 @@ public class mainUI extends JFrame {
         // Get the JList from the scroll pane to customize cell appearance
         JList<News> newsList = (JList<News>) newsScrollPane.getViewport().getView();
 
-        // -- Custom rendering for news items: two-line format (title + summary snippet)
-        newsList.setCellRenderer(new DefaultListCellRenderer() {
-            @Override
-            public Component getListCellRendererComponent(JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
-                // Always call the parent method to handle core rendering (background, selection color, etc.)
-                super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
-
-                // The value is expected to be a News object, which holds title and content.
-                if (value instanceof News news) {
-                    // --- Explanation: ---
-                    // JList supports HTML markup for richer display (bold, multiline, etc.).
-                    // We use <b> to highlight the title and a <br> to split title and summary onto two lines.
-                    // Only the first 30 chars of the news summary are shown (to keep things compact).
-                    String htmlText = "<html><b>" + news.getTitle() + "</b><br/>"
-                            + shortenContent(news.getContent()) + "</html>";
-                    setText(htmlText); // Sets the rendered text for this cell
-                }
-
-                // The base JLabel (with HTML markup if used) is returned for painting in the JList
-                return this;
-            }
-
-            /**
-             * Shortens long news summaries to 30 characters, adding "..." at the end
-             * to keep the news cell height consistent and the UI readable.
-             * If the content is already short, it is returned as-is.
-             */
-            private String shortenContent(String content) {
-                // Check if summary is longer than 30 characters
-                if (content.length() > 30) {
-                    return content.substring(0, 30) + "..."; // Cut and append ellipsis
-                }
-                return content; // Otherwise, show the whole content
-            }
-        });
+        // -- Custom rendering for news items
+        newsList.setCellRenderer(new NotificationRenderer());
 
         // -- Set a fixed row height so all news items fit their two-line HTML display
         JLabel dummyLabel = new JLabel("<html>Line1<br>Line2</html>");
@@ -2428,6 +2414,7 @@ public class mainUI extends JFrame {
     private JScrollPane getNewsScrollPane() {
         // Create a JList for news articles using the model for this session
         JList<News> NewsList = new JList<>(NewsListModel);
+        NewsList.setCellRenderer(new NotificationRenderer()); // Use your custom renderer
         NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Only allow one article selected at a time
 
         // Add a mouse listener for user interaction (clicks)
@@ -2449,6 +2436,59 @@ public class mainUI extends JFrame {
 
         // Return a scrollable container wrapping the news JList (ensures large news lists are always viewable)
         return new JScrollPane(NewsList);
+    }
+
+    /**
+     * <h2>NotificationPanel</h2>
+     * A compact Swing JPanel for displaying notifications.
+     * Shows a colored strip, a title (with wrapping), and a clickable URL.
+     * Used for lightweight pop-up alerts or in-app messages.
+     */
+    private static class NotificationPanel extends JPanel {
+
+        /**
+         * Constructs a notification panel with a colored strip, title, and clickable link.
+         *
+         * @param title the notification headline/title
+         * @param url   the clickable link to display (e.g., "More info")
+         * @param color the color for the vertical strip (e.g., sentiment or severity)
+         */
+        public NotificationPanel(String title, String url, Color color) {
+            // --- Use BorderLayout with small horizontal and vertical gaps ---
+            setLayout(new BorderLayout(8, 8));
+
+            // --- Left: Color strip for visual emphasis (sentiment, status, etc.) ---
+            JPanel colorStrip = new JPanel();
+            colorStrip.setPreferredSize(new Dimension(4, 0)); // 4px wide, full height
+            colorStrip.setBackground(color);                  // Set to supplied color
+            add(colorStrip, BorderLayout.WEST);
+
+            // --- Center: Content panel with vertical stacking ---
+            JPanel contentPanel = new JPanel();
+            contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS)); // Stack vertically
+            contentPanel.setOpaque(false); // Transparent background (inherits parent color)
+
+            // --- Title: Wrapped, bold, uneditable text area ---
+            JTextArea titleLabel = new JTextArea(title);
+            titleLabel.setLineWrap(true);                      // Enable line wrapping for long titles
+            titleLabel.setWrapStyleWord(true);                 // Wrap at word boundaries
+            titleLabel.setEditable(false);                     // Non-editable by user
+            titleLabel.setFont(getFont().deriveFont(Font.BOLD)); // Bold font
+            titleLabel.setOpaque(false);                       // Transparent background
+            titleLabel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align left in panel
+
+            // --- URL label: clickable link displayed below the title ---
+            JLabel urlLabel = new JLabel("<html><a href=''>" + url + "</a></html>");
+            urlLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+            // --- Add components to the vertical stack (content panel) ---
+            contentPanel.add(titleLabel);
+            contentPanel.add(Box.createVerticalStrut(4)); // Small gap before URL
+            contentPanel.add(urlLabel);
+
+            // --- Add the content panel to the center of the NotificationPanel ---
+            add(contentPanel, BorderLayout.CENTER);
+        }
     }
 
     /**
@@ -2583,15 +2623,19 @@ public class mainUI extends JFrame {
      * Adds a news article to the global news list model.
      * <p>
      * Used for updating the company news section when new stories arrive from the API.
+     * The news article is wrapped as a {@link News} object, which is then displayed in the
+     * application's news list UI component.
      *
-     * @param title   The headline or title of the news article.
-     * @param content The summary or excerpt of the news.
-     * @param url     The full URL to the news story (for opening in a browser/dialog).
+     * @param title              The headline or title of the news article.
+     * @param content            The summary or excerpt of the news article.
+     * @param url                The full URL to the news story (for opening in a browser or dialog).
+     * @param sentimentForTicker The sentiment analysis result associated with the news article,
+     *                           or {@code null} if not available. Used for sentiment coloring and badges.
      */
-    public void addNews(String title, String content, String url) {
+    public void addNews(String title, String content, String url, NewsResponse.TickerSentiment sentimentForTicker) {
         // Each news item is stored as a News object in the model,
         // which is rendered by the JList in the GUI.
-        NewsListModel.addElement(new News(title, content, url));
+        NewsListModel.addElement(new News(title, content, url, sentimentForTicker));
     }
 
     /**
@@ -3015,6 +3059,57 @@ public class mainUI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             sortNotifications(byChange);
+        }
+    }
+
+    /**
+     * <h2>NotificationRenderer</h2>
+     * Custom ListCellRenderer for displaying {@link News} objects in a JList
+     * as stylized notification cards, using NotificationPanel for layout.
+     * Handles theme colors, selection highlighting, and sentiment-based borders.
+     */
+    public static class NotificationRenderer implements ListCellRenderer<News> {
+
+        /**
+         * Configures and returns the component used to render each News item in the list.
+         * Applies selection colors, foreground/background, and sentiment border styling.
+         *
+         * @param list         the JList we're painting
+         * @param news         the News object for this row
+         * @param index        the index of the cell in the list
+         * @param isSelected   true if the cell is selected
+         * @param cellHasFocus true if the cell has focus
+         * @return the component to display for the given list cell
+         */
+        @Override
+        public Component getListCellRendererComponent(JList<? extends News> list, News news, int index,
+                                                      boolean isSelected, boolean cellHasFocus) {
+            // Create a notification card panel with title, url, and sentiment color
+            NotificationPanel panel = new NotificationPanel(
+                    news.getTitle(),
+                    news.getUrl(),
+                    news.getSentimentColor()
+            );
+
+            // Set background and foreground based on selection state and theme
+            Color bg = UIManager.getColor(isSelected ? "List.selectionBackground" : "List.background");
+            Color fg = UIManager.getColor(isSelected ? "List.selectionForeground" : "List.foreground");
+
+            panel.setBackground(bg);
+            panel.setForeground(fg);
+
+            // By default, show a matte border with the sentiment color
+            panel.setBorder(BorderFactory.createMatteBorder(0, 3, 1, 0, news.getSentimentColor()));
+
+            // If selected, overlay a thicker border for focus/selection
+            if (isSelected) {
+                panel.setBorder(BorderFactory.createCompoundBorder(
+                        BorderFactory.createLineBorder(UIManager.getColor("List.selectionForeground"), 2),
+                        BorderFactory.createMatteBorder(0, 3, 1, 0, news.getSentimentColor())
+                ));
+            }
+
+            return panel;
         }
     }
 }
