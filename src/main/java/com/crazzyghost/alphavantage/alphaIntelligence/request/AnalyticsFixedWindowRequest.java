@@ -20,15 +20,25 @@ import static com.crazzyghost.alphavantage.parameters.Function.ANALYTICS_FIXED_W
  * </pre>
  */
 public class AnalyticsFixedWindowRequest extends AlphaIntelligenceRequest {
-    /** Comma-separated list of symbol(s) to query (e.g., "AAPL,MSFT"). */
+    /**
+     * Comma-separated list of symbol(s) to query (e.g., "AAPL,MSFT").
+     */
     private final String symbols;
-    /** Array of range values (e.g., {"1d", "5d"}). */
-    private final String[] range;
-    /** Data interval granularity (e.g., "1min", "5min", "1h"). */
+    /**
+     * String of range value
+     */
+    private final String range;
+    /**
+     * Data interval granularity (e.g., "1min", "5min", "1h").
+     */
     private final String interval;
-    /** Calculations to perform, as a comma-separated string (e.g., "mean,median"). */
+    /**
+     * Calculations to perform, as a comma-separated string (e.g., "mean,median").
+     */
     private final String calculations;
-    /** Whether to include OHLC (open, high, low, close) data ("true" or "false"). */
+    /**
+     * Whether to include OHLC (open, high, low, close) data ("true" or "false").
+     */
     private final String ohlc;
 
     /**
@@ -45,20 +55,40 @@ public class AnalyticsFixedWindowRequest extends AlphaIntelligenceRequest {
         this.ohlc = builder.ohlc;
     }
 
-    /** @return the symbols specified for this request. */
-    public String getSymbols() { return symbols; }
+    /**
+     * @return the symbols specified for this request.
+     */
+    public String getSymbols() {
+        return symbols;
+    }
 
-    /** @return the range values for the time window. */
-    public String[] getRange() { return range; }
+    /**
+     * @return the range value for the time window.
+     */
+    public String getRange() {
+        return range;
+    }
 
-    /** @return the data interval granularity. */
-    public String getInterval() { return interval; }
+    /**
+     * @return the data interval granularity.
+     */
+    public String getInterval() {
+        return interval;
+    }
 
-    /** @return the requested calculation types as a string. */
-    public String getCalculations() { return calculations; }
+    /**
+     * @return the requested calculation types as a string.
+     */
+    public String getCalculations() {
+        return calculations;
+    }
 
-    /** @return whether OHLC data is requested ("true" or "false"). */
-    public String getOhlc() { return ohlc; }
+    /**
+     * @return whether OHLC data is requested ("true" or "false").
+     */
+    public String getOhlc() {
+        return ohlc;
+    }
 
     /**
      * Builder for {@link AnalyticsFixedWindowRequest}.
@@ -67,7 +97,7 @@ public class AnalyticsFixedWindowRequest extends AlphaIntelligenceRequest {
      */
     public static class Builder extends AlphaIntelligenceRequest.Builder<Builder> {
         private String symbols;
-        private String[] range;
+        private String range;
         private String interval;
         private String calculations;
         private String ohlc;
@@ -91,12 +121,12 @@ public class AnalyticsFixedWindowRequest extends AlphaIntelligenceRequest {
         }
 
         /**
-         * Set the range(s) for the time window.
+         * Set the range for the time window.
          *
-         * @param range One or more string ranges (e.g., "1d", "5d").
+         * @param range string range.
          * @return this builder instance
          */
-        public Builder range(String... range) {
+        public Builder range(String range) {
             this.range = range;
             return this;
         }

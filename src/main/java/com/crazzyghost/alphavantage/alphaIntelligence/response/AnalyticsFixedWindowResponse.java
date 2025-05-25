@@ -1,7 +1,6 @@
 package com.crazzyghost.alphavantage.alphaIntelligence.response;
 
 import java.util.*;
-import java.util.function.BiConsumer;
 
 /**
  * Represents the response from the Alpha Vantage Analytics Fixed Window endpoint.
@@ -44,87 +43,207 @@ public class AnalyticsFixedWindowResponse {
     }
 
     /**
-     * Contains all statistical calculations returned by the endpoint,
-     * including advanced analytics such as min, max, median, cumulative return, variance,
-     * max drawdown, histogram, autocorrelation, covariance, and correlation.
+     * Contains all statistical calculations and advanced analytics returned by
+     * the Alpha Vantage Analytics Fixed Window endpoint.
+     * <p>
+     * This class is designed to be future-proof:
+     * <ul>
+     *   <li>It dynamically parses all present and future per-symbol metrics from the API response,
+     *       so adding new calculations does not require code changes.</li>
+     *   <li>It provides explicit fields for well-known metrics (mean, stddev, autocorrelation, etc.) for convenience.</li>
+     *   <li>All unknown or custom metrics are available via generic dynamic maps.</li>
+     *   <li>Special handling is included for matrix-valued and parameterized metrics (e.g., correlation, autocorrelation, histogram).</li>
+     * </ul>
      */
     public static class ReturnsCalculations {
-        // Each metric is stored as a map: symbol -> value.
-
-        public Map<String, Double> min = new HashMap<>();                // Minimum values for each symbol.
-        public Map<String, Double> max = new HashMap<>();                // Maximum values for each symbol.
-        public Map<String, Double> mean = new HashMap<>();               // Mean values for each symbol.
-        public Map<String, Double> median = new HashMap<>();             // Median values for each symbol.
-        public Map<String, Double> cumulativeReturn = new HashMap<>();   // Cumulative return for each symbol.
-        public Map<String, Double> variance = new HashMap<>();           // Variance for each symbol.
-        public Map<String, Double> stddev = new HashMap<>();             // Standard deviation for each symbol.
-        public Map<String, Double> maxDrawdown = new HashMap<>();        // Maximum drawdown for each symbol.
-
-        // Advanced analytics per symbol.
-        public Map<String, HistogramResult> histogram = new HashMap<>(); // Histogram bins/frequencies for each symbol.
-        public Map<String, Map<String, Double>> autocorrelation = new HashMap<>(); // Lag -> autocorrelation value per symbol.
-
-        // Matrix analytics for multi-symbol cases (correlation/covariance).
-        public MatrixResult covariance;      // Covariance matrix between all symbols.
-        public Correlation correlation;      // Correlation matrix between all symbols.
 
         /**
-         * Constructs ReturnsCalculations by parsing a JSON-like map structure.
+         * Dynamic map: metric name → { symbol → value }, e.g. "MEAN" → { "AAPL" → 0.01, ... }
+         */
+        public Map<String, Map<String, Double>> perSymbolMetrics = new HashMap<>();
+
+        /**
+         * Dynamic map for all unknown or new metrics (for future proofing).
+         */
+        public Map<String, Map<String, Object>> genericMetrics = new HashMap<>();
+
+        // ======= Explicit fields for common, well-known metrics: =======
+
+        /**
+         * Map from symbol to MIN value.
+         */
+        public Map<String, Double> min = new HashMap<>();
+
+        /**
+         * Map from symbol to MAX value.
+         */
+        public Map<String, Double> max = new HashMap<>();
+
+        /**
+         * Map from symbol to MEAN value.
+         */
+        public Map<String, Double> mean = new HashMap<>();
+
+        /**
+         * Map from symbol to MEDIAN value.
+         */
+        public Map<String, Double> median = new HashMap<>();
+
+        /**
+         * Map from symbol to CUMULATIVE_RETURN value.
+         */
+        public Map<String, Double> cumulativeReturn = new HashMap<>();
+
+        /**
+         * Map from symbol to VARIANCE value.
+         */
+        public Map<String, Double> variance = new HashMap<>();
+
+        /**
+         * Map from symbol to STDDEV value.
+         */
+        public Map<String, Double> stddev = new HashMap<>();
+
+        /**
+         * Map from symbol to MAX_DRAWDOWN value.
+         */
+        public Map<String, Double> maxDrawdown = new HashMap<>();
+
+        // ======= Advanced / parameterized metrics =======
+
+        /**
+         * Map from symbol to metric name (with params) to value, e.g.
+         * "AAPL" → { "AUTOCORRELATION(LAG=1)": 0.8, "AUTOCORRELATION(LAG=2)": 0.7 }
+         * Use this for any parameterized or special calculation.
+         */
+        public Map<String, Map<String, Double>> autocorrelation = new HashMap<>();
+
+        /**
+         * Map from symbol to histogram result (contains bins and frequencies).
+         * For HISTOGRAM and HISTOGRAM(bins=...)
+         */
+        public Map<String, HistogramResult> histogram = new HashMap<>();
+
+        /**
+         * Covariance matrix between all requested symbols, if present.
+         */
+        public MatrixResult covariance;
+
+        /**
+         * Correlation matrix between all requested symbols, if present.
+         */
+        public Correlation correlation;
+
+        /**
+         * Constructs the ReturnsCalculations object by parsing all metrics from the
+         * "RETURNS_CALCULATIONS" section of the Alpha Vantage API response.
          *
-         * @param map the "RETURNS_CALCULATIONS" section of the response JSON.
+         * @param map The JSON-like map containing all metric entries as returned by the API.
          */
         public ReturnsCalculations(Map<String, Object> map) {
-            // Helper: parse a simple map of symbol -> double for a given metric.
-            BiConsumer<String, Map<String, Double>> parseMetric = (key, target) -> {
-                if (map.containsKey(key)) {
-                    Map<String, Object> src = (Map<String, Object>) map.get(key);
-                    for (Map.Entry<String, Object> entry : src.entrySet()) {
-                        // Only numbers are accepted, null otherwise.
-                        target.put(entry.getKey(), entry.getValue() instanceof Number ? ((Number) entry.getValue()).doubleValue() : null);
+            // Iterate over all top-level keys in the "RETURNS_CALCULATIONS" map.
+            for (Map.Entry<String, Object> entry : map.entrySet()) {
+                String key = entry.getKey();
+                Object val = entry.getValue();
+
+                // --- 1. Handle all per-symbol double metrics: e.g., "MEAN", "STDDEV", etc. ---
+                if (isSimpleMetric(key)) {
+                    // The value is a map: symbol → value (number)
+                    Map<String, Object> rawMap = castToMap(val);
+                    Map<String, Double> metricMap = new HashMap<>();
+                    for (Map.Entry<String, Object> e : rawMap.entrySet()) {
+                        metricMap.put(e.getKey(), e.getValue() instanceof Number ? ((Number) e.getValue()).doubleValue() : null);
                     }
+                    // Save in the dynamic map for general access
+                    perSymbolMetrics.put(key, metricMap);
+
+                    // Also keep explicit references for common metrics (legacy/convenience)
+                    switch (key) {
+                        case "MIN":
+                            min = metricMap;
+                            break;
+                        case "MAX":
+                            max = metricMap;
+                            break;
+                        case "MEAN":
+                            mean = metricMap;
+                            break;
+                        case "MEDIAN":
+                            median = metricMap;
+                            break;
+                        case "CUMULATIVE_RETURN":
+                            cumulativeReturn = metricMap;
+                            break;
+                        case "VARIANCE":
+                            variance = metricMap;
+                            break;
+                        case "STDDEV":
+                            stddev = metricMap;
+                            break;
+                        case "MAX_DRAWDOWN":
+                            maxDrawdown = metricMap;
+                            break;
+                    }
+                    continue;
                 }
+
+                // --- 2. Parameterized metrics: AUTOCORRELATION(LAG=...), etc. ---
+                if (key.startsWith("AUTOCORRELATION(")) {
+                    Map<String, Object> symbolMap = castToMap(val);
+                    for (Map.Entry<String, Object> symEntry : symbolMap.entrySet()) {
+                        String symbol = symEntry.getKey();
+                        Double value = symEntry.getValue() instanceof Number ? ((Number) symEntry.getValue()).doubleValue() : null;
+                        autocorrelation.computeIfAbsent(symbol, k -> new HashMap<>()).put(key, value);
+                    }
+                    continue;
+                }
+
+                // --- 3. HISTOGRAM or HISTOGRAM(bins=...) ---
+                if (key.startsWith("HISTOGRAM")) {
+                    Map<String, Object> histMap = castToMap(val);
+                    for (Map.Entry<String, Object> symEntry : histMap.entrySet()) {
+                        histogram.put(symEntry.getKey(), new HistogramResult(castToMap(symEntry.getValue())));
+                    }
+                    continue;
+                }
+
+                // --- 4. Matrix metrics: CORRELATION, COVARIANCE ---
+                if (key.equals("CORRELATION")) {
+                    correlation = new Correlation(castToMap(val));
+                    continue;
+                }
+                if (key.equals("COVARIANCE")) {
+                    covariance = new MatrixResult(castToMap(val));
+                    continue;
+                }
+
+                // --- 5. Catch-all for any unknown/future metrics ---
+                // This ensures future expansion (metrics not explicitly handled above will still be available)
+                if (val instanceof Map) {
+                    genericMetrics.put(key, castToMap(val));
+                }
+            }
+        }
+
+        /**
+         * Checks if the metric is one of the well-known simple per-symbol metrics.
+         *
+         * @param key The metric name.
+         * @return True if the metric is a known per-symbol value.
+         */
+        private boolean isSimpleMetric(String key) {
+            return switch (key) {
+                case "MIN", "MAX", "MEAN", "MEDIAN", "CUMULATIVE_RETURN", "VARIANCE", "STDDEV", "MAX_DRAWDOWN" -> true;
+                default -> false;
             };
+        }
 
-            // Parse all simple per-symbol double metrics:
-            parseMetric.accept("MIN", min);
-            parseMetric.accept("MAX", max);
-            parseMetric.accept("MEAN", mean);
-            parseMetric.accept("MEDIAN", median);
-            parseMetric.accept("CUMULATIVE_RETURN", cumulativeReturn);
-            parseMetric.accept("VARIANCE", variance);
-            parseMetric.accept("STDDEV", stddev);
-            parseMetric.accept("MAX_DRAWDOWN", maxDrawdown);
-
-            // Parse HISTOGRAM: symbol -> { bins: [...], frequencies: [...] }
-            if (map.containsKey("HISTOGRAM")) {
-                Map<String, Object> histMap = (Map<String, Object>) map.get("HISTOGRAM");
-                for (Map.Entry<String, Object> entry : histMap.entrySet()) {
-                    histogram.put(entry.getKey(), new HistogramResult((Map<String, Object>) entry.getValue()));
-                }
-            }
-
-            // Parse AUTOCORRELATION: symbol -> { lag1: value, lag2: value, ... }
-            if (map.containsKey("AUTOCORRELATION")) {
-                Map<String, Object> acMap = (Map<String, Object>) map.get("AUTOCORRELATION");
-                for (Map.Entry<String, Object> entry : acMap.entrySet()) {
-                    Map<String, Double> lagMap = new HashMap<>();
-                    Map<String, Object> rawLagMap = (Map<String, Object>) entry.getValue();
-                    for (Map.Entry<String, Object> lagEntry : rawLagMap.entrySet()) {
-                        lagMap.put(lagEntry.getKey(),
-                                lagEntry.getValue() instanceof Number ? ((Number) lagEntry.getValue()).doubleValue() : null);
-                    }
-                    autocorrelation.put(entry.getKey(), lagMap);
-                }
-            }
-
-            // Parse COVARIANCE matrix, if present.
-            if (map.containsKey("COVARIANCE")) {
-                covariance = new MatrixResult((Map<String, Object>) map.get("COVARIANCE"));
-            }
-            // Parse CORRELATION matrix, if present.
-            if (map.containsKey("CORRELATION")) {
-                correlation = new Correlation((Map<String, Object>) map.get("CORRELATION"));
-            }
+        /**
+         * Safely casts an object to a Map<String, Object> (suppresses unchecked warning).
+         */
+        @SuppressWarnings("unchecked")
+        private Map<String, Object> castToMap(Object obj) {
+            return (Map<String, Object>) obj;
         }
     }
 
