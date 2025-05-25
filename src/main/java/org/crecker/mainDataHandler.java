@@ -27,6 +27,7 @@ import java.util.*;
 import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.crecker.RallyPredictor.predict;
@@ -1844,6 +1845,66 @@ public class mainDataHandler {
             summary.append("\n=====================================\n");
             summary.append("📈 Analyzing: ").append(symbol).append(" 📊\n");
 
+            // 0. --- AUTOCORRELATION FETCH ---
+            // This section fetches the lag-1 autocorrelation for the symbol's recent 9 days of daily closing prices.
+            // It does this *synchronously* (with a latch) to ensure the result is available before further analysis.
+
+            AtomicReference<Double> acLag1 = new AtomicReference<>(null); // Holds the fetched autocorrelation value (null if error)
+            CountDownLatch latch = new CountDownLatch(1); // Used to block until the async API response is received
+
+            // Start async request for autocorrelation via AlphaVantage's advanced analytics endpoint
+            AlphaVantage.api()
+                    .alphaIntelligence()
+                    .analyticsFixedWindow()
+                    .symbols(symbol)                           // Set the stock ticker
+                    .range("9day")                             // Use the last 9 days (trading days, not calendar)
+                    .interval("DAILY")                         // Daily bars for autocorrelation calculation
+                    .calculations("AUTOCORRELATION(lag=1)")    // Request lag-1 autocorrelation (adjacent days)
+                    .ohlc("close")                             // Use closing prices for calculation
+                    .onSuccess(response -> {                   // When the API call succeeds:
+                        Double val = Optional.ofNullable(response.getReturnsCalculations())
+                                .map(rc -> rc.autocorrelation)                        // Get autocorrelation section of result
+                                .map(ac -> ac.get(symbol))                            // For this ticker
+                                .map(lagMap -> lagMap.get("AUTOCORRELATION(LAG=1)"))  // Get the actual lag-1 value
+                                .orElse(null);                                        // Null if anything missing
+                        acLag1.set(val);           // Store the value for use below
+                        latch.countDown();         // Release the latch so main thread can proceed
+                    })
+                    .onFailure(err -> {            // On API failure (network error, etc.):
+                        System.err.println("Autocorrelation API error: " + err.getMessage());
+                        latch.countDown();         // Release the latch even on failure, to avoid deadlock
+                    })
+                    .fetch();                      // Send the API request
+
+            try {
+                // Block the current thread until the async API result comes back,
+                // or after a timeout of 4 seconds to avoid hanging indefinitely.
+                latch.await(4, java.util.concurrent.TimeUnit.SECONDS);
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt(); // Restore interrupt status if needed
+                System.err.println("Latch interrupted for symbol: " + symbol);
+            }
+
+            // --- LOG THE RESULT FOR DEBUGGING ---
+            summary.append(String.format(
+                    "🔁 Autocorrelation (lag=1): %s\n",
+                    acLag1.get() == null ? "N/A" : String.format("%.4f", acLag1.get())
+            ));
+
+            // --- AUTOCORRELATION GATING LOGIC ---
+            // Now that we have the lag-1 autocorrelation, use it as an early filter for trend strength.
+            // If the autocorrelation could not be fetched (API failed or returned no data), reject this symbol immediately
+            if (acLag1.get() == null) {
+                summary.append("❌ Failed: Could not fetch autocorrelation\n");
+                return; // Skip this symbol, do not proceed to further checks
+            }
+
+            // If autocorrelation is below 0.6, consider the trend too weak to be a "rally"
+            if (acLag1.get() < 0.6) {
+                summary.append("❌ Failed: Autocorrelation (lag=1) below threshold (%.2f)\n".formatted(acLag1.get()));
+                return; // Early reject this symbol, skip rest of analysis
+            }
+
             // 1. CLEAN DATA: Remove bars that are out-of-market hours or on weekends
             //    This is critical to ensure regression and channel calculations aren't distorted by illiquid or non-trading periods.
             List<StockUnit> minuteBarsClean = tradingMinutesOnly(minuteBars);
@@ -2364,8 +2425,9 @@ public class mainDataHandler {
             }
         }
 
-        // Uptrend line detector
-        boolean uptrend = isInUptrend(stocks, 5, 1.5, 0.80);
+        // Uptrend line detector with advanced conditions
+        boolean uptrend = shouldTrigger(stocks, 5, 1.5, 0.8,
+                0.2, 0.1, 3, 0.15);
 
         // === 7. Strict "all conditions met" trigger for classic spike event alert ===
         //   (a) features[4] == 1   : Binary "spike" anomaly active
@@ -2496,12 +2558,6 @@ public class mainDataHandler {
 
         // Check that no single red candle erases more than a third of the window's total gain
         boolean noBigPullback = maxRed < (lastClose - firstClose) / 3.0;
-
-        // One-line summary debug print:
-//        System.out.printf(
-//                "percentChange=%.2f%%, greenCount=%d, greenRatio=%.2f, maxRed=%.2f, noBigPullback=%b, result=%b %s%n",
-//                percentChange, greenCount, greenRatio, maxRed, noBigPullback, percentChange >= minChange && greenRatio >= minGreen && noBigPullback, stocks.get(stocks.size() - 1).getDateDate()
-//        );
 
         // Must satisfy: (1) big enough gain, (2) enough green candles, (3) no big pullbacks
         return percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
@@ -2731,6 +2787,137 @@ public class mainDataHandler {
 
         // Return 1.0 if within [threshold, resistanceLevel], else 0.0
         return (currentClose >= threshold && currentClose <= resistanceLevel) ? 1.0 : 0.0;
+    }
+
+    /**
+     * <p>
+     * The main trigger logic here enforces several strict safeguards against false positives and
+     * adverse fills. A signal will NOT be fired if any of the following conditions are met:
+     * <ul>
+     *     <li><b>Recent resistance touch:</b> Signal is blocked if price is at/near a resistance line within the last 15 minutes.</li>
+     *     <li><b>No upward movement:</b> Signal is blocked if there is no recent upward price movement, or if price change is negative.</li>
+     *     <li><b>Downtrend detected:</b> Signal is blocked if the price action is going down (no upward micro-momentum).</li>
+     *     <li><b>Gap-down open:</b> Signal is blocked if the latest candle opens significantly lower than the previous close, beyond a configurable tolerance.</li>
+     *     <li><b>Large candle spread:</b> Signal is blocked if the candle’s spread is too great: the open is not near the low or the close is not near the high (indicating excessive indecision or volatility).</li>
+     * </ul>
+     * <p>
+     * Evaluates whether a rise event should trigger.
+     * <p>
+     * Uses a sequence of "defensive programming" checks based on:
+     * - Multi-bar momentum
+     * - Resistance proximity
+     * - Recent micro-momentum (last N bars)
+     * - Gap-down protection
+     * - Wick/spread abnormality
+     * All checks are designed to avoid false positives, echoing strict multi-layer
+     * filtering found in advanced trading systems.
+     *
+     * @param stocks             Chronological list of OHLC bars (oldest first).
+     * @param window             LookBack window for core uptrend detection.
+     * @param minChangePct       Minimum % price gain required to consider the window an uptrend.
+     * @param minGreenRatio      Minimum ratio of green candles (bullish closes) in the window.
+     * @param gapTolerancePct    Max allowed downward gap between previous close and current open, in %.
+     * @param wickToleranceRatio Maximum ratio of upper/lower wick length to candle body/range before aborting.
+     * @return true if all trigger conditions are satisfied; false otherwise.
+     */
+    public static boolean shouldTrigger(List<StockUnit> stocks, int window, double minChangePct, double minGreenRatio,
+                                        double gapTolerancePct, double wickToleranceRatio, int barsToCheck, double flatTolerance
+    ) {
+        // 1️⃣ Defensive: Enough data for a robust signal?
+        if (stocks == null || stocks.size() < window + 1) return false;
+
+        // 2️⃣ Confirm robust, multi-bar momentum (statistically significant uptrend).
+        boolean momentumOk = isInUptrend(stocks, window, minChangePct, minGreenRatio);
+        if (!momentumOk) return false; // Early exit: avoid noise in non-trending regimes.
+
+        // 3️⃣ Resistance zone filter: block triggers if recent price action is at/near known resistance.
+        // This prevents FOMO-buy signals directly under resistance, which often fail.
+        if (isNearResistance(stocks) == 1) return false;
+
+        // 4️⃣ Micro-momentum: last N bars must still show active upward pressure.
+        // Avoids entering when the signal window shows uptrend but the current price is stalling.
+        if (!lastNBarsRising(stocks, barsToCheck, flatTolerance)) return false;
+
+        // 5️⃣ Gap-down protection: abort if the last candle opens well below the previous close.
+        StockUnit prev = stocks.get(stocks.size() - 2);
+        StockUnit curr = stocks.get(stocks.size() - 1);
+        if (hasGapDown(prev, curr, gapTolerancePct)) return false;
+
+        // 6️⃣ Wick/spread guard: reject stocks with extreme upper/lower wicks, which often signal indecision or high volatility.
+        return !hasLargeWicks(curr, wickToleranceRatio);
+    }
+
+    /**
+     * Detects a bearish gap-down between two consecutive candles.
+     * Protects against buying signals when price opens below prior close,
+     *
+     * @param prev         The previous candle/bar (T-1).
+     * @param curr         The current candle/bar (T).
+     * @param tolerancePct The maximum allowed downward gap as a percent of the previous close.
+     * @return true if the downward gap exceeds allowed tolerance, indicating risk.
+     */
+    private static boolean hasGapDown(StockUnit prev, StockUnit curr, double tolerancePct) {
+        // Calculate the "wiggle room" (permitted downward gap in price).
+        double allowedGap = prev.getClose() * tolerancePct / 100.0;
+
+        // If the current open, even after adding allowed gap, is still below previous close,
+        // treat this as a significant (and likely risky) gap-down. Block signals in this scenario.
+        return curr.getOpen() + allowedGap < prev.getClose();
+    }
+
+    /**
+     * Ensures that each of the last N candles closes higher than the previous, by at least a minimal tolerance.
+     * This enforces true micro-uptrend, filtering out flat or choppy price action.
+     *
+     * @param candles              Chronological OHLC bars.
+     * @param nBars                How many most recent bars to check for rising closes.
+     * @param sidewaysTolerancePct Allowed minimum percent that each close must beat the last.
+     * @return true if all checked closes are sufficiently higher than their predecessors.
+     */
+    private static boolean lastNBarsRising(List<StockUnit> candles, int nBars, double sidewaysTolerancePct) {
+        // Not enough data: can't check this pattern if there aren't at least nBars.
+        if (candles.size() < nBars) return false;
+
+        // Step through each pair in the last nBars window (e.g., 3 bars means check the last 2 pairs).
+        for (int i = candles.size() - nBars; i < candles.size() - 1; i++) {
+            double prevClose = candles.get(i).getClose();          // Previous bar's closing price
+            double nextClose = candles.get(i + 1).getClose();      // Current bar's closing price
+
+            // Compute the minimum required close for nextClose to count as "rising enough".
+            // Example: if tolerance = 0.15%, then nextClose must be at least 0.15% above prevClose.
+            double minAllowed = prevClose * (1 + sidewaysTolerancePct / 100.0);
+
+            // If nextClose fails to meet the required threshold, the uptrend is broken. Abort early.
+            if (nextClose < minAllowed) return false;
+        }
+        // If all pairs pass the test, price action is consistently rising with no flat spots.
+        return true;
+    }
+
+    /**
+     * Checks if a candle's upper or lower wick (shadow) is abnormally large compared to the candle's full range.
+     * Large wicks often signal indecision, strong reversals, or excessive volatility—undesirable entry points.
+     *
+     * @param candle    The OHLC candle to analyze.
+     * @param wickRatio Maximum allowed ratio for either shadow (e.g., 0.5 = shadow cannot exceed half the range).
+     * @return true if either wick exceeds the permitted fraction of total range, flagging as a warning.
+     */
+    private static boolean hasLargeWicks(StockUnit candle, double wickRatio) {
+        // Compute the full high-to-low range of this bar.
+        double range = candle.getHigh() - candle.getLow();
+
+        // If range is zero or negative (bad tick/data error), treat as suspicious—abort.
+        if (range <= 0) return true;
+
+        // Calculate the lower wick: distance from low to open.
+        double lowerShadow = candle.getOpen() - candle.getLow();
+
+        // Calculate the upper wick: distance from close to high.
+        double upperShadow = candle.getHigh() - candle.getClose();
+
+        // If either shadow exceeds the allowed fraction of the bar's range,
+        // treat this candle as "messy" and not suitable for triggering.
+        return (lowerShadow / range) > wickRatio || (upperShadow / range) > wickRatio;
     }
 
     /**

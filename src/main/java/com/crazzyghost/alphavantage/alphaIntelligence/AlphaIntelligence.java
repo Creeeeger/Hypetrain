@@ -304,12 +304,12 @@ public final class AlphaIntelligence implements Fetcher {
         }
 
         /**
-         * Sets the time range(s) for the analytics request.
+         * Sets the time range for the analytics request.
          *
-         * @param range One or more range specifiers (e.g., "1d", "5d")
+         * @param range Add range specifiers (e.g., "1d", "5d")
          * @return this proxy for method chaining
          */
-        public AnalyticsFixedWindowRequestProxy range(String... range) {
+        public AnalyticsFixedWindowRequestProxy range(String range) {
             builder.range(range);
             return this;
         }
