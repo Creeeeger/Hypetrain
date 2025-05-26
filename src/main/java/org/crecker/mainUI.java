@@ -10,9 +10,12 @@ import org.jfree.chart.JFreeChart;
 import org.jfree.chart.axis.DateAxis;
 import org.jfree.chart.axis.ValueAxis;
 import org.jfree.chart.plot.IntervalMarker;
+import org.jfree.chart.plot.Plot;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.CandlestickRenderer;
+import org.jfree.chart.renderer.xy.XYItemRenderer;
+import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
 import org.jfree.data.time.*;
 import org.jfree.data.time.ohlc.OHLCItem;
 import org.jfree.data.time.ohlc.OHLCSeries;
@@ -1480,6 +1483,9 @@ public class mainUI extends JFrame {
                 false                 // URLs
         );
 
+        // enable chart dark mode
+        setDarkMode(chart);
+
         // Get reference to the plot for further customisation
         XYPlot plot = getXyPlot(chart);
 
@@ -2793,6 +2799,95 @@ public class mainUI extends JFrame {
         // Clear the original model and re-add notifications in new order
         notificationListModel.clear();
         notificationListModel.addAll(notifications);
+    }
+
+    /**
+     * Applies a dark mode theme to the given {@link JFreeChart} object.
+     * <p>
+     * This method customizes the visual appearance of the chart to suit dark backgrounds.
+     * It sets background colors, grid line colors, axis label colors, and adjusts series colors
+     * for both candlestick and line charts. The method also updates the legend and chart title
+     * colors to fit the dark mode style.
+     * </p>
+     *
+     * <ul>
+     *   <li>Backgrounds are set to deep grey/blue shades for visual comfort.</li>
+     *   <li>Grid lines and axes are set to low-contrast shades to avoid glare.</li>
+     *   <li>Series lines and candlestick bars use bright, distinctive colors for clarity.</li>
+     *   <li>Legend and title colors match the overall theme for consistency.</li>
+     * </ul>
+     *
+     * @param chart The {@link JFreeChart} instance to style in dark mode.
+     * @throws NullPointerException if {@code chart} is null.
+     */
+    public static void setDarkMode(JFreeChart chart) {
+        // --- Basic Color Definitions ---
+        Color background = new Color(28, 28, 34);       // Main chart background
+        Color plotBg = new Color(22, 22, 28);           // Plot area background
+        Color grid = new Color(70, 70, 80);             // Gridline color (subtle for dark)
+        Color axisLabel = new Color(220, 220, 220);     // Axis and label text color (near-white for contrast)
+
+        // Set the overall background color of the chart
+        chart.setBackgroundPaint(background);
+
+        // Access the main plot area of the chart
+        Plot plot = chart.getPlot();
+        plot.setBackgroundPaint(plotBg);
+
+        // If the plot is an XYPlot (typical for line/candlestick charts), customize further
+        if (plot instanceof XYPlot xyPlot) {
+            // Set gridline colors (horizontal and vertical) for subtle visibility
+            xyPlot.setDomainGridlinePaint(grid);
+            xyPlot.setRangeGridlinePaint(grid);
+
+            // Set axis tick and label colors for both domain (X) and range (Y) axes
+            if (xyPlot.getDomainAxis() != null) {
+                xyPlot.getDomainAxis().setTickLabelPaint(axisLabel);
+                xyPlot.getDomainAxis().setLabelPaint(axisLabel);
+            }
+            if (xyPlot.getRangeAxis() != null) {
+                xyPlot.getRangeAxis().setTickLabelPaint(axisLabel);
+                xyPlot.getRangeAxis().setLabelPaint(axisLabel);
+            }
+
+            // Get the renderer (handles drawing the actual data series)
+            XYItemRenderer renderer = xyPlot.getRenderer();
+
+            // --- Candlestick Charts ---
+            if (renderer instanceof CandlestickRenderer) {
+                // Green for "up" candles, red for "down" candles (classic finance coloring)
+                ((CandlestickRenderer) renderer).setUpPaint(new Color(90, 220, 90));     // Bright green
+                ((CandlestickRenderer) renderer).setDownPaint(new Color(220, 60, 60));   // Bright red
+
+                // --- Line/Shape Charts ---
+            } else if (renderer instanceof XYLineAndShapeRenderer) {
+                // Define up to 4 series colors: white, red, blue, neon green
+                Color[] darkColors = {
+                        new Color(255, 255, 255),  // Series 0: Close (white for clarity)
+                        new Color(255, 92, 92),    // Series 1: High (red for highlights)
+                        new Color(88, 180, 255),   // Series 2: Low (bright blue for contrast)
+                        new Color(0, 255, 128)     // Series 3: Open (neon green for distinctiveness)
+                };
+
+                // Apply these styles to the first four series in the renderer
+                for (int i = 0; i < 4; i++) {
+                    ((XYLineAndShapeRenderer) renderer).setSeriesPaint(i, darkColors[i]);      // Set line color
+                    ((XYLineAndShapeRenderer) renderer).setSeriesStroke(i, new BasicStroke(2.0f)); // Thicker line for visibility
+                    ((XYLineAndShapeRenderer) renderer).setSeriesShapesVisible(i, false);      // No shapes, just lines
+                }
+            }
+        }
+
+        // --- Legend Styling ---
+        if (chart.getLegend() != null) {
+            chart.getLegend().setBackgroundPaint(background); // Match main background
+            chart.getLegend().setItemPaint(axisLabel);        // Match label color for contrast
+        }
+
+        // --- Title Styling ---
+        if (chart.getTitle() != null) {
+            chart.getTitle().setPaint(axisLabel);             // Match label color for contrast
+        }
     }
 
     /**

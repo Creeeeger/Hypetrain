@@ -27,8 +27,7 @@ import java.net.URI;
 import java.time.LocalDateTime;
 import java.util.List;
 
-import static org.crecker.mainUI.getTicker;
-import static org.crecker.mainUI.useCandles;
+import static org.crecker.mainUI.*;
 
 /**
  * Notification represents an event popup for a specific stock.
@@ -350,29 +349,31 @@ public class Notification {
 
         // Chart panel: line or candlestick chart, based on user setting
         chartPanel = createChart();
-        chartPanel.setPreferredSize(new Dimension(600, 320)); // Wider chart
+        chartPanel.setPreferredSize(new Dimension(600, 320)); // Chart area size
 
         // Bottom panel for buttons and labels
         JPanel bottomPanel = new JPanel(new FlowLayout(FlowLayout.CENTER));
+        percentageChange = new JLabel("Percentage Change"); // Info label
 
-        percentageChange = new JLabel("Percentage Change"); // Placeholder label for user analysis
+        // --- Buttons ---
 
-        // In-app "superchart" button: opens real-time chart for this symbol
+        // Create a button that opens a detailed real-time chart within the app
         JButton openRealTime = new JButton("Open in Realtime SuperChart");
-
+        // Attach an action: when clicked, trigger the mainUI to show the chart for this symbol
         openRealTime.addActionListener(e -> mainUI.getInstance().handleStockSelection(this.symbol));
 
-        // Button: open web portal for external charting (e.g. Trading212)
-        String tickerCode = getTicker(symbol);
+        // Prepare a button that links to an external trading platform (e.g. Trading212) for this symbol
+        String tickerCode = getTicker(symbol);  // Convert to web-usable ticker
         String url = "https://app.trading212.com/?lang=de&ticker=" + tickerCode;
 
         JButton openWebPortal = new JButton("Open in Web Portal");
-        openWebPortal.setForeground(Color.BLUE);
-        openWebPortal.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        openWebPortal.setFocusPainted(false);
-        openWebPortal.setBorderPainted(false);
-        openWebPortal.setContentAreaFilled(false);
 
+        // Change mouse cursor to a hand pointer for better UX (like a web link)
+        openWebPortal.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        // Remove button focus outline (looks cleaner in dark mode)
+        openWebPortal.setFocusPainted(false);
+
+        // Define the action: open the Trading212 URL in the default browser when clicked
         openWebPortal.addActionListener(e -> {
             try {
                 Desktop.getDesktop().browse(new URI(url));
@@ -381,23 +382,157 @@ public class Notification {
             }
         });
 
-        // Add buttons and label to the bottom panel
+        JButton showRulesBtn = getShowRulesBtn();
+
+        // === DARK MODE STYLING ===
+
+        // Define core dark mode colors for consistent appearance
+        Color panelBg = new Color(35, 35, 40);     // Background for panels and text areas
+        Color textFg = new Color(230, 230, 230);  // Foreground color for text and labels
+        Color buttonBg = new Color(45, 45, 60);     // Button background
+        Color buttonFg = new Color(220, 220, 220);  // Button foreground/text
+        Color accentBlue = new Color(86, 156, 214);   // Highlight blue for special buttons
+
+        // === Apply dark styling to the main layout and components ===
+
+        // Set dark background for the main content panel
+        mainPanel.setBackground(panelBg);
+        // Set the scroll pane's viewport (where the text is) to dark
+        scrollPane.getViewport().setBackground(panelBg);
+        // Text area inherits the dark background and light foreground
+        textArea.setBackground(panelBg);
+        textArea.setForeground(textFg);
+
+        // Set the background for the bottom bar (where buttons and labels sit)
+        bottomPanel.setBackground(panelBg);
+        // Make the percentageChange label text light for contrast
+        percentageChange.setForeground(textFg);
+
+        // --- Unified Button Styling ---
+        // Bundle buttons into an array for easy styling in a loop
+        JButton[] buttons = {openWebPortal, openRealTime, showRulesBtn};
+        // Each button gets its border color (blue for web, white for realtime)
+        Color[] buttonBorders = {accentBlue, buttonFg, buttonFg};
+        // Each button gets its text color (blue for web, white for realtime)
+        Color[] buttonTexts = {accentBlue, buttonFg, buttonFg};
+
+        // Loop through each button and apply all style settings for consistency
+        for (int i = 0; i < buttons.length; i++) {
+            JButton btn = buttons[i];
+            btn.setBackground(buttonBg);                    // Use the dark background
+            btn.setForeground(buttonTexts[i]);              // Text color (blue or white)
+            btn.setOpaque(true);                            // Ensure background is painted
+            btn.setBorder(BorderFactory.createLineBorder(buttonBorders[i])); // Colored border
+            btn.setFocusPainted(false);                     // Remove focus outline for a cleaner look
+        }
+
+        // --- Add all controls to their panels in order ---
+
+        // Add buttons and the info label to the bottom panel (order: left to right)
         bottomPanel.add(openWebPortal);
         bottomPanel.add(percentageChange);
         bottomPanel.add(openRealTime);
+        bottomPanel.add(showRulesBtn);
 
-        // Assemble the panels into the main notification window
-        mainPanel.add(scrollPane, BorderLayout.NORTH);
-        mainPanel.add(chartPanel, BorderLayout.CENTER);
-        mainPanel.add(bottomPanel, BorderLayout.SOUTH);
+        // Place each section in the main window layout
+        mainPanel.add(scrollPane, BorderLayout.NORTH);   // Text at the top
+        mainPanel.add(chartPanel, BorderLayout.CENTER);  // Chart in the middle
+        mainPanel.add(bottomPanel, BorderLayout.SOUTH);  // Controls at the bottom
 
-        // Add assembled panel to the frame
+        // === Final Assembly and Display ===
+
+        // Add the assembled main panel to the JFrame
         notificationFrame.add(mainPanel);
+        // Ensure the frame layout and component painting is up to date
         notificationFrame.validate();
         notificationFrame.repaint();
-
-        // Display the notification window
+        // Make the window visible to the user
         notificationFrame.setVisible(true);
+    }
+
+    /**
+     * Creates and returns a JButton configured to display a dialog with trading rules
+     * in a visually styled, dark-themed HTML format. When clicked, the button opens
+     * a modal dialog showing the trading rules with clearly color-coded sections for
+     * entries, exits, warnings, and meta/mental models.
+     *
+     * @return a configured JButton labeled "Show Trading Rules", which opens the styled rules dialog on click.
+     *
+     * <p><b>Usage:</b> Attach the returned button to your Swing GUI. Requires a valid {@code notificationFrame} as the dialog parent.
+     */
+    @NotNull
+    private JButton getShowRulesBtn() {
+        // Create a new JButton with a descriptive label
+        JButton showRulesBtn = new JButton("Show Trading Rules");
+
+        // Attach an action listener to respond to button clicks
+        showRulesBtn.addActionListener(e -> {
+            // ------- THEME OVERRIDES: Apply dark mode settings to JOptionPane dialogs --------
+            // This ensures any JOptionPane (including the rules dialog) uses a dark background and light text.
+            UIManager.put("Panel.background", new Color(35, 35, 40));
+            UIManager.put("OptionPane.background", new Color(35, 35, 40));
+            UIManager.put("OptionPane.messageForeground", new Color(230, 230, 230));
+
+            // ------- HTML CONTENT: Define trading rules with color coding and structure -------
+            // The rules are encoded in HTML for structured display.
+            // Color references:
+            //   - #61ef75 (green): Entry rules
+            //   - #ff4747 (red): Exit rules and "never" instructions
+            //   - #ffa900 (orange): Warnings
+            //   - #0acbf4 (cyan): Meta/mental model emphasis
+            String rulesHtml =
+                    "<html><body style='background-color:#232328; color:#f0f0f0; font-family:monospace; font-size:13pt;'>" +
+                            // Title
+                            "<div style='margin-bottom:6px;'><span style='color:#ff4747; font-size:15pt;'>🛑 TRADING EXECUTION — LIVE DISCIPLINE</span></div>" +
+                            "<div style='color:#d0d0d0; margin-bottom:9px;'>Stay tactical. <b>Obey the rules</b>, protect the account.</div>" +
+                            // Entry rules
+                            "<div><span style='color:#61ef75; font-weight:bold;'>Entry Rules:</span></div>" +
+                            "<ul style='margin-top:3px; margin-bottom:10px;'>" +
+                            "<li><b><span style='color:#61ef75;'>ONLY</span> enter</b> when the <span style='color:#61ef75;'>next candle closes higher</span> than the previous. <br>" +
+                            "<span style='color:#ffa900;'>(Avoid catching a falling knife; minimize entry risk.)</span></li>" +
+                            "<li><b><span style='color:#ff4747;'>NEVER</span> buy into a red candle</b> just because it looks cheap.</li>" +
+                            "</ul>" +
+                            // Exit rules
+                            "<div><span style='color:#ff4747; font-weight:bold;'>Exit Rules:</span></div>" +
+                            "<ul style='margin-top:3px; margin-bottom:10px;'>" +
+                            "<li><b><span style='color:#ff4747;'>EXIT</span> immediately</b> if the trend momentum <b>flattens out</b>—don’t wait or hope.</li>" +
+                            "<li><b>Sell</b> after the <span style='color:#ff4747;'>first sharp drop</span>, ideally <b>during</b> the drop—not after. <br>" +
+                            "<span style='color:#ffa900;'>(Momentum dies fast. No mercy, no bag-holding.)</span></li>" +
+                            "</ul>" +
+                            // Mental model/meta rules
+                            "<div><span style='color:#0acbf4; font-weight:bold;'>Mental Model:</span></div>" +
+                            "<ul style='margin-top:3px;'>" +
+                            "<li>This system does <span style='color:#ff4747;'>NOT</span> chase every pump; only <b>clean, high-momentum entries</b>.</li>" +
+                            "<li><span style='color:#ff4747;'>Cut losers fast.</span> Goal: stay in the game, not be a hero.</li>" +
+                            "<li>If the setup isn’t <b>perfect</b>, <span style='color:#ff4747;'>do NOT trade</span>. Wait for the <span style='color:#0acbf4;'>A+ scenario</span>.</li>" +
+                            "</ul>" +
+                            "</body></html>";
+
+            // ------- JEditorPane for HTML display --------
+            // JEditorPane renders the rules as styled HTML. Not editable for safety.
+            JEditorPane rulesPane = new JEditorPane("text/html", rulesHtml);
+            rulesPane.setEditable(false); // Prevents any user modification
+            rulesPane.setBackground(new Color(35, 35, 40)); // Consistent with dialog
+            rulesPane.setForeground(new Color(230, 230, 230)); // Readable text
+            rulesPane.setCaretPosition(0); // Scroll to top by default
+
+            // ------- SCROLL PANE: Ensure dialog is large and scrollable --------
+            // Allows the user to see all content even on small screens.
+            JScrollPane rulesScroll = new JScrollPane(rulesPane);
+            rulesScroll.setPreferredSize(new Dimension(680, 350)); // Wide and tall for easy reading
+
+            // ------- SHOW DIALOG: Display the trading rules in a modal dialog -------
+            // Uses notificationFrame as the parent for modality and placement.
+            JOptionPane.showMessageDialog(
+                    notificationFrame,
+                    rulesScroll,
+                    "Trading Rules",
+                    JOptionPane.INFORMATION_MESSAGE
+            );
+        });
+
+        // Return the fully configured button for use in the UI
+        return showRulesBtn;
     }
 
     /**
@@ -436,6 +571,9 @@ public class Notification {
                 true,                    // Use tooltips
                 false                    // No URLs
         );
+
+        // enable chart dark mode
+        setDarkMode(chart);
 
         // Customize plot appearance and range
         XYPlot plot = chart.getXYPlot();
@@ -502,6 +640,9 @@ public class Notification {
                 dataset,                // Dataset
                 true                    // Show legend
         );
+
+        // enable chart dark mode
+        setDarkMode(chart);
 
         // Get and configure the plot for custom rendering
         XYPlot plot = getXyPlot(chart);

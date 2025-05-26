@@ -2426,8 +2426,8 @@ public class mainDataHandler {
         }
 
         // Uptrend line detector with advanced conditions
-        boolean uptrend = shouldTrigger(stocks, 5, 1.5, 0.8,
-                0.2, 0.1, 3, 0.15);
+        boolean uptrend = shouldTrigger(stocks, 5, 1.5, 0.8, // basic uptrend parameters
+                0.08, 0.39, 3, 0.15, false); // advanced filtering parameters
 
         // === 7. Strict "all conditions met" trigger for classic spike event alert ===
         //   (a) features[4] == 1   : Binary "spike" anomaly active
@@ -2791,133 +2791,251 @@ public class mainDataHandler {
 
     /**
      * <p>
-     * The main trigger logic here enforces several strict safeguards against false positives and
-     * adverse fills. A signal will NOT be fired if any of the following conditions are met:
+     * Determines whether a bullish trigger event should be fired, using a strict multi-layer defense
+     * against false positives and adverse fills. This method enforces advanced entry criteria
+     * typical of robust trading systems, rejecting signals when market conditions are unfavorable.
+     * </p>
+     *
+     * <p>
+     * <b>A trigger will be blocked if ANY of the following conditions are met:</b>
      * <ul>
-     *     <li><b>Recent resistance touch:</b> Signal is blocked if price is at/near a resistance line within the last 15 minutes.</li>
-     *     <li><b>No upward movement:</b> Signal is blocked if there is no recent upward price movement, or if price change is negative.</li>
-     *     <li><b>Downtrend detected:</b> Signal is blocked if the price action is going down (no upward micro-momentum).</li>
-     *     <li><b>Gap-down open:</b> Signal is blocked if the latest candle opens significantly lower than the previous close, beyond a configurable tolerance.</li>
-     *     <li><b>Large candle spread:</b> Signal is blocked if the candle’s spread is too great: the open is not near the low or the close is not near the high (indicating excessive indecision or volatility).</li>
+     *     <li><b>Last candle not bullish:</b> The most recent bar closed below its open.</li>
+     *     <li><b>Recent resistance proximity:</b> Price is at/near a known resistance level within the last 15 bars.</li>
+     *     <li><b>Microtrend failure:</b> The last <code>barsToCheck</code> bars do not show a consistent micro-uptrend.</li>
+     *     <li><b>Bearish gap-down:</b> The latest candle opens significantly below the previous close, beyond the allowed tolerance.</li>
+     *     <li><b>Wick/spread abnormality:</b> One or more of the recent candles show excessive wick size, suggesting indecision or volatility.</li>
      * </ul>
+     * </p>
+     *
      * <p>
-     * Evaluates whether a rise event should trigger.
-     * <p>
-     * Uses a sequence of "defensive programming" checks based on:
-     * - Multi-bar momentum
-     * - Resistance proximity
-     * - Recent micro-momentum (last N bars)
-     * - Gap-down protection
-     * - Wick/spread abnormality
-     * All checks are designed to avoid false positives, echoing strict multi-layer
-     * filtering found in advanced trading systems.
+     * The method prints a step-by-step debug trace of the trigger decision, indicating which (if any)
+     * filter(s) blocked the signal. Each filter acts as a safeguard to reduce noise and prevent entries in high-risk scenarios.
+     * </p>
      *
      * @param stocks             Chronological list of OHLC bars (oldest first).
-     * @param window             LookBack window for core uptrend detection.
-     * @param minChangePct       Minimum % price gain required to consider the window an uptrend.
-     * @param minGreenRatio      Minimum ratio of green candles (bullish closes) in the window.
-     * @param gapTolerancePct    Max allowed downward gap between previous close and current open, in %.
-     * @param wickToleranceRatio Maximum ratio of upper/lower wick length to candle body/range before aborting.
-     * @return true if all trigger conditions are satisfied; false otherwise.
+     * @param window             Look-back window for core uptrend detection (multi-bar trend filter).
+     * @param minChangePct       Minimum % price gain required over <code>window</code> bars to define an uptrend.
+     * @param minGreenRatio      Minimum fraction of bullish (green) candles in the trend window.
+     * @param gapTolerancePct    Maximum allowed downward gap between previous close and current open, in percent.
+     * @param wickToleranceRatio Maximum allowed ratio of wick length to candle range for valid bars.
+     * @param barsToCheck        Number of most recent bars to check for microtrend and wick rules.
+     * @param flatTolerance      Minimum percent increase required for each consecutive close in microtrend.
+     * @param debug              Determine if debug log should be printed
+     * @return <code>true</code> if ALL trigger conditions are satisfied and a bullish signal should be fired;
+     * <code>false</code> otherwise. Prints a full debug trace for every evaluation.
      */
-    public static boolean shouldTrigger(List<StockUnit> stocks, int window, double minChangePct, double minGreenRatio,
-                                        double gapTolerancePct, double wickToleranceRatio, int barsToCheck, double flatTolerance
+    public static boolean shouldTrigger(
+            List<StockUnit> stocks, int window, double minChangePct, double minGreenRatio,
+            double gapTolerancePct, double wickToleranceRatio, int barsToCheck, double flatTolerance, boolean debug
     ) {
+        // Debug trace to visualize every filter and decision in order
+        StringBuilder dbg = new StringBuilder();
+
         // 1️⃣ Defensive: Enough data for a robust signal?
-        if (stocks == null || stocks.size() < window + 1) return false;
+        if (stocks == null || stocks.size() < Math.max(window + 1, barsToCheck)) {
+            return false;
+        }
 
-        // 2️⃣ Confirm robust, multi-bar momentum (statistically significant uptrend).
-        boolean momentumOk = isInUptrend(stocks, window, minChangePct, minGreenRatio);
-        if (!momentumOk) return false; // Early exit: avoid noise in non-trending regimes.
+        // 2️⃣ Confirm multi-bar uptrend (trend filter)
+        if (!isInUptrend(stocks, window, minChangePct, minGreenRatio)) {
+            return false;
+        }
 
-        // 3️⃣ Resistance zone filter: block triggers if recent price action is at/near known resistance.
-        // This prevents FOMO-buy signals directly under resistance, which often fail.
-        if (isNearResistance(stocks) == 1) return false;
-
-        // 4️⃣ Micro-momentum: last N bars must still show active upward pressure.
-        // Avoids entering when the signal window shows uptrend but the current price is stalling.
-        if (!lastNBarsRising(stocks, barsToCheck, flatTolerance)) return false;
-
-        // 5️⃣ Gap-down protection: abort if the last candle opens well below the previous close.
-        StockUnit prev = stocks.get(stocks.size() - 2);
         StockUnit curr = stocks.get(stocks.size() - 1);
-        if (hasGapDown(prev, curr, gapTolerancePct)) return false;
+        StockUnit prev = stocks.get(stocks.size() - 2);
 
-        // 6️⃣ Wick/spread guard: reject stocks with extreme upper/lower wicks, which often signal indecision or high volatility.
-        return !hasLargeWicks(curr, wickToleranceRatio);
+        // 3️⃣ Last candle bullishness check
+        boolean lastCandleGreen = curr.getClose() > curr.getOpen();
+        dbg.append(String.format("🟩 Last candle green: %s\n", lastCandleGreen ? "✅" : "❌"));
+
+        // 4️⃣ Resistance proximity filter (last 15 bars)
+        boolean atResistance = isNearResistance(stocks.subList(stocks.size() - 15, stocks.size())) == 1.0;
+        dbg.append(String.format("🟫 Resistance check: %s\n", atResistance ? "❌ blocked" : "✅ clear"));
+
+        // 5️⃣ Gap-down risk filter
+        boolean hasGap = hasGapDown(prev, curr, gapTolerancePct, dbg);
+
+        // 6️⃣ Wick/spread abnormality filter (last N bars)
+        boolean wickRuleOk = checkBadWicks(stocks, barsToCheck, wickToleranceRatio, dbg);
+
+        // 7️⃣ Micro-uptrend filter (last N closes must rise by at least flatTolerance)
+        boolean microUp = lastNBarsRising(stocks, barsToCheck, flatTolerance, 0.5, dbg);
+        dbg.append(String.format("📈 Microtrend: %s\n", microUp ? "✅" : "❌"));
+
+        // 8️⃣ Summarize all blocking reasons (for debug trace)
+        if (!lastCandleGreen) dbg.append("🚫 Blocked: Last candle is not green\n");
+        if (atResistance) dbg.append("🚫 Blocked: Near resistance\n");
+        if (!microUp) dbg.append("🚫 Blocked: Microtrend fail\n");
+        if (hasGap) dbg.append("🚫 Blocked: Gap-down detected\n");
+        if (!wickRuleOk) dbg.append("🚫 Blocked: Wick rule violation\n");
+
+        // 9️⃣ Final result
+        boolean result = lastCandleGreen && !atResistance && microUp && !hasGap && wickRuleOk;
+        dbg.append(result ? "✅ TRIGGERED!\n" : "❌ No trigger.\n");
+
+        if (debug) {
+            System.out.print(dbg);
+            System.out.println();
+        }
+
+        return result;
     }
 
     /**
-     * Detects a bearish gap-down between two consecutive candles.
-     * Protects against buying signals when price opens below prior close,
+     * <p>
+     * Checks for a true micro-uptrend in the last <code>nBars</code> candles, ensuring that:
+     * <ul>
+     *   <li>Most closes are higher than their predecessor by at least <code>sidewaysTolerancePct</code>.</li>
+     *   <li>At least one close in the window is a significant bullish "pump" (rising by at least <code>minPumpPct</code>).</li>
+     *   <li>At most one "flat" (non-rising) close is allowed for resilience against minor noise.</li>
+     * </ul>
+     * The function appends a detailed debug trace of the check for transparency and tuning.
+     * </p>
+     *
+     * @param candles              Chronological list of OHLC bars (oldest first).
+     * @param nBars                Number of most recent bars to check for rising closes.
+     * @param sidewaysTolerancePct Minimum % gain required for each consecutive close to qualify as "rising".
+     * @param minPumpPct           Minimum % gain defining a "big pump" event within the window.
+     * @param dbg                  Debug log; appends microtrend step-by-step status.
+     * @return <code>true</code> if at least one "big pump" is detected and at most one flat is found;
+     * <code>false</code> otherwise.
+     */
+    private static boolean lastNBarsRising(List<StockUnit> candles, int nBars,
+                                           double sidewaysTolerancePct, double minPumpPct, StringBuilder dbg) {
+        // Not enough bars for the microtrend check.
+        if (candles.size() < nBars) {
+            dbg.append("🚫 Not enough bars for microtrend check\n");
+            return false;
+        }
+        int numFlat = 0;
+        boolean hasBigPump = false;
+        dbg.append("🔍 Microtrend details:\n");
+        // Loop through the last nBars-1 pairs of closes.
+        for (int i = candles.size() - nBars; i < candles.size() - 1; i++) {
+            double prevClose = candles.get(i).getClose();
+            double nextClose = candles.get(i + 1).getClose();
+            // Minimum allowed close for "rising" by sideways tolerance.
+            double minAllowed = prevClose * (1 + sidewaysTolerancePct / 100.0);
+            // Minimum allowed close for "big pump" status.
+            double minBigPump = prevClose * (1 + minPumpPct / 100.0);
+            dbg.append(String.format("  pre:%.4f, curr:%.4f, minSide:%.4f", prevClose, nextClose, minAllowed));
+            // If the close fails to rise enough, mark as flat.
+            if (nextClose < minAllowed) {
+                numFlat++;
+                dbg.append(" (flat)\n");
+            } else {
+                dbg.append(" (rising)");
+                // If it's a significant rise, flag as big pump.
+                if (nextClose >= minBigPump) {
+                    hasBigPump = true;
+                    dbg.append(" (BIG PUMP!)");
+                }
+                dbg.append("\n");
+            }
+        }
+        // Passes only if there's a big pump and at most one flat.
+        boolean ok = hasBigPump && numFlat <= 1;
+        dbg.append(String.format("🍾 BigPump:%s, Flats:%d\n", hasBigPump ? "✅" : "❌", numFlat));
+        return ok;
+    }
+
+
+    /**
+     * <p>
+     * Detects a bearish gap-down event between two consecutive candles, protecting against risky entries
+     * when the current open is significantly below the previous close.
+     * <ul>
+     *   <li>If the current open, even after adding the allowed tolerance, is still below the prior close,
+     *       a gap-down is flagged and the trigger should be blocked.</li>
+     * </ul>
+     * Logs the details of the calculation to the provided debug log.
+     * </p>
      *
      * @param prev         The previous candle/bar (T-1).
      * @param curr         The current candle/bar (T).
-     * @param tolerancePct The maximum allowed downward gap as a percent of the previous close.
-     * @return true if the downward gap exceeds allowed tolerance, indicating risk.
+     * @param tolerancePct Maximum allowed downward gap (as a percent of the previous close).
+     * @param dbg          Debug log; appends gap-down calculation details.
+     * @return <code>true</code> if a significant gap-down is detected; <code>false</code> otherwise.
      */
-    private static boolean hasGapDown(StockUnit prev, StockUnit curr, double tolerancePct) {
-        // Calculate the "wiggle room" (permitted downward gap in price).
+    private static boolean hasGapDown(StockUnit prev, StockUnit curr, double tolerancePct, StringBuilder dbg) {
+        // Calculate the allowed gap as a fraction of the previous close.
         double allowedGap = prev.getClose() * tolerancePct / 100.0;
-
-        // If the current open, even after adding allowed gap, is still below previous close,
-        // treat this as a significant (and likely risky) gap-down. Block signals in this scenario.
-        return curr.getOpen() + allowedGap < prev.getClose();
+        // A gap is detected if the current open plus the allowed gap is still below previous close.
+        boolean gap = curr.getOpen() + allowedGap < prev.getClose();
+        dbg.append(String.format("🕳️ Gap-down: %s (Prev Close=%.2f, Open=%.2f, Tol=%.2f)\n",
+                gap ? "❌ detected" : "✅ ok", prev.getClose(), curr.getOpen(), allowedGap));
+        return gap;
     }
 
     /**
-     * Ensures that each of the last N candles closes higher than the previous, by at least a minimal tolerance.
-     * This enforces true micro-uptrend, filtering out flat or choppy price action.
+     * <p>
+     * Examines the recent <code>barsToCheck</code> candles for abnormal wick (shadow) sizes,
+     * filtering out periods of excessive indecision or volatility that often produce false signals.
+     * </p>
      *
-     * @param candles              Chronological OHLC bars.
-     * @param nBars                How many most recent bars to check for rising closes.
-     * @param sidewaysTolerancePct Allowed minimum percent that each close must beat the last.
-     * @return true if all checked closes are sufficiently higher than their predecessors.
+     * <p>
+     * <b>Logic and Filters:</b>
+     * <ul>
+     *   <li>For each bar, computes the ratios of the lower wick (open - low) and upper wick (high - close)
+     *       relative to the full bar range (high - low).</li>
+     *   <li>If either wick exceeds <code>wickToleranceRatio</code>, the bar is considered "bad."</li>
+     *   <li>If any wick exceeds a severe threshold (0.7), the entire window is invalidated immediately.</li>
+     *   <li>Allows up to one third of the window (<code>barsToCheck/3</code>) to be "bad" for tolerance of minor noise.</li>
+     * </ul>
+     * Each step and bar evaluation is logged to <code>dbg</code> for debugging and transparency.
+     * </p>
+     *
+     * @param stocks             Chronological list of OHLC bars (oldest first).
+     * @param barsToCheck        Number of most recent bars to check for abnormal wick sizes.
+     * @param wickToleranceRatio Maximum allowed ratio for either upper or lower wick to total range (e.g., 0.5 = wick cannot be more than half the range).
+     * @param dbg                Debug log; appends stepwise wick analysis details.
+     * @return <code>true</code> if severe wicks are not found and the number of "bad" bars is within tolerance; <code>false</code> otherwise.
      */
-    private static boolean lastNBarsRising(List<StockUnit> candles, int nBars, double sidewaysTolerancePct) {
-        // Not enough data: can't check this pattern if there aren't at least nBars.
-        if (candles.size() < nBars) return false;
+    private static boolean checkBadWicks(List<StockUnit> stocks, int barsToCheck,
+                                         double wickToleranceRatio, StringBuilder dbg) {
+        // Start wick analysis block in debug log.
+        dbg.append("🕯️ Wick analysis:\n");
+        int badCount = 0;     // Counter for bars with abnormal wicks.
+        boolean severe = false; // True if any wick is extreme (ratio > 0.7).
 
-        // Step through each pair in the last nBars window (e.g., 3 bars means check the last 2 pairs).
-        for (int i = candles.size() - nBars; i < candles.size() - 1; i++) {
-            double prevClose = candles.get(i).getClose();          // Previous bar's closing price
-            double nextClose = candles.get(i + 1).getClose();      // Current bar's closing price
+        // Loop through the specified recent bars, from oldest to newest in the window.
+        for (int i = stocks.size() - barsToCheck; i < stocks.size(); i++) {
+            StockUnit bar = stocks.get(i);
 
-            // Compute the minimum required close for nextClose to count as "rising enough".
-            // Example: if tolerance = 0.15%, then nextClose must be at least 0.15% above prevClose.
-            double minAllowed = prevClose * (1 + sidewaysTolerancePct / 100.0);
+            // Calculate the full bar range.
+            double range = bar.getHigh() - bar.getLow();
 
-            // If nextClose fails to meet the required threshold, the uptrend is broken. Abort early.
-            if (nextClose < minAllowed) return false;
+            // Compute lower wick ratio (normalized); handle zero/negative ranges as bad data.
+            double lowWick = range > 0 ? (bar.getOpen() - bar.getLow()) / range : 1;
+
+            // Compute upper wick ratio (normalized).
+            double highWick = range > 0 ? (bar.getHigh() - bar.getClose()) / range : 1;
+
+            // Flag the bar as "bad" if range is non-positive or any wick exceeds allowed tolerance.
+            boolean bad = range <= 0 || lowWick > wickToleranceRatio || highWick > wickToleranceRatio;
+
+            // Log wick ratios and evaluation for this bar.
+            dbg.append(String.format("  [%s] low:%.4f, high:%.4f vs tol:%.4f %s\n",
+                    bar.getDateDate(), lowWick, highWick, wickToleranceRatio, bad ? "❌" : "✅"));
+
+            if (bad) badCount++;
+
+            // Severe wick detected: if any wick ratio is over 0.7, invalidate immediately and stop.
+            if (lowWick > 0.7 || highWick > 0.7) {
+                severe = true;
+                dbg.append("   🚫 Severe wick detected (ratio > 0.7)\n");
+                break;
+            }
         }
-        // If all pairs pass the test, price action is consistently rising with no flat spots.
-        return true;
-    }
 
-    /**
-     * Checks if a candle's upper or lower wick (shadow) is abnormally large compared to the candle's full range.
-     * Large wicks often signal indecision, strong reversals, or excessive volatility—undesirable entry points.
-     *
-     * @param candle    The OHLC candle to analyze.
-     * @param wickRatio Maximum allowed ratio for either shadow (e.g., 0.5 = shadow cannot exceed half the range).
-     * @return true if either wick exceeds the permitted fraction of total range, flagging as a warning.
-     */
-    private static boolean hasLargeWicks(StockUnit candle, double wickRatio) {
-        // Compute the full high-to-low range of this bar.
-        double range = candle.getHigh() - candle.getLow();
+        // Allow up to a third of bars to be "bad" for resilience; any severe wick fails the whole window.
+        int maxBad = barsToCheck / 3;
+        boolean ok = badCount <= maxBad && !severe;
 
-        // If range is zero or negative (bad tick/data error), treat as suspicious—abort.
-        if (range <= 0) return true;
+        // Final debug summary of this check.
+        dbg.append(String.format("  BadWicks:%d/%d => %s\n", badCount, barsToCheck, ok ? "✅" : "❌"));
 
-        // Calculate the lower wick: distance from low to open.
-        double lowerShadow = candle.getOpen() - candle.getLow();
-
-        // Calculate the upper wick: distance from close to high.
-        double upperShadow = candle.getHigh() - candle.getClose();
-
-        // If either shadow exceeds the allowed fraction of the bar's range,
-        // treat this candle as "messy" and not suitable for triggering.
-        return (lowerShadow / range) > wickRatio || (upperShadow / range) > wickRatio;
+        return ok;
     }
 
     /**
