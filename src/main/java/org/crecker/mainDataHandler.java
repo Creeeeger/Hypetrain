@@ -379,7 +379,7 @@ public class mainDataHandler {
                 "ACHR", "AMC", "ASTS", "BTDR", "CIFR", "CLSK", "CORZ", "DAVE", "DJT",
                 "ENPH", "FLNC", "GME", "HUT", "INOD", "IONQ", "IREN", "JOBY", "LMND",
                 "LUMN", "LUNR", "MARA", "PLUG", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
-                "RIOT", "RKLB", "ROOT", "RXRX", "SMLR", "SMR", "SOUN", "UPST", "VKTX", "WULF"
+                "RIOT", "RKLB", "ROOT", "RXRX", "SMLR", "SMR", "SOUN", "UPST", "VKTX", "WOLF", "WULF"
         });
     }};
 
@@ -445,6 +445,7 @@ public class mainDataHandler {
                 .forSymbol(symbolName)             // Set the stock symbol to retrieve data for
                 .interval(Interval.ONE_MIN)        // Use 1-minute intervals for fine-grained candles
                 .outputSize(OutputSize.FULL)       // Request the full available historical series
+                .entitlement("realtime")           // Set the data pull mode to realtime
                 .onSuccess(e -> {
                     // On successful data retrieval, cast the response and extract all StockUnit bars
                     TimeSeriesResponse response = (TimeSeriesResponse) e;
@@ -539,6 +540,7 @@ public class mainDataHandler {
                 .timeSeries()
                 .quote()
                 .forSymbol(symbolName)
+                .entitlement("realtime")
                 .onSuccess(e -> {
                     // On quote data arrival, fill in open, high, low, and volume
                     QuoteResponse response = (QuoteResponse) e;
@@ -750,6 +752,9 @@ public class mainDataHandler {
         // Atomic counter to track completion of async calls (one per candidate symbol)
         AtomicInteger remaining = new AtomicInteger(possibleSymbols.length);
 
+        // Timeout executor: single thread, but fine since timeout tasks are light
+        ScheduledExecutorService scheduler = Executors.newScheduledThreadPool(1);
+
         // ==================== FILTER THRESHOLDS ====================
         // (These values can be tuned for stricter or looser liquidity requirements)
         final double MARKET_CAP_PERCENTAGE = 0.05;         // Max trade = 5% of market cap
@@ -758,6 +763,18 @@ public class mainDataHandler {
 
         // ==================== MAIN FILTER LOOP ====================
         for (String symbol : possibleSymbols) {
+            // This array is used as a mutable holder to allow the inner classes to cancel the timeout
+            final ScheduledFuture<?>[] timeoutFuture = new ScheduledFuture<?>[1];
+
+            Runnable timeoutTask = () -> {
+                System.out.println("Timeout for symbol: " + symbol + " (no response in 15s)");
+                // No need to add the symbol to the results, just proceed as if it failed
+                checkCompletion(remaining, actualSymbols, callback);
+            };
+
+            // Schedule the timeout (15 seconds)
+            timeoutFuture[0] = scheduler.schedule(timeoutTask, 15, TimeUnit.SECONDS);
+
             // --------- [1] Fetch company fundamentals (market cap, shares out) ---------
             AlphaVantage.api()
                     .fundamentalData()
@@ -765,6 +782,18 @@ public class mainDataHandler {
                     .forSymbol(symbol)
                     .onSuccess(e -> {
                         CompanyOverviewResponse companyResponse = (CompanyOverviewResponse) e;
+                        CompanyOverview overview = companyResponse.getOverview();
+
+                        // === Check for nulls ===
+                        if (overview == null ||
+                                overview.getMarketCapitalization() == null ||
+                                overview.getSharesOutstanding() == null) {
+                            // Log and skip this symbol
+                            System.out.println("Null data for symbol: " + symbol + " (likely delisted or incomplete fundamentals)");
+                            checkCompletion(remaining, actualSymbols, callback);
+                            return;
+                        }
+
                         long marketCapitalization = companyResponse.getOverview().getMarketCapitalization();
                         long sharesOutstanding = companyResponse.getOverview().getSharesOutstanding();
 
@@ -774,7 +803,9 @@ public class mainDataHandler {
                                 .daily()
                                 .forSymbol(symbol)
                                 .outputSize(OutputSize.COMPACT)
+                                .entitlement("realtime")
                                 .onSuccess(tsResponse -> {
+                                    timeoutFuture[0].cancel(false);
                                     TimeSeriesResponse ts = (TimeSeriesResponse) tsResponse;
                                     List<StockUnit> stockUnits = ts.getStockUnits();
 
@@ -837,6 +868,7 @@ public class mainDataHandler {
                                     checkCompletion(remaining, actualSymbols, callback);
                                 })
                                 .onFailure(error -> {
+                                    timeoutFuture[0].cancel(false);
                                     // If daily bar fetch fails, log and continue
                                     mainDataHandler.handleFailure(error);
                                     checkCompletion(remaining, actualSymbols, callback);
@@ -844,6 +876,7 @@ public class mainDataHandler {
                                 .fetch();
                     })
                     .onFailure(error -> {
+                        timeoutFuture[0].cancel(false);
                         // If fundamental data fetch fails, log and continue
                         mainDataHandler.handleFailure(error);
                         checkCompletion(remaining, actualSymbols, callback);
@@ -935,6 +968,7 @@ public class mainDataHandler {
                         .forSymbol(symbol)
                         .interval(Interval.ONE_MIN)
                         .outputSize(OutputSize.FULL)
+                        .entitlement("realtime")
                         .onSuccess(e -> {
                             try {
                                 // Parse and store in-memory (and maybe to disk if your handleSuccess does so)
@@ -1037,6 +1071,7 @@ public class mainDataHandler {
                             AlphaVantage.api()
                                     .Realtime()
                                     .setSymbols(symbolsBatch)
+                                    .entitlement("realtime")
                                     .onSuccess(response -> {
                                         // Collect all match objects (one per symbol in this batch).
                                         matches.addAll(response.getMatches());
@@ -1097,6 +1132,7 @@ public class mainDataHandler {
         AlphaVantage.api()
                 .Realtime()
                 .setSymbols(symbol) // Set one or more symbols (comma separated supported)
+                .entitlement("realtime")
                 .onSuccess(response ->
                         // Only take the first result (usually only one for single symbol)
                         callback.onRealTimeReceived(response.getMatches().get(0))
@@ -1747,6 +1783,7 @@ public class mainDataHandler {
                     .forSymbol(symbol)
                     .interval(Interval.ONE_MIN)
                     .outputSize(OutputSize.FULL)
+                    .entitlement("realtime")
                     .onSuccess(r -> {
                         try {
                             handleSuccess((TimeSeriesResponse) r); // UI feedback, file cache, etc.
@@ -1757,6 +1794,7 @@ public class mainDataHandler {
                             // Store to thread-safe structure for later analysis
                             timelines.computeIfAbsent(symbolUpper, k -> new ArrayList<>()).addAll(units);
                         } catch (IOException e) {
+                            System.out.println(symbol);
                             throw new RuntimeException(e); // Surface for debugging
                         } finally {
                             latch.countDown(); // Always count down, even if error
@@ -2457,9 +2495,25 @@ public class mainDataHandler {
             }
         }
 
-        // Uptrend line detector with advanced conditions
-        boolean uptrend = shouldTrigger(stocks, 5, 1.5, 0.8, // basic uptrend parameters
-                0.08, 0.39, 3, 0.15, false); // advanced filtering parameters
+        // Uptrend line detector with advanced conditions - chosen for the correct market
+        boolean uptrend = switch (market) {
+            // Low aggressiveness config
+            case "bigCaps", "semiconductors", "techGiants", "aiStocks", "financials", "energy", "industrials", "pharma",
+                 "foodBeverage", "retail" -> shouldTrigger(stocks, 5, 0.3, 0.8,
+                    0.08, 0.39, 3, 0.05, 0.06, true);
+
+            // Mid aggressiveness config
+            case "midCaps", "chineseTech", "autoEV", "healthcareProviders", "robotics" ->
+                    shouldTrigger(stocks, 5, 0.6, 0.8,
+                            0.09, 0.40, 3, 0.12, 0.15, true);
+
+            // High aggressiveness config
+            case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum", "allSymbols" ->
+                    shouldTrigger(stocks, 5, 1.5, 0.8,
+                            0.08, 0.39, 3, 0.15, 0.5, false);
+
+            default -> throw new RuntimeException("Need to specify a market: " + market);
+        };
 
         // === 7. Strict "all conditions met" trigger for classic spike event alert ===
         //   (a) features[4] == 1   : Binary "spike" anomaly active
@@ -2852,13 +2906,15 @@ public class mainDataHandler {
      * @param wickToleranceRatio Maximum allowed ratio of wick length to candle range for valid bars.
      * @param barsToCheck        Number of most recent bars to check for microtrend and wick rules.
      * @param flatTolerance      Minimum percent increase required for each consecutive close in microtrend.
+     * @param minPumpPct         Minimum rise required in the candle pattern
      * @param debug              Determine if debug log should be printed
      * @return <code>true</code> if ALL trigger conditions are satisfied and a bullish signal should be fired;
      * <code>false</code> otherwise. Prints a full debug trace for every evaluation.
      */
     public static boolean shouldTrigger(
             List<StockUnit> stocks, int window, double minChangePct, double minGreenRatio,
-            double gapTolerancePct, double wickToleranceRatio, int barsToCheck, double flatTolerance, boolean debug
+            double gapTolerancePct, double wickToleranceRatio, int barsToCheck, double flatTolerance,
+            double minPumpPct, boolean debug
     ) {
         // Debug trace to visualize every filter and decision in order
         StringBuilder dbg = new StringBuilder();
@@ -2891,7 +2947,7 @@ public class mainDataHandler {
         boolean wickRuleOk = checkBadWicks(stocks, barsToCheck, wickToleranceRatio, dbg);
 
         // 7️⃣ Micro-uptrend filter (last N closes must rise by at least flatTolerance)
-        boolean microUp = lastNBarsRising(stocks, barsToCheck, flatTolerance, 0.5, dbg);
+        boolean microUp = lastNBarsRising(stocks, barsToCheck, flatTolerance, minPumpPct, dbg);
         dbg.append(String.format("📈 Microtrend: %s\n", microUp ? "✅" : "❌"));
 
         // 8️⃣ Summarize all blocking reasons (for debug trace)

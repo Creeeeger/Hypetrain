@@ -8,12 +8,14 @@ public abstract class TimeSeriesRequest {
     private Function function;
     private String symbol;
     private DataType dataType;
+    private String entitlement;
 
 
     protected TimeSeriesRequest(Builder<?> builder) {
         this.symbol = builder.symbol;
         this.dataType = builder.dataType;
         this.function = builder.function;
+        this.entitlement = builder.entitlement;
     }
 
     public static abstract class Builder<T extends Builder<T>> {
@@ -21,6 +23,7 @@ public abstract class TimeSeriesRequest {
         public Function function;
         protected DataType dataType = DataType.JSON;
         protected String symbol;
+        protected String entitlement;
 
         public Builder() {
 
@@ -33,6 +36,11 @@ public abstract class TimeSeriesRequest {
 
         public T forSymbol(String symbol) {
             this.symbol = symbol;
+            return (T) this;
+        }
+
+        public T entitlement(String entitlement) {
+            this.entitlement = entitlement;
             return (T) this;
         }
 

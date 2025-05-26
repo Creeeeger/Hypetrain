@@ -43,14 +43,20 @@ public final class RealTime implements Fetcher {
     }
 
     /**
-     * Sets the symbols (stock tickers) for which to fetch real-time quotes.
-     * The symbols should be provided as a comma-separated string, e.g. "AAPL,MSFT".
+     * Sets the symbol (stock tickers) for which to fetch real-time quotes.
+     * The symbol should be provided as a comma-separated string, e.g. "AAPL,MSFT".
      *
-     * @param symbols comma-separated list of stock symbols
+     * @param symbol comma-separated list of stock symbol
      * @return the current RealTime instance to allow method chaining
      */
-    public RealTime setSymbols(String symbols) {
-        this.builder.symbols(symbols);
+    public RealTime setSymbols(String symbol) {
+        this.builder.symbol(symbol);
+        return this;
+    }
+
+    // set realtime or delayed
+    public RealTime entitlement(String entitlement) {
+        this.builder.entitlement(entitlement);
         return this;
     }
 

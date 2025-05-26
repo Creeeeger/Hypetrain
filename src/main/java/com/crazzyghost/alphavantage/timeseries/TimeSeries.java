@@ -251,6 +251,14 @@ public final class TimeSeries implements Fetcher {
         }
 
         /**
+         * Set the entitlement for the request
+         */
+        public T entitlement(String entitlement) {
+            this.builder.entitlement(entitlement);
+            return (T) this;
+        }
+
+        /**
          * Set the dataType for the request
          *
          * @param type the datatype {@link DataType}

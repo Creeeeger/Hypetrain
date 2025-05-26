@@ -1177,9 +1177,25 @@ public class mainUI extends JFrame {
 
                         // Populate the OHLC series for plotting
                         ohlcSeries.clear();
+                        double spikeThreshold = 0.01; // 1%
+
                         for (Map.Entry<RegularTimePeriod, AggregatedStockData> e : aggregatedData.entrySet()) {
                             AggregatedStockData a = e.getValue();
-                            ohlcSeries.add(e.getKey(), a.open, a.high, a.low, a.close);
+                            double open = a.open;
+                            double close = a.close;
+                            double high = a.high;
+                            double low = a.low;
+
+                            double maxOC = Math.max(open, close);
+                            double minOC = Math.min(open, close);
+
+                            double allowedHigh = maxOC * (1 + spikeThreshold);
+                            double allowedLow = minOC * (1 - spikeThreshold);
+
+                            if (high > allowedHigh) high = allowedHigh;
+                            if (low < allowedLow) low = allowedLow;
+
+                            ohlcSeries.add(e.getKey(), open, high, low, close);
                         }
                     } else {
                         // --- TIME SERIES (LINE CHART) MODE ---
@@ -1988,13 +2004,19 @@ public class mainUI extends JFrame {
                 searchListModel.clear(); // Always clear before updating
 
                 // If not empty, look for matches asynchronously using mainDataHandler
-                if (!searchText.isEmpty()) {
+                if (!searchText.isEmpty() && !searchText.contains(".")) {
                     // Use the async findMatchingSymbols method with a callback
                     mainDataHandler.findMatchingSymbols(searchText, new mainDataHandler.SymbolSearchCallback() {
                         @Override
                         public void onSuccess(List<String> matchedSymbols) {
                             // Always update list model on the EDT
-                            SwingUtilities.invokeLater(() -> searchListModel.addAll(matchedSymbols));
+                            SwingUtilities.invokeLater(() -> {
+                                // Remove all symbols with a dot
+                                List<String> filtered = matchedSymbols.stream()
+                                        .filter(s -> !s.contains("."))
+                                        .collect(Collectors.toList());
+                                searchListModel.addAll(filtered);
+                            });
                         }
 
                         @Override
@@ -3157,25 +3179,32 @@ public class mainUI extends JFrame {
             content.setLayout(new BoxLayout(content, BoxLayout.Y_AXIS));
             content.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10)); // Adds uniform padding
 
-            // For every stock found, create a UI row: symbol label, "View" and "Add to Watchlist" buttons
-            for (String symbol : rallyStocks) {
-                JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT)); // Horizontal layout for this row
+            // ==== New logic: if list is empty, show "Nothing found." label ====
+            if (rallyStocks.isEmpty()) {
+                JLabel notFoundLabel = new JLabel("Nothing found.");
+                notFoundLabel.setFont(notFoundLabel.getFont().deriveFont(Font.BOLD, 16f));
+                content.add(notFoundLabel);
+            } else {
+                // For every stock found, create a UI row: symbol label, "View" and "Add to Watchlist" buttons
+                for (String symbol : rallyStocks) {
+                    JPanel row = new JPanel(new FlowLayout(FlowLayout.LEFT)); // Horizontal layout for this row
 
-                JLabel label = new JLabel(symbol);              // Stock symbol label (e.g., "AAPL")
-                label.setPreferredSize(new Dimension(100, 25)); // Force consistent width for all symbols
+                    JLabel label = new JLabel(symbol);              // Stock symbol label (e.g., "AAPL")
+                    label.setPreferredSize(new Dimension(100, 25)); // Force consistent width for all symbols
 
-                // View button: sets this stock as the selected stock in the main UI and refreshes chart/news
-                JButton viewButton = new JButton("View Stock");
-                viewButton.addActionListener(ev -> handleStockSelection(symbol)); // Lambda: on click, focus chart
+                    // View button: sets this stock as the selected stock in the main UI and refreshes chart/news
+                    JButton viewButton = new JButton("View Stock");
+                    viewButton.addActionListener(ev -> handleStockSelection(symbol)); // Lambda: on click, focus chart
 
-                // Add to Watchlist button: leverages mainUI utility, updates watchlist for user
-                JButton watchlistButton = mainUI.getJButton(symbol, frame);
+                    // Add to Watchlist button: leverages mainUI utility, updates watchlist for user
+                    JButton watchlistButton = mainUI.getJButton(symbol, frame);
 
-                // Assemble row: label, view, add buttons (horizontal)
-                row.add(label);
-                row.add(viewButton);
-                row.add(watchlistButton);
-                content.add(row); // Stack this row vertically in the results panel
+                    // Assemble row: label, view, add buttons (horizontal)
+                    row.add(label);
+                    row.add(viewButton);
+                    row.add(watchlistButton);
+                    content.add(row); // Stack this row vertically in the results panel
+                }
             }
 
             // If the result list is long, make it scrollable

@@ -8,12 +8,6 @@ Version 1.5:
     - if rise then prepare data for short term evaluation with absolute priority
     - if a rise occurs then display an ultra important message
 
-- test premium api key functions
-   - check if rates limits are fine
-   - check stability
-   - check miscellaneous features
-   - check speed
-
 Version 2.0:
 - Add Institutional purchase Hunter
 - implement the insider trader hunter

@@ -17,7 +17,10 @@ public class RealTimeRequest {
     /**
      * Comma-separated list of stock symbols for which to fetch real-time quotes
      */
-    private final String symbols;
+    private final String symbol;
+
+    // realtime or delayed
+    private final String entitlement;
 
     /**
      * Private constructor called by the Builder.
@@ -26,7 +29,8 @@ public class RealTimeRequest {
      */
     private RealTimeRequest(Builder builder) {
         this.function = builder.function;
-        this.symbols = builder.symbols;
+        this.symbol = builder.symbol;
+        this.entitlement = builder.entitlement;
     }
 
     /**
@@ -43,8 +47,12 @@ public class RealTimeRequest {
      *
      * @return symbols string (e.g., "AAPL,MSFT,GOOG")
      */
-    public String getSymbols() {
-        return symbols;
+    public String getSymbol() {
+        return symbol;
+    }
+
+    public String getEntitlement() {
+        return entitlement;
     }
 
     /**
@@ -60,7 +68,10 @@ public class RealTimeRequest {
         /**
          * Comma-separated stock symbols to query
          */
-        private String symbols;
+        private String symbol;
+
+        // realtime or delayed
+        private String entitlement;
 
         /**
          * Initializes the Builder with default function REALTIME_BULK_QUOTES.
@@ -81,13 +92,19 @@ public class RealTimeRequest {
         }
 
         /**
-         * Sets the stock symbols to query.
+         * Sets the stock symbol to query.
          *
-         * @param symbols comma-separated stock symbols string
+         * @param symbol comma-separated stock symbol string
          * @return this Builder for chaining
          */
-        public Builder symbols(String symbols) {
-            this.symbols = symbols;
+        public Builder symbol(String symbol) {
+            this.symbol = symbol;
+            return this;
+        }
+
+        // set realtime or delayed
+        public Builder entitlement(String entitlement) {
+            this.entitlement = entitlement;
             return this;
         }
 
