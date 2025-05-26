@@ -36,13 +36,14 @@ public class dataTester {
         // Initialise the Alpha Vantage API singleton
         AlphaVantage.api().init(cfg);
 
-        // Build and execute the intraday timeseries API call for the given symbol
+        // Build and execute the intraday timeSeries API call for the given symbol
         AlphaVantage.api()
                 .timeSeries()
                 .intraday()
                 .forSymbol(symbol)
                 .interval(Interval.ONE_MIN)            // Request 1-minute intervals
                 .outputSize(OutputSize.FULL)           // Request full available output (not just latest)
+                .entitlement("realtime")                // allow real time requests
                 .onSuccess(e -> {                      // On success, handle the response
                     try {
                         handleSuccess((TimeSeriesResponse) e); // Process and save data to file
