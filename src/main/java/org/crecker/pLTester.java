@@ -40,8 +40,7 @@ import java.util.stream.Collectors;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
-import static org.crecker.mainUI.addNotification;
-import static org.crecker.mainUI.logTextArea;
+import static org.crecker.mainUI.*;
 
 /**
  * pLTester is the primary entry point and main orchestrator for
@@ -790,6 +789,9 @@ public class pLTester {
             plot.setBackgroundPaint(Color.WHITE);          // White background for the plot area
             plot.setDomainGridlinePaint(Color.LIGHT_GRAY); // Light gray gridlines for clarity
             plot.setRangeGridlinePaint(Color.LIGHT_GRAY);
+
+            // enable chart dark mode
+            setDarkMode(chart);
 
             // Add vertical event markers for key notifications (see method for logic)
             addNotificationMarkers(plot, processedSymbol, timeline);

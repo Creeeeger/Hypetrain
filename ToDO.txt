@@ -1,7 +1,6 @@
 TODO
 Version 1.5:
 - Improve speed of spike up percentage change detection by supportive second data framework
-- Improve line detector: fix parameters
 - test premium api key functions
 
 Version 2.0:
