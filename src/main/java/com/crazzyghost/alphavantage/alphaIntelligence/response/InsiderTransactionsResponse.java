@@ -26,14 +26,61 @@ import java.util.Map;
 public class InsiderTransactionsResponse {
 
     /**
+     * List of insider transactions returned by the API.
+     */
+    private final List<Transaction> transactions = new ArrayList<>();
+    /**
      * API error message, if any.
      */
     private String errorMessage;
 
     /**
-     * List of insider transactions returned by the API.
+     * Empty constructor.
      */
-    private final List<Transaction> transactions = new ArrayList<>();
+    public InsiderTransactionsResponse() {
+    }
+
+    /**
+     * Factory method to create an InsiderTransactionsResponse from a deserialized API response map.
+     *
+     * @param data The API response map (parsed from JSON).
+     * @return A populated InsiderTransactionsResponse.
+     */
+    public static InsiderTransactionsResponse of(Map<String, Object> data) {
+        InsiderTransactionsResponse response = new InsiderTransactionsResponse();
+        // Check for error message in the response
+        if (data.containsKey("Error Message")) {
+            response.errorMessage = (String) data.get("Error Message");
+        }
+        // Parse transaction data if present
+        if (data.containsKey("data")) {
+            List<Object> dataList = (List<Object>) data.get("data");
+            for (Object obj : dataList) {
+                if (obj instanceof Map) {
+                    response.transactions.add(new Transaction((Map<String, Object>) obj));
+                }
+            }
+        }
+        return response;
+    }
+
+    /**
+     * Gets the error message returned by the API, if any.
+     *
+     * @return the error message, or null if the request was successful.
+     */
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    /**
+     * Gets the list of insider transactions included in the response.
+     *
+     * @return an unmodifiable list of Transaction objects.
+     */
+    public List<Transaction> getTransactions() {
+        return transactions;
+    }
 
     /**
      * Represents a single insider transaction.
@@ -89,53 +136,5 @@ public class InsiderTransactionsResponse {
             this.shares = (String) map.getOrDefault("shares", null);
             this.sharePrice = (String) map.getOrDefault("share_price", null);
         }
-    }
-
-    /**
-     * Empty constructor.
-     */
-    public InsiderTransactionsResponse() {
-    }
-
-    /**
-     * Factory method to create an InsiderTransactionsResponse from a deserialized API response map.
-     *
-     * @param data The API response map (parsed from JSON).
-     * @return A populated InsiderTransactionsResponse.
-     */
-    public static InsiderTransactionsResponse of(Map<String, Object> data) {
-        InsiderTransactionsResponse response = new InsiderTransactionsResponse();
-        // Check for error message in the response
-        if (data.containsKey("Error Message")) {
-            response.errorMessage = (String) data.get("Error Message");
-        }
-        // Parse transaction data if present
-        if (data.containsKey("data")) {
-            List<Object> dataList = (List<Object>) data.get("data");
-            for (Object obj : dataList) {
-                if (obj instanceof Map) {
-                    response.transactions.add(new Transaction((Map<String, Object>) obj));
-                }
-            }
-        }
-        return response;
-    }
-
-    /**
-     * Gets the error message returned by the API, if any.
-     *
-     * @return the error message, or null if the request was successful.
-     */
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    /**
-     * Gets the list of insider transactions included in the response.
-     *
-     * @return an unmodifiable list of Transaction objects.
-     */
-    public List<Transaction> getTransactions() {
-        return transactions;
     }
 }

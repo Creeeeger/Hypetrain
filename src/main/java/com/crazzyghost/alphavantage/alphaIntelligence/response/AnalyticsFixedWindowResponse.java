@@ -18,6 +18,59 @@ public class AnalyticsFixedWindowResponse {
     private ReturnsCalculations returnsCalculations;
 
     /**
+     * Default constructor for empty response.
+     * (Populated via the of() static factory method.)
+     */
+    public AnalyticsFixedWindowResponse() {
+    }
+
+    /**
+     * Static factory method to construct a response from a parsed JSON map.
+     * - Checks for error messages.
+     * - Parses "meta_data" and "payload/RETURNS_CALCULATIONS" if present.
+     * - Returns a fully populated AnalyticsFixedWindowResponse object.
+     *
+     * @param data The root map parsed from JSON response.
+     * @return An instance of AnalyticsFixedWindowResponse.
+     */
+    public static AnalyticsFixedWindowResponse of(Map<String, Object> data) {
+        AnalyticsFixedWindowResponse response = new AnalyticsFixedWindowResponse();
+        // If API returned an error, set error message and return early.
+        if (data.containsKey("Error Message")) {
+            response.errorMessage = (String) data.get("Error Message");
+            return response;
+        }
+        // Parse meta data (if present)
+        if (data.containsKey("meta_data")) {
+            response.metaData = new MetaData((Map<String, Object>) data.get("meta_data"));
+        }
+        // Parse the payload and its advanced analytics (if present)
+        if (data.containsKey("payload")) {
+            Map<String, Object> payload = (Map<String, Object>) data.get("payload");
+            if (payload.containsKey("RETURNS_CALCULATIONS")) {
+                response.returnsCalculations = new ReturnsCalculations(
+                        (Map<String, Object>) payload.get("RETURNS_CALCULATIONS")
+                );
+            }
+        }
+        return response;
+    }
+
+    public String getErrorMessage() {
+        return errorMessage;
+    }
+
+    public MetaData getMetaData() {
+        return metaData;
+    }
+
+    public ReturnsCalculations getReturnsCalculations() {
+        return returnsCalculations;
+    }
+
+    // --- Core construction and API ---
+
+    /**
      * Contains meta-information about the analytics request and response.
      * Maps directly to the "meta_data" object in the JSON response.
      */
@@ -247,6 +300,8 @@ public class AnalyticsFixedWindowResponse {
         }
     }
 
+    // --- Getters for client code (read-only API) ---
+
     /**
      * Represents a histogram result for a symbol: bins and frequencies.
      * <p>
@@ -339,60 +394,5 @@ public class AnalyticsFixedWindowResponse {
                 correlationMatrix.add(parsedRow);
             }
         }
-    }
-
-    // --- Core construction and API ---
-
-    /**
-     * Default constructor for empty response.
-     * (Populated via the of() static factory method.)
-     */
-    public AnalyticsFixedWindowResponse() {
-    }
-
-    /**
-     * Static factory method to construct a response from a parsed JSON map.
-     * - Checks for error messages.
-     * - Parses "meta_data" and "payload/RETURNS_CALCULATIONS" if present.
-     * - Returns a fully populated AnalyticsFixedWindowResponse object.
-     *
-     * @param data The root map parsed from JSON response.
-     * @return An instance of AnalyticsFixedWindowResponse.
-     */
-    public static AnalyticsFixedWindowResponse of(Map<String, Object> data) {
-        AnalyticsFixedWindowResponse response = new AnalyticsFixedWindowResponse();
-        // If API returned an error, set error message and return early.
-        if (data.containsKey("Error Message")) {
-            response.errorMessage = (String) data.get("Error Message");
-            return response;
-        }
-        // Parse meta data (if present)
-        if (data.containsKey("meta_data")) {
-            response.metaData = new MetaData((Map<String, Object>) data.get("meta_data"));
-        }
-        // Parse the payload and its advanced analytics (if present)
-        if (data.containsKey("payload")) {
-            Map<String, Object> payload = (Map<String, Object>) data.get("payload");
-            if (payload.containsKey("RETURNS_CALCULATIONS")) {
-                response.returnsCalculations = new ReturnsCalculations(
-                        (Map<String, Object>) payload.get("RETURNS_CALCULATIONS")
-                );
-            }
-        }
-        return response;
-    }
-
-    // --- Getters for client code (read-only API) ---
-
-    public String getErrorMessage() {
-        return errorMessage;
-    }
-
-    public MetaData getMetaData() {
-        return metaData;
-    }
-
-    public ReturnsCalculations getReturnsCalculations() {
-        return returnsCalculations;
     }
 }

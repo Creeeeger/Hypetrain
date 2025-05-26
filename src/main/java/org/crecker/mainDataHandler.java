@@ -2939,7 +2939,6 @@ public class mainDataHandler {
         return ok;
     }
 
-
     /**
      * <p>
      * Detects a bearish gap-down event between two consecutive candles, protecting against risky entries
@@ -3752,15 +3751,14 @@ public class mainDataHandler {
      *
      * @param symbol The stock symbol to track in real-time.
      *               <p>
-     *               - The API key is hard-coded ("0988PSIKXZ50IP2T"); ensure you use your own.
      *               - Each line in the output file represents one fetched bar, formatted in StockUnit-like notation.
      *               - The file grows with each new bar; manage the file if it gets too large over time.
-     *               - Handles I/O errors gracefully (prints errors to System.err).
+     *               - Handles I/O errors gracefully
      *               </p>
      */
     public static void realTimeDataCollector(String symbol) {
-        // Initialize the Alpha Vantage API with the given token (hard-coded here for demonstration)
-        InitAPi("0988PSIKXZ50IP2T");
+        // Initialize the Alpha Vantage API with loaded token
+        InitAPi(configHandler.loadConfig()[3][1]);
 
         // Schedule a task to run every 1 second (fetching and writing latest data)
         executorService.scheduleAtFixedRate(() -> getRealTimeUpdate(symbol, response -> {
