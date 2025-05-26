@@ -439,22 +439,54 @@ public class mainDataHandler {
      */
     public static void getTimeline(String symbolName, TimelineCallback callback) {
         // Prepare a container for StockUnit bars (will be populated via API response)
-        List<StockUnit> stocks = new ArrayList<>();
-
         AlphaVantage.api()
                 .timeSeries()
-                .intraday()                      // Intraday data (minute bars)
-                .forSymbol(symbolName)           // Set symbol
-                .interval(Interval.ONE_MIN)      // 1-minute interval
-                .outputSize(OutputSize.FULL)     // Fetch entire available history
+                .intraday()                        // Fetch intraday (minute-level) price data
+                .forSymbol(symbolName)             // Set the stock symbol to retrieve data for
+                .interval(Interval.ONE_MIN)        // Use 1-minute intervals for fine-grained candles
+                .outputSize(OutputSize.FULL)       // Request the full available historical series
                 .onSuccess(e -> {
-                    // On success, cast to TimeSeriesResponse and extract all StockUnits
+                    // On successful data retrieval, cast the response and extract all StockUnit bars
                     TimeSeriesResponse response = (TimeSeriesResponse) e;
-                    stocks.addAll(response.getStockUnits());     // Populate list with all bars
-                    callback.onTimeLineFetched(stocks);          // Fire callback for further processing
+                    List<StockUnit> stocks = new ArrayList<>(response.getStockUnits());
+
+                    // ====== BEGIN: Spike Trimming ======
+                    // Occasionally, the API or exchange returns bad/corrupt data where
+                    // the high or low of a candle is an extreme outlier (a "wick spike").
+                    // To avoid plotting these on the chart (which distorts the scale and misleads users),
+                    // we clamp (limit) the high/low values to a reasonable threshold relative to the open/close.
+
+                    double spikeThreshold = 0.15; // Allow candle wicks to be at most ±15% away from open/close
+
+                    for (StockUnit stock : stocks) {
+                        double open = stock.getOpen();    // Opening price for the interval
+                        double close = stock.getClose();  // Closing price for the interval
+                        double high = stock.getHigh();    // High price for the interval (could be a spike)
+                        double low = stock.getLow();      // Low price for the interval (could be a spike)
+
+                        // Determine the normal trading range for this candle
+                        double maxOC = Math.max(open, close);
+                        double minOC = Math.min(open, close);
+
+                        // Calculate the maximum and minimum allowed values for high and low
+                        // based on the spike threshold. E.g., for a 15% threshold and a maxOC of 100,
+                        // allowedHigh = 115.0, allowedLow = minOC * 0.85 = 85.0
+                        double allowedHigh = maxOC * (1 + spikeThreshold);
+                        double allowedLow = minOC * (1 - spikeThreshold);
+
+                        // If the high is greater than allowedHigh, clamp it down to allowedHigh.
+                        if (high > allowedHigh) stock.setHigh(allowedHigh);
+
+                        // If the low is lower than allowedLow, clamp it up to allowedLow.
+                        if (low < allowedLow) stock.setLow(allowedLow);
+                    }
+                    // ====== END: Spike Trimming ======
+
+                    // Pass the cleaned-up list to the callback for further UI/chart processing
+                    callback.onTimeLineFetched(stocks);
                 })
-                .onFailure(mainDataHandler::handleFailure)        // Handle error using global handler
-                .fetch();                                        // Start asynchronous fetch
+                .onFailure(mainDataHandler::handleFailure) // Display errors if the fetch fails
+                .fetch();                                  // Begin asynchronous data fetch
     }
 
     /**

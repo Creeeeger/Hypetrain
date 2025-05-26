@@ -568,12 +568,49 @@ public class mainUI extends JFrame {
         openLabel.setText("Open: " + String.format("%.2f", open));
         highLabel.setText("High: " + String.format("%.2f", high));
         lowLabel.setText("Low: " + String.format("%.2f", low));
-        volumeLabel.setText("Vol: " + String.format("%.0f", volume));
+        volumeLabel.setText("Vol: " + formatLargeNumber(volume));
         peLabel.setText("P/E: " + String.format("%.2f", peRatio));
-        pegLabel.setText("P/E/G: " + String.format("%.0f", pegRatio));
+        pegLabel.setText("P/E/G: " + String.format("%.2f", pegRatio));
         fiftyTwoWkHighLabel.setText("52W H: " + String.format("%.2f", fiftyTwoWkHigh));
         fiftyTwoWkLowLabel.setText("52W L: " + String.format("%.2f", fiftyTwoWkLow));
-        mktCapLabel.setText("Mkt Cap: " + String.format("%.2f", marketCap));
+        mktCapLabel.setText("Mkt Cap: " + formatLargeNumber(marketCap));
+    }
+
+    /**
+     * Converts a large number into a short string representation with a suffix.
+     * <p>
+     * For example:
+     * <ul>
+     *     <li>1,500        -> "1.50 K"</li>
+     *     <li>2,300,000    -> "2.30 M"</li>
+     *     <li>5,000,000,000-> "5.00 B"</li>
+     *     <li>7,100,000,000,000 -> "7.10 T"</li>
+     * </ul>
+     * Numbers less than 1,000 are shown without a suffix.
+     *
+     * @param num The number to format.
+     * @return The formatted string with an appropriate suffix ("K", "M", "B", or "T").
+     */
+    public static String formatLargeNumber(double num) {
+        // If number is greater than or equal to 1 trillion, format as Trillion (T)
+        if (num >= 1_000_000_000_000.0)
+            return String.format("%.2f T", num / 1_000_000_000_000.0);
+
+            // If number is greater than or equal to 1 billion, format as A Billion (B)
+        else if (num >= 1_000_000_000.0)
+            return String.format("%.2f B", num / 1_000_000_000.0);
+
+            // If number is greater than or equal to 1 million, format as A Million (M)
+        else if (num >= 1_000_000.0)
+            return String.format("%.2f M", num / 1_000_000.0);
+
+            // If number is greater than or equal to 1 thousand, format as A Thousand (K)
+        else if (num >= 1_000.0)
+            return String.format("%.2f K", num / 1_000.0);
+
+            // For numbers less than 1 thousand, just return the number as an integer string
+        else
+            return String.format("%.0f", num);
     }
 
     /**
