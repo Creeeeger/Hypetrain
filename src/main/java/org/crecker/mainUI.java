@@ -1357,6 +1357,7 @@ public class mainUI extends JFrame {
         List<StockUnit> filteredStocks = stockUnitList
                 .stream()
                 .filter(stock -> stock.getDateDate().after(startDate))
+                .sorted(Comparator.comparing(StockUnit::getDateDate))
                 .toList();
 
         // Determine what unit to truncate timestamps to: days, hours, or minutes
@@ -1373,37 +1374,33 @@ public class mainUI extends JFrame {
 
         // For each stock data point in the window...
         for (StockUnit stockUnit : filteredStocks) {
-            // Get the epoch ms for the stock's timestamp
+            // 1. Extract the timestamp for this tick (as milliseconds since epoch)
             long timestamp = stockUnit.getDateDate().getTime();
 
-            // Convert to ZonedDateTime (for correct time zone handling)
+            // 2. Convert the timestamp to a ZonedDateTime in the correct time zone
             ZonedDateTime zdt = Instant.ofEpochMilli(timestamp).atZone(zone);
 
-            // Truncate time down to the start of the current bucket (e.g., start of the hour/minute/second)
-            ZonedDateTime truncatedZdt = zdt.truncatedTo(unit);
-            long bucketStart = truncatedZdt.toInstant().toEpochMilli(); // key for map
+            // 3. Truncate the time down to the start of this period/bucket (e.g., start of hour/second)
+            long bucketStart = zdt.truncatedTo(unit).toInstant().toEpochMilli();
 
-            // Try to get the existing aggregate for this bucket, or create if not found
+            // 4. Retrieve or initialize the aggregator for this bucket:
             AggregatedStockData agg = tempMap.get(bucketStart);
+
             if (agg == null) {
-                // New bucket: open, high, low all use first value seen for this period
+                // This is the FIRST tick seen for this time bucket:
                 agg = new AggregatedStockData();
-                agg.open = stockUnit.getOpen();
-                agg.high = stockUnit.getHigh();
-                agg.low = stockUnit.getLow();
+                agg.open = stockUnit.getOpen();  // The open price for the period (first tick's open)
+                agg.high = stockUnit.getHigh();  // The initial high for the period
+                agg.low = stockUnit.getLow();   // The initial low for the period
+                agg.close = stockUnit.getClose(); // Temporarily set close; will be updated if more ticks come in this bucket
                 tempMap.put(bucketStart, agg);
             } else {
-                // Existing bucket: update high if this value is higher
-                if (stockUnit.getHigh() > agg.high) {
-                    agg.high = stockUnit.getHigh();
-                }
-                // Update low if this value is lower
-                if (stockUnit.getLow() < agg.low) {
-                    agg.low = stockUnit.getLow();
-                }
+                // For every SUBSEQUENT tick in this time bucket:
+                agg.high = Math.max(agg.high, stockUnit.getHigh()); // Update the high if needed
+                agg.low = Math.min(agg.low, stockUnit.getLow());  // Update the low if needed
+                agg.close = stockUnit.getClose();                    // Always set close to the current tick's close
+                // (So the CLOSE ends up as the last tick's close in this bucket)
             }
-            // Always set close to the current value, so the last value seen is the closing price
-            agg.close = stockUnit.getClose();
         }
 
         // Now convert our Long-keyed map to a TreeMap keyed by RegularTimePeriod for display
