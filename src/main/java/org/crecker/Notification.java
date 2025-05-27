@@ -11,6 +11,7 @@ import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.CandlestickRenderer;
+import org.jfree.data.time.Minute;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
@@ -270,7 +271,7 @@ public class Notification {
     private void processOHLCData(List<StockUnit> stockUnits) {
         for (StockUnit unit : stockUnits) {
             ohlcSeries.add(new OHLCItem(
-                    new Second(unit.getDateDate()), // X: time (second-level precision)
+                    new Minute(unit.getDateDate()), // X: time (minute-level precision)
                     unit.getOpen(),                 // Y: open price
                     unit.getHigh(),                 // Y: high price
                     unit.getLow(),                  // Y: low price
@@ -300,7 +301,7 @@ public class Notification {
     public void addDataPoint(StockUnit unit) {
         // Only add data points that are after the notification event's timestamp
         if (unit.getLocalDateTimeDate().isAfter(this.localDateTime)) {
-            Second period = new Second(unit.getDateDate());
+            Minute period = new Minute(unit.getDateDate());
             // Add to candlestick series
             ohlcSeries.add(new OHLCItem(
                     period,

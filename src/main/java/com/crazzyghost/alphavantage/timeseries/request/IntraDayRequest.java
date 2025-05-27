@@ -42,6 +42,4 @@ public class IntraDayRequest extends TimeSeriesRequest {
             return new IntraDayRequest(this);
         }
     }
-
-
 }
