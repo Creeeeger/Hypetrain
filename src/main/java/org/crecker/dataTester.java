@@ -25,7 +25,7 @@ public class dataTester {
      * @param symbol the stock ticker (e.g., "AAPL") for which to fetch data
      */
     public static void getData(String symbol) {
-        String apiKey = "2NN1RGFV3V34ORCZ"; // Alpha Vantage API key
+        String apiKey = configHandler.loadConfig()[3][1]; // Alpha Vantage API key
 
         // Build the API config (timeout set to 10 seconds)
         Config cfg = Config.builder()
