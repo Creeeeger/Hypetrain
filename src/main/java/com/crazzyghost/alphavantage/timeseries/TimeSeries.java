@@ -426,6 +426,5 @@ public final class TimeSeries implements Fetcher {
             super();
             this.builder = new QuoteRequest.Builder();
         }
-
     }
 }

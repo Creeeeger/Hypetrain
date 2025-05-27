@@ -620,37 +620,6 @@ public class pLTester {
     }
 
     /**
-     * Safely creates a GUI notification popup or log entry for a given Notification event.
-     * Uses a wrapper to catch and print any errors encountered while displaying.
-     *
-     * @param currentEvent The notification to display (e.g. on chart, as popup, etc.)
-     */
-    private static void createNotification(Notification currentEvent) {
-        try {
-            // Calls a utility method to display a notification popup in the GUI.
-            // Passes all relevant event data from the Notification object:
-            // - Title and content for the notification window/message
-            // - StockUnit list (the data points associated with this event)
-            // - LocalDateTime of the event
-            // - Stock symbol (for context)
-            // - Percentage change or other value
-            // - Config integer (used for color-coding or categorization)
-            addNotification(
-                    currentEvent.getTitle(),
-                    currentEvent.getContent(),
-                    currentEvent.getStockUnitList(),
-                    currentEvent.getLocalDateTime(),
-                    currentEvent.getSymbol(),
-                    currentEvent.getChange(),
-                    currentEvent.getConfig()
-            );
-        } catch (Exception e) {
-            // If anything goes wrong (e.g. GUI error), print a stack trace for debugging
-            e.printStackTrace();
-        }
-    }
-
-    /**
      * Displays an interactive price chart for the given symbol using JFreeChart.
      * Supports both candlestick and time series line modes.
      * <ul>

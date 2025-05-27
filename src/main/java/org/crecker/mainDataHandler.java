@@ -33,7 +33,8 @@ import java.util.stream.Collectors;
 import static org.crecker.RallyPredictor.predict;
 import static org.crecker.dataTester.handleSuccess;
 import static org.crecker.mainUI.*;
-import static org.crecker.pLTester.*;
+import static org.crecker.pLTester.SYMBOLS;
+import static org.crecker.pLTester.processStockDataFromFile;
 
 /**
  * The {@code mainDataHandler} class is responsible for the central logic and data flow in the stock analytics application.
@@ -263,7 +264,7 @@ public class mainDataHandler {
     // Map of different markets to scan select market to get list
     public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
         put("allSymbols", new String[]{
-                "1Q", "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
+                "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
                 , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
                 , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
                 , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
@@ -276,14 +277,14 @@ public class mainDataHandler {
                 , "LKNC", "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
                 , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
                 , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
-                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PH", "PLD"
+                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PLD"
                 , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
                 , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
                 , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
                 , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
                 , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
                 , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
-                , "ZIM", "ZTO", "ZTS", "ВТВТ"
+                , "ZIM", "ZTO", "ZTS"
         });
         put("aiStocks", new String[]{
                 "AMD", "CRM", "DDOG", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "SMCI", "SNOW"
@@ -364,7 +365,7 @@ public class mainDataHandler {
                 "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
         });
         put("smallCaps", new String[]{
-                "1Q", "AOSL", "ACHR", "ASTS", "BE", "BTDR", "CAVA", "CIFR",
+                "AOSL", "ACHR", "ASTS", "BE", "BTDR", "CAVA", "CIFR",
                 "CLSK", "CORZ", "CRDO", "DAVE", "DJT", "FLNC", "HUT", "IESC",
                 "INOD", "IONQ", "JOBY", "KODK", "LMND", "LUMN", "LUNR", "LX",
                 "MARA", "MBLY", "MDGL", "PLUG", "POWL", "QBTS", "QUBT", "RCAT",
@@ -393,20 +394,6 @@ public class mainDataHandler {
     static int frameSize = 30; // Frame size for analysis (default: 30 bars, typically minutes)
 
     // ====================================================================
-
-    /**
-     * Main method entry point for standalone running or backtesting.
-     * <p>
-     * Typically used during development to launch test analysis routines.
-     * By default, triggers PLAnalysis (profit/loss/spike testing) on startup.
-     * Optionally, can be used to launch real-time collectors.
-     *
-     * @param args Command-line arguments (unused)
-     */
-    public static void main(String[] args) {
-        PLAnalysis(); // Entry point for profit & loss/notification analysis
-        //realTimeDataCollector("MARA"); // Example: Start live data collector for symbol "MARA"
-    }
 
     /**
      * Initializes the Alpha Vantage API client using a provided API key.
@@ -526,11 +513,11 @@ public class mainDataHandler {
                     // Upon successful response, extract key fields from fundamentals
                     CompanyOverviewResponse companyOverviewResponse = (CompanyOverviewResponse) e;
                     CompanyOverview response = companyOverviewResponse.getOverview();
-                    data[4] = response.getPERatio();                // Price-to-Earnings Ratio
-                    data[5] = response.getPEGRatio();                // PEG Ratio
-                    data[6] = response.getFiftyTwoWeekHigh();        // 52-week High Price
-                    data[7] = response.getFiftyTwoWeekLow();         // 52-week Low Price
-                    data[8] = Double.valueOf(response.getMarketCapitalization()); // Market Cap
+                    data[4] = response.getPERatio() != null ? response.getPERatio() : 0.0;
+                    data[5] = response.getPEGRatio() != null ? response.getPEGRatio() : 0.0;
+                    data[6] = response.getFiftyTwoWeekHigh() != null ? response.getFiftyTwoWeekHigh() : 0.0;
+                    data[7] = response.getFiftyTwoWeekLow() != null ? response.getFiftyTwoWeekLow() : 0.0;
+                    data[8] = Objects.requireNonNullElse(Double.valueOf(response.getMarketCapitalization()), 0.0);
                 })
                 .onFailure(mainDataHandler::handleFailure)  // Logs any API failure for debugging
                 .fetch();
@@ -767,13 +754,13 @@ public class mainDataHandler {
             final ScheduledFuture<?>[] timeoutFuture = new ScheduledFuture<?>[1];
 
             Runnable timeoutTask = () -> {
-                System.out.println("Timeout for symbol: " + symbol + " (no response in 15s)");
+                System.out.println("Timeout for symbol: " + symbol + " (no response in 45)");
                 // No need to add the symbol to the results, just proceed as if it failed
                 checkCompletion(remaining, actualSymbols, callback);
             };
 
-            // Schedule the timeout (15 seconds)
-            timeoutFuture[0] = scheduler.schedule(timeoutTask, 15, TimeUnit.SECONDS);
+            // Schedule the timeout (45 seconds)
+            timeoutFuture[0] = scheduler.schedule(timeoutTask, 45, TimeUnit.SECONDS);
 
             // --------- [1] Fetch company fundamentals (market cap, shares out) ---------
             AlphaVantage.api()
@@ -1056,45 +1043,104 @@ public class mainDataHandler {
 
                 // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
                 while (!Thread.currentThread().isInterrupted()) {
-                    // Thread-safe storage for all real-time results for this pass.
-                    List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
+                    // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
+
+                    // --- Create a CountDownLatch with a count equal to the number of symbols we want to fetch ---
+                    // Each symbol's asynchronous API call will decrement this latch when finished (success or failure).
+                    CountDownLatch latch = new CountDownLatch(symbols.size());
+
                     try {
-                        // AlphaVantage API: limit 100 symbols per real-time fetch, so split into batches.
-                        int totalBatches = (int) Math.ceil(symbols.size() / 100.0);
-                        CountDownLatch latch = new CountDownLatch(totalBatches);
-
-                        for (int i = 0; i < totalBatches; i++) {
-                            // Compute indices for this batch; end is exclusive and handles the last small batch.
-                            List<String> batchSymbols = symbols.subList(i * 100, Math.min((i + 1) * 100, symbols.size()));
-                            String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
-
+                        // Loop through all symbols that need to be updated in real-time.
+                        for (String symbol : symbols) {
+                            // Asynchronously fetch the latest intraday data for each symbol from AlphaVantage.
                             AlphaVantage.api()
-                                    .Realtime()
-                                    .setSymbols(symbolsBatch)
-                                    .entitlement("realtime")
-                                    .onSuccess(response -> {
-                                        // Collect all match objects (one per symbol in this batch).
-                                        matches.addAll(response.getMatches());
+                                    .timeSeries()
+                                    .intraday()
+                                    .forSymbol(symbol)                       // Set the symbol (e.g., "AAPL")
+                                    .interval(Interval.ONE_MIN)              // 1-minute resolution
+                                    .outputSize(OutputSize.COMPACT)          // Only recent bars (smallest payload)
+                                    .entitlement("realtime")                 // Specify real-time data entitlement
+                                    .onSuccess(response -> {                 // Success callback (executed for each API call)
+                                        TimeSeriesResponse tsResponse = (TimeSeriesResponse) response;
+                                        List<StockUnit> stockUnits = tsResponse.getStockUnits();
+
+                                        if (!stockUnits.isEmpty()) {
+                                            // Reverse the order so we process from oldest → newest (API returns newest first)
+                                            List<StockUnit> reversedUnits = new ArrayList<>(stockUnits);
+                                            Collections.reverse(reversedUnits);
+
+                                            // Retrieve or initialize the timeline for this symbol.
+                                            // Timelines are thread-safe lists, so updates from multiple fetches won't collide.
+                                            List<StockUnit> timeline = symbolTimelines
+                                                    .computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>()));
+
+                                            // Track which dates are already in the timeline, so we avoid duplicates.
+                                            Set<Date> existingDates = timeline.stream()
+                                                    .map(StockUnit::getDateDate)
+                                                    .collect(Collectors.toSet());
+
+                                            // Determine the last known bar's LocalDateTime (null if the timeline is empty)
+                                            LocalDateTime lastDate = timeline.isEmpty()
+                                                    ? null
+                                                    : timeline.get(timeline.size() - 1).getLocalDateTimeDate();
+                                            LocalDateTime now = LocalDateTime.now();
+                                            boolean refreshAll = false;
+
+                                            // If the timeline isn't empty, check for staleness:
+                                            if (lastDate != null) {
+                                                // If the most recent data is more than 10 minutes old, mark for full refresh.
+                                                if (lastDate.isBefore(now.minusMinutes(10))) {
+                                                    refreshAll = true;
+                                                }
+                                            }
+
+                                            if (refreshAll || lastDate == null) {
+                                                // Timeline too old or empty: add all bars from the API
+                                                for (StockUnit unit : reversedUnits) {
+                                                    unit.setSymbol(symbol);
+                                                    // Only add if this date hasn't already been recorded (extra safety)
+                                                    if (!existingDates.contains(unit.getDateDate())) {
+                                                        timeline.add(unit);
+                                                        existingDates.add(unit.getDateDate()); // Prevent duplicate add in this batch
+                                                    }
+                                                }
+                                            } else {
+                                                // Timeline is up-to-date: Only add bars with a timestamp after the last known one
+                                                for (StockUnit unit : reversedUnits) {
+                                                    unit.setSymbol(symbol);
+                                                    if (unit.getLocalDateTimeDate().isAfter(lastDate)) {
+                                                        timeline.add(unit);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                        // Signal that this symbol's fetch is complete (success).
                                         latch.countDown();
                                     })
                                     .onFailure(e -> {
-                                        // Error for this batch: log, count down, keep running!
-                                        handleFailure(e);
+                                        // On API failure, log which symbol failed (and still signal completion)
+                                        logTextArea.append("Failed for symbol: " + symbol + "\n");
                                         latch.countDown();
                                     })
-                                    .fetch();
+                                    .fetch(); // Start the async request
                         }
 
-                        // Wait for all batches to finish, but not longer than 25 seconds.
-                        // (Prevents hanging forever if the API is slow or broken.)
+                        // --- Wait for all fetches to complete (or timeout after 25 seconds) ---
+                        // The main thread blocks here until all symbol requests finish or timeout is reached.
                         if (!latch.await(25, TimeUnit.SECONDS)) {
-                            logTextArea.append("Warning: Timed out waiting for data\n");
+                            // If not all latches counted down, warn the user (could be slow API or network)
+                            logTextArea.append("Warning: Timed out waiting for some data\n");
                         }
 
-                        // Process real-time data into the global timeline, and re-trigger ML/alerts.
-                        processStockData(matches);
+                        // Log the number of processed stock entries for debugging/feedback.
+                        logTextArea.append("Processed " + symbols.size() + " valid stock entries\n");
+
+                        // After all updates, recalculate the percentage change for each symbol,
+                        // so UI indicators and trading logic reflect the latest market conditions.
+                        calculateStockPercentageChange(true);
 
                         // ====== Rate limiting: Sleep for 60 seconds before polling again ======
+                        // (Prevents API bans and excessive usage. If your API supports higher frequency, you can tune this.)
                         Thread.sleep(60000);
 
                     } catch (InterruptedException e) {
@@ -1166,40 +1212,25 @@ public class mainDataHandler {
     }
 
     /**
-     * Integrates a batch of real-time quote results into the global symbol timelines,
-     * updating live data structures with fresh price bars and preparing for analysis.
+     * Determines whether to use the extended-hours quote for a given real-time response.
      * <p>
-     * This method converts each API "match" into a {@link StockUnit}, stores it into a thread-safe
-     * timeline (for charting and analysis), and updates a local batch for reference.
-     * <b>After updating all timelines, it triggers a full percentage change re-calculation
-     * for each affected symbol to ensure all stats/indicators remain current.</b>
+     * Returns <code>true</code> if the regular market close price is zero but an extended-hours
+     * quote is available (i.e., nonzero), indicating that the after-hours or pre-market price
+     * should be used for more accurate, up-to-date data.
      *
-     * @param matches List of {@link RealTimeResponse.RealTimeMatch} from API
+     * <p><b>Typical use:</b> This is useful when real-time updates occur outside of regular
+     * trading hours or for symbols that may have sporadic market data, such as newly listed
+     * stocks or very illiquid assets.
+     *
+     * @param value The {@link RealTimeResponse.RealTimeMatch} containing both the regular
+     *              close and extended-hours quote.
+     * @return <code>true</code> if the extended-hours quote should be used; <code>false</code> otherwise.
      */
-    public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
-        // Local batch container: maps symbol to last inserted StockUnit (not strictly necessary for UI, but useful for tracking)
-        Map<String, StockUnit> currentBatch = new ConcurrentHashMap<>();
-
-        // Iterate through each real-time match and convert to StockUnit
-        for (RealTimeResponse.RealTimeMatch match : matches) {
-            String symbol = match.getSymbol().toUpperCase(); // Ensure all keys are upper-case for consistency
-            StockUnit unit = new StockUnit.Builder()
-                    .symbol(symbol)
-                    .close(match.getClose())
-                    .time(match.getTimestamp())
-                    .volume(match.getVolume())
-                    .high(match.getHigh())
-                    .open(match.getOpen())
-                    .build();
-
-            // Add this bar to the global, thread-safe timeline for this symbol
-            symbolTimelines.computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>())).add(unit);
-            currentBatch.put(symbol, unit); // Track for possible future reference (e.g., UI update)
-        }
-        // Append a status message for debugging/user feedback
-        logTextArea.append("Processed " + currentBatch.size() + " valid stock entries\n");
-        // Recompute percentage change for each symbol (ensures UI, alerts, and indicators are up-to-date)
-        calculateStockPercentageChange(true);
+    static boolean useExtended(RealTimeResponse.RealTimeMatch value) {
+        // Use extended quote if:
+        // - The regular market close is zero (no trade in regular hours or market closed)
+        // - The extended-hours quote is available (nonzero, so we have after/pre-market price)
+        return value.getClose() == 0.0 && value.getExtendedHoursQuote() != 0.0;
     }
 
     /**
@@ -1832,7 +1863,7 @@ public class mainDataHandler {
         });
 
         // ====== Analyze All Timelines for Rally Candidates ======
-        return calculateIfRally(timelines);
+        return calculateIfRally(timelines, false);
     }
 
     /**
@@ -1903,10 +1934,11 @@ public class mainDataHandler {
      * <p>
      * All progress and intermediate results are appended to {@code summary} and printed for user/marker transparency.
      *
-     * @param timelines Map of symbol to cleaned/compressed {@link StockUnit} bar lists.
+     * @param timelines          Map of symbol to cleaned/compressed {@link StockUnit} bar lists.
+     * @param useAutoCorrelation boolean for activating alpha intelligence auto correlation
      * @return List of symbols that pass all rally criteria with very high confidence.
      */
-    private static List<String> calculateIfRally(Map<String, List<StockUnit>> timelines) {
+    private static List<String> calculateIfRally(Map<String, List<StockUnit>> timelines, boolean useAutoCorrelation) {
         StringBuilder summary = new StringBuilder(); // Used to build a full log of all checks/results for transparency/debugging
         List<String> rallies = new ArrayList<>();    // This will hold all the symbols detected as being "in rally"
 
@@ -1915,64 +1947,66 @@ public class mainDataHandler {
             summary.append("\n=====================================\n");
             summary.append("📈 Analyzing: ").append(symbol).append(" 📊\n");
 
-            // 0. --- AUTOCORRELATION FETCH ---
-            // This section fetches the lag-1 autocorrelation for the symbol's recent 9 days of daily closing prices.
-            // It does this *synchronously* (with a latch) to ensure the result is available before further analysis.
+            if (useAutoCorrelation) {
+                // 0. --- AUTOCORRELATION FETCH ---
+                // This section fetches the lag-1 autocorrelation for the symbol's recent 9 days of daily closing prices.
+                // It does this *synchronously* (with a latch) to ensure the result is available before further analysis.
 
-            AtomicReference<Double> acLag1 = new AtomicReference<>(null); // Holds the fetched autocorrelation value (null if error)
-            CountDownLatch latch = new CountDownLatch(1); // Used to block until the async API response is received
+                AtomicReference<Double> acLag1 = new AtomicReference<>(null); // Holds the fetched autocorrelation value (null if error)
+                CountDownLatch latch = new CountDownLatch(1); // Used to block until the async API response is received
 
-            // Start async request for autocorrelation via AlphaVantage's advanced analytics endpoint
-            AlphaVantage.api()
-                    .alphaIntelligence()
-                    .analyticsFixedWindow()
-                    .symbols(symbol)                           // Set the stock ticker
-                    .range("9day")                             // Use the last 9 days (trading days, not calendar)
-                    .interval("DAILY")                         // Daily bars for autocorrelation calculation
-                    .calculations("AUTOCORRELATION(lag=1)")    // Request lag-1 autocorrelation (adjacent days)
-                    .ohlc("close")                             // Use closing prices for calculation
-                    .onSuccess(response -> {                   // When the API call succeeds:
-                        Double val = Optional.ofNullable(response.getReturnsCalculations())
-                                .map(rc -> rc.autocorrelation)                        // Get autocorrelation section of result
-                                .map(ac -> ac.get(symbol))                            // For this ticker
-                                .map(lagMap -> lagMap.get("AUTOCORRELATION(LAG=1)"))  // Get the actual lag-1 value
-                                .orElse(null);                                        // Null if anything missing
-                        acLag1.set(val);           // Store the value for use below
-                        latch.countDown();         // Release the latch so main thread can proceed
-                    })
-                    .onFailure(err -> {            // On API failure (network error, etc.):
-                        System.err.println("Autocorrelation API error: " + err.getMessage());
-                        latch.countDown();         // Release the latch even on failure, to avoid deadlock
-                    })
-                    .fetch();                      // Send the API request
+                // Start async request for autocorrelation via AlphaVantage's advanced analytics endpoint
+                AlphaVantage.api()
+                        .alphaIntelligence()
+                        .analyticsFixedWindow()
+                        .symbols(symbol)                           // Set the stock ticker
+                        .range("9day")                             // Use the last 9 days (trading days, not calendar)
+                        .interval("DAILY")                         // Daily bars for autocorrelation calculation
+                        .calculations("AUTOCORRELATION(lag=1)")    // Request lag-1 autocorrelation (adjacent days)
+                        .ohlc("close")                             // Use closing prices for calculation
+                        .onSuccess(response -> {                   // When the API call succeeds:
+                            Double val = Optional.ofNullable(response.getReturnsCalculations())
+                                    .map(rc -> rc.autocorrelation)                        // Get autocorrelation section of result
+                                    .map(ac -> ac.get(symbol))                            // For this ticker
+                                    .map(lagMap -> lagMap.get("AUTOCORRELATION(LAG=1)"))  // Get the actual lag-1 value
+                                    .orElse(null);                                        // Null if anything missing
+                            acLag1.set(val);           // Store the value for use below
+                            latch.countDown();         // Release the latch so main thread can proceed
+                        })
+                        .onFailure(err -> {            // On API failure (network error, etc.):
+                            System.err.println("Autocorrelation API error: " + err.getMessage());
+                            latch.countDown();         // Release the latch even on failure, to avoid deadlock
+                        })
+                        .fetch();                      // Send the API request
 
-            try {
-                // Block the current thread until the async API result comes back,
-                // or after a timeout of 4 seconds to avoid hanging indefinitely.
-                latch.await(4, java.util.concurrent.TimeUnit.SECONDS);
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt(); // Restore interrupt status if needed
-                System.err.println("Latch interrupted for symbol: " + symbol);
-            }
+                try {
+                    // Block the current thread until the async API result comes back,
+                    // or after a timeout of 4 seconds to avoid hanging indefinitely.
+                    latch.await(4, java.util.concurrent.TimeUnit.SECONDS);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt(); // Restore interrupt status if needed
+                    System.err.println("Latch interrupted for symbol: " + symbol);
+                }
 
-            // --- LOG THE RESULT FOR DEBUGGING ---
-            summary.append(String.format(
-                    "🔁 Autocorrelation (lag=1): %s\n",
-                    acLag1.get() == null ? "N/A" : String.format("%.4f", acLag1.get())
-            ));
+                // --- LOG THE RESULT FOR DEBUGGING ---
+                summary.append(String.format(
+                        "🔁 Autocorrelation (lag=1): %s\n",
+                        acLag1.get() == null ? "N/A" : String.format("%.4f", acLag1.get())
+                ));
 
-            // --- AUTOCORRELATION GATING LOGIC ---
-            // Now that we have the lag-1 autocorrelation, use it as an early filter for trend strength.
-            // If the autocorrelation could not be fetched (API failed or returned no data), reject this symbol immediately
-            if (acLag1.get() == null) {
-                summary.append("❌ Failed: Could not fetch autocorrelation\n");
-                return; // Skip this symbol, do not proceed to further checks
-            }
+                // --- AUTOCORRELATION GATING LOGIC ---
+                // Now that we have the lag-1 autocorrelation, use it as an early filter for trend strength.
+                // If the autocorrelation could not be fetched (API failed or returned no data), reject this symbol immediately
+                if (acLag1.get() == null) {
+                    summary.append("❌ Failed: Could not fetch autocorrelation\n");
+                    return; // Skip this symbol, do not proceed to further checks
+                }
 
-            // If autocorrelation is below 0.6, consider the trend too weak to be a "rally"
-            if (acLag1.get() < 0.6) {
-                summary.append("❌ Failed: Autocorrelation (lag=1) below threshold (%.2f)\n".formatted(acLag1.get()));
-                return; // Early reject this symbol, skip rest of analysis
+                // If autocorrelation is below 0.6, consider the trend too weak to be a "rally"
+                if (acLag1.get() < 0.6) {
+                    summary.append("❌ Failed: Autocorrelation (lag=1) below threshold (%.2f)\n".formatted(acLag1.get()));
+                    return; // Early reject this symbol, skip rest of analysis
+                }
             }
 
             // 1. CLEAN DATA: Remove bars that are out-of-market hours or on weekends
@@ -2434,6 +2468,7 @@ public class mainDataHandler {
         // Define how much you want to be able to sell
         double requiredNotional = volume;
         int liquidityLookBack = 10;        // How many bars/minutes to look back for average liquidity (e.g., 10 minutes)
+        System.out.print("liq: " + isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional) + " ");
 
         // Check if current and recent liquidity are sufficient to execute your trade without major slippage or waiting
         if (!isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
@@ -2445,6 +2480,7 @@ public class mainDataHandler {
         // - Uses all normalized features and their respective category weights.
         double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness); // Higher manualAgg increases sensitivity
 
+        System.out.print("dyna ag: " + dynamicAggro + " ");
         // === 2. Set adaptive threshold for cumulative percentage move, based on feature activations ===
         // - The more bullish the features, the smaller the required cumulative gain for an alert
         double cumulativeThreshold = 0.6 * dynamicAggro;
@@ -2453,6 +2489,7 @@ public class mainDataHandler {
         // - Used to detect sudden strong upward momentum
         double changeUp2 = calculateWindowChange(stocks, 2);
         double changeUp3 = calculateWindowChange(stocks, 3);
+        System.out.print("c2 " + changeUp2 + " c3 " + changeUp3 + " ");
 
         // === 4. Define weighted scores for each feature category (used in "Greed Mode" scoring) ===
         final Map<String, Double> WEIGHTS = Map.of(
@@ -2530,6 +2567,15 @@ public class mainDataHandler {
                         features[6] == 1 &&                                   // Keltner channel breakout
                         changeUp2 >= 1.5 * manualAggressiveness &&            // 2-bar momentum strong enough
                         changeUp3 >= 1.5 * manualAggressiveness;              // 3-bar momentum strong enough
+
+        System.out.println("TRIGGER SPIKE? anomaly=" + (features[4] == 1) +
+                " cumGain=" + (features[5] >= cumulativeThreshold) +
+                " dynAggro=" + (dynamicAggro >= threshold) +
+                " pred=" + (prediction >= 0.9) +
+                " keltner=" + (features[6] == 1) +
+                " mom2=" + (changeUp2 >= 1.5 * manualAggressiveness) +
+                " mom3=" + (changeUp3 >= 1.5 * manualAggressiveness) +
+                " --> isTriggered=" + isTriggered);
 
         int notificationCode = -1; // -1 means no notification
 

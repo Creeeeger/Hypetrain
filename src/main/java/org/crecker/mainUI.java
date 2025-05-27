@@ -16,6 +16,9 @@ import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.CandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYItemRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
+import org.jfree.chart.ui.Layer;
+import org.jfree.chart.ui.RectangleAnchor;
+import org.jfree.chart.ui.TextAnchor;
 import org.jfree.data.time.*;
 import org.jfree.data.time.ohlc.OHLCItem;
 import org.jfree.data.time.ohlc.OHLCSeries;
@@ -58,6 +61,7 @@ import java.util.stream.IntStream;
 
 import static org.crecker.configHandler.createConfig;
 import static org.crecker.mainDataHandler.CACHE_DIR;
+import static org.crecker.mainDataHandler.useExtended;
 
 /**
  * mainUI is the primary graphical user interface class for the "Hype train" stock monitoring application.
@@ -91,9 +95,26 @@ public class mainUI extends JFrame {
     public static final Map<String, TickerData> nameToData = new TreeMap<>();
 
     /**
-     * Single-threaded executor used for periodic background tasks (e.g., real-time stock price refresh).
+     * Executor for real-time chart updates.
+     * <p>
+     * This single-threaded {@link ScheduledExecutorService} manages all periodic background tasks
+     * related to live chart data refreshes, such as polling stock prices, aggregating ticks, and
+     * updating the main chart UI. The use of a single thread ensures sequential execution of
+     * chart updates, preventing concurrency issues or race conditions in chart data structures.
+     * </p>
      */
-    private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
+    private static final ScheduledExecutorService executorChartService = Executors.newSingleThreadScheduledExecutor();
+
+    /**
+     * Executor for asynchronous notification handling.
+     * <p>
+     * This single-threaded {@link ScheduledExecutorService} is dedicated to background processing
+     * of notifications, including price alert triggers, news checks, and user alert delivery.
+     * Using a separate executor for notifications ensures that notification logic runs independently
+     * of real-time chart updates, maintaining UI responsiveness and avoiding cross-task blocking.
+     * </p>
+     */
+    private static final ScheduledExecutorService executorNotificationService = Executors.newSingleThreadScheduledExecutor();
 
     /**
      * Scheduled future representing the currently active per-stock real-time update polling task.
@@ -167,8 +188,16 @@ public class mainUI extends JFrame {
      */
     static String selectedStock = "-Select a Stock-";
 
-    // Selection of the market to hype in
+    /**
+     * The currently selected market segment or asset group for alerting and strategy tuning.
+     * <p>
+     * Examples: "bigCaps", "midCaps", "techGiants", "cryptoBlockchain", etc.
+     * Controls which market sector is targeted by algorithms for notifications, filtering,
+     * and feature weighting (i.e., which stocks or symbols are actively "hyped" or monitored).
+     * </p>
+     */
     public static String market;
+
     /**
      * UI panels for layout: symbol list, chart/tool section, notifications/hype panel, and chart panel itself.
      */
@@ -441,6 +470,11 @@ public class mainUI extends JFrame {
         refreshChartType(false);
         // Fetch all available ticker metadata for searching and UI
         fetchTickerMap();
+
+        // If real-time mode is enabled, start or update notification listeners/handlers (price alerts, news, etc.).
+        if (useRealtime) {
+            updateNotifications();
+        }
     }
 
     /**
@@ -944,6 +978,15 @@ public class mainUI extends JFrame {
         mainUI.refreshAllComponents(gui.getContentPane()); // Force UI to update
         mainDataHandler.InitAPi(apiKey); // Re-initialize API connection (can comment if testing without tokens)
 
+        // Enable or disable live notification updates based on the real-time toggle.
+        // - When real-time is ON: start or resume notification handlers.
+        // - When real-time is OFF: stop all background notification checks.
+        if (useRealtime) {
+            updateNotifications();
+        } else {
+            stopNotificationUpdates();
+        }
+
         logTextArea.append("Config reloaded\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
     }
@@ -1188,13 +1231,15 @@ public class mainUI extends JFrame {
                             aggregationCache.put(cacheKey, aggregatedData);
                         }
 
-                        // Always aggregate again to ensure up-to-date data
+                        // Always aggregate raw tick data into the selected period to ensure the chart reflects the latest data.
+                        // This produces a map of time period -> aggregated OHLC values.
                         aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
 
-                        // Populate the OHLC series for plotting
+                        // Clear the previous OHLC series before repopulating with new data.
                         ohlcSeries.clear();
-                        double spikeThreshold = 0.01; // 1%
+                        double spikeThreshold = 0.01; // Limit wicks/spikes to 1% outside of open/close range to prevent visual outliers.
 
+                        // For each aggregated period, clamp the high/low as needed, and add the OHLC bar to the series.
                         for (Map.Entry<RegularTimePeriod, AggregatedStockData> e : aggregatedData.entrySet()) {
                             AggregatedStockData a = e.getValue();
                             double open = a.open;
@@ -1205,12 +1250,14 @@ public class mainUI extends JFrame {
                             double maxOC = Math.max(open, close);
                             double minOC = Math.min(open, close);
 
+                            // Clamp the candle high/low to prevent unrealistic spikes/wicks
                             double allowedHigh = maxOC * (1 + spikeThreshold);
                             double allowedLow = minOC * (1 - spikeThreshold);
 
                             if (high > allowedHigh) high = allowedHigh;
                             if (low < allowedLow) low = allowedLow;
 
+                            // Add the processed OHLC bar to the chart's data series.
                             ohlcSeries.add(e.getKey(), open, high, low, close);
                         }
                     } else {
@@ -1316,22 +1363,22 @@ public class mainUI extends JFrame {
     /**
      * Determines the optimal aggregation period (time bucket) class for chart data, based on the selected time range.
      * <p>
-     * For shorter windows (under 5 days), aggregates to the second level for high resolution.
+     * For shorter windows (under 5 days), aggregates to the minute level for high resolution.
      * For longer windows (≥ 5 days), aggregates to the hour for clarity and performance.
      *
      * @param choice Integer representing the user-selected chart window (e.g., 1-minute, 1-week, etc.).
-     * @return The class object for the aggregation period: {@link Hour} or {@link Second}.
+     * @return The class object for the aggregation period: {@link Hour} or {@link Minute}.
      */
     // Helper method to determine aggregation interval
     private static Class<? extends RegularTimePeriod> determineAggregationPeriod(int choice) {
         // Get the window size in milliseconds for the chosen time range
         long duration = getDurationMillis(choice);
 
-        // Use hourly aggregation if the window is 5 days or longer, otherwise use per-second granularity
+        // Use hourly aggregation if the window is 5 days or longer, otherwise use per-minute granularity
         if (duration >= TimeUnit.DAYS.toMillis(5)) { // 5 days or more
             return Hour.class;
         } else {
-            return Second.class;
+            return Minute.class;
         }
     }
 
@@ -2047,236 +2094,563 @@ public class mainUI extends JFrame {
     }
 
     /**
-     * Starts live (real-time) updating of the main chart and notification charts,
-     * periodically polling for new data every second.
+     * The last known closing price for the currently selected (main) stock symbol.
+     * <p>
+     * Marked {@code volatile} for safe concurrent access between background tasks (price updates)
+     * and UI threads. Used to color price markers and for real-time comparison in charting.
+     * </p>
+     */
+    private static volatile Double lastClose = null;
+
+    /**
+     * Tracks the last known closing price for each symbol with an active notification.
+     * <p>
+     * This map enables per-symbol price movement comparison in notification mini-charts, allowing
+     * each notification to independently display price markers based on its previous close.
+     * Uses a thread-safe {@link ConcurrentHashMap} to allow concurrent updates from background tasks.
+     * </p>
+     */
+    private static final Map<String, Double> notificationLastClose = new ConcurrentHashMap<>();
+
+    /**
+     * Initiates live (real-time) updating of the main chart and all active notification mini-charts,
+     * periodically polling for new stock data every second.
      * <p>
      * This method:
      * <ul>
-     *     <li>Schedules a background task to fetch the latest data for the currently selected stock,
-     *         updating the chart and all visible data structures.</li>
-     *     <li>Updates the main chart and the charts inside any active notifications,
-     *         so that all visualizations are always current.</li>
-     *     <li>Makes all UI changes on the Event Dispatch Thread using {@link SwingUtilities#invokeLater(Runnable)}
-     *         for thread safety.</li>
-     *     <li>Handles all error conditions gracefully, reporting failures in the logging panel.</li>
+     *     <li>Cancels any existing real-time update task before starting a new one, ensuring only a single polling
+     *         task runs at a time.</li>
+     *     <li>Schedules a background task to fetch the latest data for the currently selected stock symbol,
+     *         updating the main chart, underlying data series, and all visible notification charts.</li>
+     *     <li>Performs all user interface changes on the Event Dispatch Thread using
+     *         {@link SwingUtilities#invokeLater(Runnable)} to guarantee thread safety with Swing components.</li>
+     *     <li>Handles errors gracefully by reporting them in the logging panel for user visibility and debugging.</li>
      * </ul>
-     * <b>Note:</b> This function only starts polling if the global <code>useRealtime</code> flag is set to true.
+     * <b>Note:</b> Polling is only started if the global <code>useRealtime</code> flag is <code>true</code>;
+     * otherwise, no real-time background task will be scheduled.
      */
     public void startRealTimeUpdates() {
-        stopRealTimeUpdates(); // Always stop old task before starting new one
+        // Ensure no duplicate polling tasks: stop any previous real-time updater first.
+        stopRealTimeUpdates();
 
-        // Only set up polling if real-time updates are enabled in settings
+        // Only enable live updates if real-time mode is active in user/application settings.
         if (useRealtime) {
-            // 1. Main chart update: Poll for new data every second, using a global (singleton) executor
+            updateChart();
+        }
+    }
 
-            // The executorService is shared globally across the application.
-            // This scheduled task will continuously:
-            // - Fetch the latest "tick" for the selected stock.
-            // - If new data is available, update all chart datasets (TimeSeries, OHLCSeries).
-            // - Redraw the chart panel in the GUI.
-            realTimeTask = executorService.scheduleAtFixedRate(() -> {
-                // Double-check flag in case user disables real-time while running
-                if (useRealtime) {
-                    // Fetch the latest data point for the selected stock (async API call)
-                    mainDataHandler.getRealTimeUpdate(selectedStock, value -> {
-                        // Only proceed if we actually got a non-null result
-                        if (value != null) {
-                            // Insert the new stock data at the *start* of the data list,
-                            // ensuring the newest tick is always first for visual updates
-                            stocks.add(0, new StockUnit.Builder()
-                                    .open(value.getOpen())
-                                    .high(value.getHigh())
-                                    .low(value.getLow())
-                                    .close(value.getClose())
-                                    .adjustedClose(value.getClose())
-                                    .volume(value.getVolume())
-                                    .dividendAmount(0)
-                                    .splitCoefficient(0)
-                                    .time(value.getTimestamp())
-                                    .build());
+    /**
+     * Schedules and manages real-time updates of the main stock chart.
+     * <p>
+     * This method sets up a periodic background task (every second) that:
+     * - Fetches the latest tick (price) for the currently selected stock.
+     * - Updates all chart datasets (candles/line series).
+     * - Keeps the GUI in sync and up-to-date with live data.
+     * <p>
+     * Thread safety, data aggregation, and visual clarity are all ensured.
+     */
+    private void updateChart() {
+        // 1. Schedule a main chart update task: polls for new data every second.
+        //    Uses a singleton ScheduledExecutorService (global across the application).
+        realTimeTask = executorChartService.scheduleAtFixedRate(() -> {
+            // Before doing anything, double-check the global real-time flag;
+            // users may disable real-time updates at any moment.
 
-                            // All chart and UI updates must run on the Swing EDT for safety
-                            SwingUtilities.invokeLater(() -> {
-                                try {
-                                    // Parse the server timestamp into a Java Date for plotting
-                                    Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+            if (useRealtime) {
+                // Fetch the latest stock tick (asynchronous API call).
+                mainDataHandler.getRealTimeUpdate(selectedStock, value -> {
+                    // Only process if new data is available (i.e., not null).
+                    if (value != null) {
+                        // ================== TICK DATA PREPROCESSING ==================
 
-                                    // Get the current plot and X-axis for auto-scrolling logic
-                                    XYPlot plot = chartDisplay.getChart().getXYPlot();
-                                    DateAxis xAxis = (DateAxis) plot.getDomainAxis();
+                        // Check if we should use extended-hours data (pre- / post-market);
+                        // fallback to regular close/open if not present.
+                        boolean extended = useExtended(value);
 
-                                    // Calculate current time window in milliseconds (e.g., 5 min, 1 hr)
-                                    long window = getDurationMillis(currentTimeRangeChoice);
+                        // Always use the same value for all OHLC fields since
+                        // real-time ticks only provide the current price (close);
+                        // open/high/low are set equal to close for the single tick.
+                        double close = extended ? value.getExtendedHoursQuote() : value.getClose();
+                        double open = extended ? value.getExtendedHoursQuote() : value.getClose();
+                        double high = extended ? value.getExtendedHoursQuote() : value.getClose();
+                        double low = extended ? value.getExtendedHoursQuote() : value.getClose();
+                        double volume = value.getVolume(); // (Extended-hours volume is usually zero or not reported.)
 
-                                    /*
-                                     * If the user hasn't zoomed in or out (auto-range is true),
-                                     * scroll the chart window forward to always show the latest data.
-                                     * This acts like a rolling window—otherwise, respect user zoom.
-                                     */
-                                    if (xAxis.isAutoRange()) {
-                                        xAxis.setAutoRange(true);            // re-apply auto-range
-                                        xAxis.setFixedAutoRange(window);     // window width in ms
-                                        Date lower = new Date(date.getTime() - window);
-                                        updateYAxisRange(plot, lower, date); // auto-adjust y-axis range for window
-                                    }
+                        // ============== INSERT NEW TICK AT THE START OF THE LIST ==============
+                        // Insert the new tick as the first element of the stocks list.
+                        // This keeps the list sorted in descending (most recent first) order.
+                        // Create a fully populated StockUnit object for this tick.
+                        StockUnit tick = new StockUnit.Builder()
+                                .open(open)
+                                .high(high)
+                                .low(low)
+                                .close(close)
+                                .adjustedClose(close)
+                                .volume(volume)
+                                .dividendAmount(0)
+                                .splitCoefficient(0)
+                                .time(value.getTimestamp())
+                                .build();
 
-                                    // Update the time series dataset with new close price for this second
-                                    double latestClose = value.getClose();
-                                    timeSeries.addOrUpdate(new Second(date), latestClose);
+                        stocks.add(0, tick); // Insert newest tick at index 0.
 
-                                    // Add the new data to the OHLC series as a new candle/bar.
-                                    // If there is a duplicate time or invalid, this may throw—so ignore errors.
-                                    try {
-                                        ohlcSeries.add(new OHLCItem(
-                                                new Second(date),
-                                                value.getOpen(),
-                                                value.getHigh(),
-                                                value.getLow(),
-                                                value.getClose()
-                                        ));
-                                    } catch (Exception ignored) {
-                                        // Sometimes throws if duplicate key—ignore for now
-                                    }
+                        // =================== AGGREGATE AND UPDATE CHART DATA ===================
+                        try {
+                            // Parse the timestamp from the server into a Date object (Java).
+                            Date tickDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+                            // Determine the aggregation granularity for the chart (Minute/Hour/Day).
+                            Class<? extends RegularTimePeriod> periodClass = determineAggregationPeriod(lastChoice);
 
-                                    // Request the chartPanel to repaint itself with the new data
-                                    chartPanel.repaint();
-                                } catch (Exception e) {
-                                    // Any error parsing data or updating UI is logged for debugging
-                                    e.printStackTrace();
-                                    logTextArea.append("Error updating chart: " + e.getMessage() + "\n");
-                                    logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                            // Create a RegularTimePeriod (Minute, Hour, etc.) representing the current bucket.
+                            RegularTimePeriod tickPeriod = RegularTimePeriod.createInstance(
+                                    periodClass, tickDate, TimeZone.getDefault(), Locale.getDefault()
+                            );
+
+                            // Find if this period already has a candle in the OHLC series.
+                            int periodIndex = -1;
+                            for (int i = 0; i < ohlcSeries.getItemCount(); i++) {
+                                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(i);
+                                RegularTimePeriod itemPeriod = item.getPeriod();
+                                if (itemPeriod.equals(tickPeriod)) {
+                                    periodIndex = i;
+                                    break;
                                 }
-                            });
-                        } else {
-                            // If no new data was returned, log for debugging
-                            logTextArea.append("No real-time updates available\n");
-                            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-                        }
-                    });
-                }
-            }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
-
-            // 2. Notification panel update: Update each notification's chart with live data
-
-            // This scheduled task runs in its own thread and:
-            // - Iterates over all active notifications in notificationListModel.
-            // - For each, fetches the current tick for the associated stock symbol.
-            // - Updates the notification's chart panel and datasets accordingly.
-            if (notificationTask == null || notificationTask.isCancelled() || notificationTask.isDone()) {
-
-                notificationTask = executorService.scheduleAtFixedRate(() -> {
-                    try {
-                        // Only run if there are active notifications
-                        if (!notificationListModel.isEmpty()) {
-                            for (int i = 0; i < notificationListModel.size(); i++) {
-                                Notification notification = notificationListModel.getElementAt(i);
-
-                                // For each notification, fetch a real-time tick for that symbol
-                                mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
-                                    // Skip if no update available for this notification's symbol
-                                    if (value == null) return;
-
-                                    // All updates must happen on Swing's UI thread
-                                    SwingUtilities.invokeLater(() -> {
-                                        try {
-                                            // Parse the time and build a time period for plotting
-                                            Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
-                                            Second period = new Second(newDate);
-
-                                            // Get the starting date for this notification's time series window
-                                            Date start = notification.getTimeSeries().getDataItem(0).getPeriod().getStart();
-
-                                            // Add a new candle/bar to the notification's OHLC series if it's new
-                                            OHLCSeries ohlcSeries = notification.getOHLCSeries();
-                                            if (ohlcSeries.getItemCount() == 0 || !ohlcSeries.getPeriod(ohlcSeries.getItemCount() - 1).equals(period)) {
-                                                ohlcSeries.add(new OHLCItem(
-                                                        period,
-                                                        value.getOpen(),
-                                                        value.getHigh(),
-                                                        value.getLow(),
-                                                        value.getClose()
-                                                ));
-                                            }
-
-                                            // Add/update the closing value for the time series in the notification
-                                            TimeSeries series = notification.getTimeSeries();
-                                            series.addOrUpdate(period, value.getClose());
-
-                                            // Only attempt to update chart if it's currently visible
-                                            ChartPanel chartPanel = notification.getChartPanel();
-                                            if (chartPanel != null) {
-                                                // Obtain the chart plot (where axes and data are drawn)
-                                                XYPlot plot = chartPanel.getChart().getXYPlot();
-
-                                                // The X-axis for time (dates) in this chart
-                                                DateAxis axis = (DateAxis) plot.getDomainAxis();
-
-                                                // === Move X-axis window ===
-                                                // Adjust the horizontal axis so that the chart view always includes the newest point
-                                                // The window will show everything from 'start' to 'newDate'
-                                                axis.setRange(start, newDate);
-
-                                                // === Prepare for Y-axis dynamic scaling ===
-
-                                                // Initialize trackers for the minimum and maximum values to extremely wide limits
-                                                // We'll update these as we scan through the data to fit just the relevant window
-                                                double minY = Double.MAX_VALUE;
-                                                double maxY = -Double.MAX_VALUE;
-
-                                                // === Scan through all close values in the notification's TimeSeries ===
-                                                // We want to find the lowest and highest close price between 'start' and 'newDate'
-                                                for (int j = 0; j < series.getItemCount(); j++) {
-                                                    Date date = series.getTimePeriod(j).getEnd();
-                                                    // Only consider points inside the current X-axis window (not before 'start' and not after 'newDate')
-                                                    if (!date.before(start) && !date.after(newDate)) {
-                                                        double closeValue = series.getValue(j).doubleValue();
-                                                        // Update minimum and maximum close values found so far
-                                                        minY = Math.min(minY, closeValue);
-                                                        maxY = Math.max(maxY, closeValue);
-                                                    }
-                                                }
-
-                                                // === Scan through all OHLC values in the same window ===
-                                                // OHLC (candles) give extra info: check for highest high and lowest low
-                                                for (int k = 0; k < ohlcSeries.getItemCount(); k++) {
-                                                    OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
-                                                    Date itemDate = item.getPeriod().getEnd();
-                                                    // Again, only consider OHLC data inside the visible window
-                                                    if (!itemDate.before(start) && !itemDate.after(newDate)) {
-                                                        // Update min and max if this OHLC bar sets a new high or low
-                                                        minY = Math.min(minY, item.getLowValue());
-                                                        maxY = Math.max(maxY, item.getHighValue());
-                                                    }
-                                                }
-
-                                                // === Update the Y-axis range if we found at least one valid value ===
-                                                if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
-                                                    ValueAxis yAxis = plot.getRangeAxis();
-                                                    // Add a 10% margin above and below for better readability (no data right at the edge)
-                                                    yAxis.setRange(
-                                                            minY - (maxY - minY) * 0.1,      // Lower bound: a bit below the min
-                                                            maxY + (maxY - minY) * 0.1 + 0.1 // Upper bound: a bit above the max (+0.1 in case of flat range)
-                                                    );
-                                                }
-
-                                                // === Redraw chart with the newly updated axis ranges and datasets ===
-                                                chartPanel.repaint();
-                                            }
-                                        } catch (Exception ex) {
-                                            // Log any unexpected error during the notification update
-                                            ex.printStackTrace();
-                                        }
-                                    });
-                                });
                             }
+
+                            // Prepare OHLC values to be added or updated in the series.
+                            double openVal = tick.getOpen();
+                            double highVal = tick.getHigh();
+                            double lowVal = tick.getLow();
+                            double closeVal = tick.getClose();
+
+                            if (periodIndex >= 0) {
+                                // If a candle for this period exists, update it:
+                                // - Open is the original open for the period (first tick).
+                                // - High is the max of current and previous high.
+                                // - Low is the min of current and previous low.
+                                // - Close is the latest close.
+                                OHLCItem existing = (OHLCItem) ohlcSeries.getDataItem(periodIndex);
+                                openVal = existing.getOpenValue(); // Keep the period's first open.
+                                highVal = Math.max(existing.getHighValue(), tick.getHigh());
+                                lowVal = Math.min(existing.getLowValue(), tick.getLow());
+                                // Remove the old candle before adding the updated one (required by JFreeChart).
+                                ohlcSeries.remove(periodIndex);
+                            }
+
+                            // Add the new/updated candle to the OHLC series for this period.
+                            ohlcSeries.add(tickPeriod, openVal, highVal, lowVal, closeVal);
+
+                        } catch (Exception ex) {
+                            // Any error in parsing or updating chart data is logged for debugging.
+                            ex.printStackTrace();
                         }
-                    } catch (Exception ex) {
-                        // If something unexpected goes wrong, log it for debugging
-                        ex.printStackTrace();
+
+                        // All chart and UI updates must run on the Swing EDT for safety
+                        SwingUtilities.invokeLater(() -> {
+                            try {
+                                // Parse the server timestamp into a Java Date for plotting
+                                Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+
+                                // Get the current plot and X-axis for auto-scrolling logic
+                                XYPlot plot = chartDisplay.getChart().getXYPlot();
+                                DateAxis xAxis = (DateAxis) plot.getDomainAxis();
+
+                                // Calculate current time window in milliseconds (e.g., 5 min, 1 hr)
+                                long window = getDurationMillis(currentTimeRangeChoice);
+
+                                /*
+                                 * If the user hasn't zoomed in or out (auto-range is true),
+                                 * scroll the chart window forward to always show the latest data.
+                                 * This acts like a rolling window—otherwise, respect user zoom.
+                                 */
+                                if (xAxis.isAutoRange()) {
+                                    xAxis.setAutoRange(true);            // re-apply auto-range
+                                    xAxis.setFixedAutoRange(window);     // window width in ms
+                                    Date lower = new Date(date.getTime() - window);
+                                    updateYAxisRange(plot, lower, date); // auto-adjust y-axis range for window
+                                }
+
+                                // ==================== TIME SERIES AND CURRENT PRICE MARKER UPDATE ====================
+
+                                // Update the chart's TimeSeries dataset with the new close price for this tick.
+                                // Each Second object represents a unique timestamp (to-the-second granularity).
+                                timeSeries.addOrUpdate(new Second(date), close);
+
+                                // --- Add or Update the "Current Price" marker on the chart ---
+                                // First, remove any previous marker so only one is shown at a time.
+
+                                if (!Double.isNaN(close)) { // Only act if the close price is a valid number (not missing)
+                                    // Retrieve all current range markers on the plot in the FOREGROUND layer.
+                                    Collection<?> existingMarkers = plot.getRangeMarkers(Layer.FOREGROUND);
+                                    List<ValueMarker> toRemove = new ArrayList<>(); // List to hold markers we want to remove
+
+                                    // Scan through all foreground markers to find those labeled "CURRENT_PRICE".
+                                    // (We use this label to distinguish from other types of markers/overlays.)
+                                    if (existingMarkers != null) {
+                                        for (Object obj : existingMarkers) {
+                                            // instanceof with pattern matching (Java 16+): checks type and casts at once
+                                            if (obj instanceof ValueMarker marker && "CURRENT_PRICE".equals(marker.getLabel())) {
+                                                toRemove.add(marker); // Mark this marker for removal
+                                            }
+                                        }
+                                        // Remove all "CURRENT_PRICE" markers found above (should only be one, but robust for multiple)
+                                        for (ValueMarker marker : toRemove) {
+                                            plot.removeRangeMarker(marker, Layer.FOREGROUND);
+                                        }
+                                    }
+
+                                    // --- Add the new "Current Price" marker at the latest close ---
+                                    // Marker color is determined by the movement since the last close (green=up, red=down, gray=flat).
+                                    ValueMarker priceMarker = getValueMarker(close);
+                                    plot.addRangeMarker(priceMarker, Layer.FOREGROUND);
+
+                                    // Update the stored last close value for use on the next tick.
+                                    lastClose = close;
+                                }
+
+                                chartPanel.repaint();
+                            } catch (Exception e) {
+                                // Any error parsing data or updating UI is logged for debugging
+                                e.printStackTrace();
+                                logTextArea.append("Error updating chart: " + e.getMessage() + "\n");
+                                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                            }
+                        });
+                    } else {
+                        // If no new data was returned, log for debugging
+                        logTextArea.append("No real-time updates available\n");
+                        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
                     }
-                }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+                });
+            }
+        }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+    }
+
+    /**
+     * Creates a price marker for the chart's Y-axis, visually indicating the current price.
+     * <p>
+     * The marker color dynamically reflects price movement relative to the previous close:
+     * - Green: price increased
+     * - Red: price decreased
+     * - Gray: unchanged or first tick
+     * The marker includes a label ("CURRENT_PRICE"), semi-transparent fill, and anchor
+     * positions for proper chart display.
+     *
+     * @param close The latest closing price to mark on the chart.
+     * @return A configured {@link ValueMarker} representing the current price level.
+     */
+    @NotNull
+    private static ValueMarker getValueMarker(double close) {
+        // Default marker color (gray for unchanged or first tick)
+        Color markerColor = Color.GRAY;
+        if (lastClose != null) {
+            if (close > lastClose) {
+                markerColor = Color.GREEN; // Upward move
+            } else if (close < lastClose) {
+                markerColor = Color.RED;   // Downward move
             }
         }
+        // Create and configure the marker for chart display
+        ValueMarker priceMarker = new ValueMarker(close, markerColor, new BasicStroke(2f));
+        priceMarker.setLabel("CURRENT_PRICE");
+        priceMarker.setAlpha(0.7f);
+        priceMarker.setLabelAnchor(RectangleAnchor.RIGHT);
+        priceMarker.setLabelTextAnchor(TextAnchor.CENTER_LEFT);
+        return priceMarker;
+    }
+
+    /**
+     * Stops any ongoing scheduled notification update task.
+     * <p>
+     * This method safely cancels the background notification polling/execution task
+     * (if running) by requesting an interrupt and then clearing the reference, making
+     * it eligible for garbage collection. Calling this ensures that notification
+     * updates are paused/stopped when not in real-time mode, preventing unnecessary
+     * resource usage and potential memory leaks.
+     * </p>
+     */
+    public static void stopNotificationUpdates() {
+        // Only attempt to cancel if the task exists and is still running or scheduled.
+        if (notificationTask != null && !notificationTask.isCancelled() && !notificationTask.isDone()) {
+            // Cancel the task immediately. 'true' requests an interrupt if the task is currently running.
+            notificationTask.cancel(true);
+            // Remove the reference to the cancelled task, making it eligible for garbage collection.
+            notificationTask = null;
+        }
+    }
+
+    /**
+     * <b>Updates all active notification panels with live, real-time price data.</b>
+     * <p>
+     * This method launches a scheduled background task that periodically (every second):
+     * <ul>
+     *     <li>Iterates through all currently active notifications.</li>
+     *     <li>For each notification, fetches the latest tick (price data) for its associated stock symbol.</li>
+     *     <li>Updates the notification's candlestick (OHLC) and time series datasets to reflect new information.</li>
+     *     <li>Ensures all UI changes happen safely on the Swing Event Dispatch Thread (EDT).</li>
+     * </ul>
+     * <b>Key details:</b>
+     * <ul>
+     *     <li>Before starting, cancels any existing notification polling tasks to prevent duplicate threads or leaks.</li>
+     *     <li>Each mini-chart is updated with proper OHLC aggregation for each minute, simulating open/high/low/close using available real-time data.</li>
+     *     <li>Thread safety is maintained through explicit synchronization on the {@code OHLCSeries} object.</li>
+     *     <li>The method only starts a new polling task if none is running, or if the previous task was cancelled or finished.</li>
+     *     <li>Errors and exceptions are logged to facilitate debugging.</li>
+     * </ul>
+     * <b>Threading model:</b>
+     * <ul>
+     *     <li>The polling logic runs in a dedicated background executor thread.</li>
+     *     <li>All updates that interact with Swing components or chart data structures are run using {@link SwingUtilities#invokeLater(Runnable)}.</li>
+     * </ul>
+     * <b>Use case:</b>
+     * <ul>
+     *     <li>This method is typically called whenever real-time notification updates should begin, such as after enabling real-time mode or when notifications are created.</li>
+     * </ul>
+     *
+     * <p><b>Note:</b> This method is static and manipulates global data structures such as {@code notificationListModel},
+     * so it is not intended for reentrant or multi-instance use.</p>
+     *
+     * @see #stopNotificationUpdates()
+     * @see javax.swing.SwingUtilities#invokeLater(Runnable)
+     * @see java.util.concurrent.ScheduledExecutorService
+     */
+    private static void updateNotifications() {
+        // First, stop any previous notification polling task to avoid multiple threads or memory leaks.
+        stopNotificationUpdates();
+
+        // This method updates the notification panel(s) with live data for all active notifications.
+        // The background polling task only starts if no other notification polling task is running.
+        if (notificationTask == null || notificationTask.isCancelled() || notificationTask.isDone()) {
+
+            // Start a new scheduled task that runs every second (in its own executor thread)
+            notificationTask = executorNotificationService.scheduleAtFixedRate(() -> {
+                try {
+                    // Only update notifications if there are any currently active
+                    if (!notificationListModel.isEmpty()) {
+                        // Iterate over all active notification objects
+                        for (int i = 0; i < notificationListModel.size(); i++) {
+                            Notification notification = notificationListModel.getElementAt(i);
+
+                            // For each notification, asynchronously fetch the most recent tick for that symbol
+                            mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
+                                // If no new data is available for this symbol, skip further processing
+                                if (value == null) return;
+
+                                // Determine if we need to use extended hours quote (pre-market/after-hours)
+                                boolean extended = useExtended(value);
+
+                                // For real-time ticks, only 'close' is typically accurate.
+                                // Simulate open/high/low with the same value (since true OHLC is unavailable for live ticks).
+                                double close = extended ? value.getExtendedHoursQuote() : value.getClose();
+                                double open = extended ? value.getExtendedHoursQuote() : value.getClose();
+                                double high = extended ? value.getExtendedHoursQuote() : value.getClose();
+                                double low = extended ? value.getExtendedHoursQuote() : value.getClose();
+
+                                // Swing UI updates must always happen on the Event Dispatch Thread (EDT) for thread safety.
+                                SwingUtilities.invokeLater(() -> {
+                                    OHLCSeries ohlcSeries = notification.getOHLCSeries();
+                                    try {
+                                        // Parse the server's timestamp into a Java Date object for charting
+                                        Date tickDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+
+                                        // Notification mini-charts always aggregate by minute (for clarity)
+                                        RegularTimePeriod tickPeriod = new Minute(tickDate);
+
+                                        // Prepare initial OHLC values for this period
+                                        double openVal = open;
+                                        double highVal = high;
+                                        double lowVal = low;
+
+                                        // Check if there's already a candle for this minute in the OHLC series
+                                        int existingIndex = ohlcSeries.indexOf(tickPeriod);
+
+                                        // Get the starting date for this notification's visible chart window (for axis adjustment)
+                                        Date start = notification.getTimeSeries().getDataItem(0).getPeriod().getStart();
+
+                                        // Synchronize to avoid race conditions when multiple updates occur rapidly
+                                        synchronized (ohlcSeries) {
+                                            if (existingIndex >= 0) {
+                                                // If there's an existing candle, update OHLC as follows:
+                                                // - Open: retain the first tick's open value
+                                                // - High: set to max of previous high or this tick
+                                                // - Low:  set to min of previous low or this tick
+                                                // - Close: always use the most recent tick (current 'close')
+                                                OHLCItem existing = (OHLCItem) ohlcSeries.getDataItem(existingIndex);
+                                                openVal = existing.getOpenValue(); // Open always from the first tick
+                                                highVal = Math.max(existing.getHighValue(), high);
+                                                lowVal = Math.min(existing.getLowValue(), low);
+
+                                                // Remove the old candle (required by JFreeChart API to avoid duplicates)
+                                                ohlcSeries.remove(existingIndex);
+                                            }
+
+                                            // Add or replace the candle for this minute
+                                            ohlcSeries.add(tickPeriod, openVal, highVal, lowVal, close);
+                                        }
+
+                                        // Update/add the closing value to the notification's time series (for line chart rendering)
+                                        TimeSeries series = notification.getTimeSeries();
+                                        series.addOrUpdate(new Second(tickDate), close);
+
+                                        // Only attempt to update chart if it's currently visible
+                                        ChartPanel chartPanel = notification.getChartPanel();
+                                        if (chartPanel != null) {
+                                            // Obtain the chart plot (where axes and data are drawn)
+                                            XYPlot plot = chartPanel.getChart().getXYPlot();
+
+                                            // The X-axis for time (dates) in this chart
+                                            DateAxis axis = (DateAxis) plot.getDomainAxis();
+
+                                            // === Move X-axis window ===
+                                            // Adjust the horizontal axis so that the chart view always includes the newest point
+                                            // The window will show everything from 'start' to 'tickDate'
+                                            axis.setRange(start, new Date(tickDate.getTime() + 60 * 1000));
+
+                                            // === Prepare for Y-axis dynamic scaling ===
+
+                                            // Initialize trackers for the minimum and maximum values to extremely wide limits
+                                            // We'll update these as we scan through the data to fit just the relevant window
+                                            double minY = Double.MAX_VALUE;
+                                            double maxY = -Double.MAX_VALUE;
+
+                                            // === Scan through all close values in the notification's TimeSeries ===
+                                            // We want to find the lowest and highest close price between 'start' and 'tickDate'
+                                            for (int j = 0; j < series.getItemCount(); j++) {
+                                                Date date = series.getTimePeriod(j).getEnd();
+                                                // Only consider points inside the current X-axis window (not before 'start' and not after 'tickDate')
+                                                if (!date.before(start) && !date.after(tickDate)) {
+                                                    double closeValue = series.getValue(j).doubleValue();
+                                                    // Update minimum and maximum close values found so far
+                                                    minY = Math.min(minY, closeValue);
+                                                    maxY = Math.max(maxY, closeValue);
+                                                }
+                                            }
+
+                                            // === Scan through all OHLC values in the same window ===
+                                            // OHLC (candles) give extra info: check for highest high and lowest low
+                                            for (int k = 0; k < ohlcSeries.getItemCount(); k++) {
+                                                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
+                                                Date itemDate = item.getPeriod().getEnd();
+                                                // Again, only consider OHLC data inside the visible window
+                                                if (!itemDate.before(start) && !itemDate.after(tickDate)) {
+                                                    // Update min and max if this OHLC bar sets a new high or low
+                                                    minY = Math.min(minY, item.getLowValue());
+                                                    maxY = Math.max(maxY, item.getHighValue());
+                                                }
+                                            }
+
+                                            // === Update the Y-axis range if we found at least one valid value ===
+                                            if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
+                                                ValueAxis yAxis = plot.getRangeAxis();
+                                                // Add a 10% margin above and below for better readability (no data right at the edge)
+                                                yAxis.setRange(
+                                                        minY - (maxY - minY) * 0.05,      // Lower bound: a bit below the min
+                                                        maxY + (maxY - minY) * 0.05 + 0.05 // Upper bound: a bit above the max (+0.1 in case of flat range)
+                                                );
+                                            }
+
+                                            // === Redraw chart with the newly updated axis ranges and datasets ===
+                                            chartPanel.repaint();
+
+                                            // ======================== DRAW THE CURRENT CLOSE PRICE LINE ========================
+
+                                            // Use the most recent close value to draw a marker showing the "current price" on the Y axis.
+                                            // (This visually indicates the latest tick for the notification mini-chart.)
+
+                                            // --- REMOVE PREVIOUS "CURRENT_PRICE" MARKERS (if any) ---
+                                            // We only ever want one current price marker displayed per chart, so remove all existing ones first.
+                                            Collection<?> existingMarkers = plot.getRangeMarkers(Layer.FOREGROUND); // Get all foreground markers
+                                            List<ValueMarker> toRemove = new ArrayList<>(); // List for collecting markers that need removal
+
+                                            if (existingMarkers != null) {
+                                                // Loop through each marker and check if it's a ValueMarker with the "CURRENT_PRICE" label
+                                                for (Object obj : existingMarkers) {
+                                                    if (obj instanceof ValueMarker marker && "CURRENT_PRICE".equals(marker.getLabel())) {
+                                                        toRemove.add(marker); // Add it to the removal list
+                                                    }
+                                                }
+                                                // Remove all identified "CURRENT_PRICE" markers from the plot (should be at most one, but robust to bugs)
+                                                for (ValueMarker marker : toRemove) {
+                                                    plot.removeRangeMarker(marker, Layer.FOREGROUND);
+                                                }
+                                            }
+
+                                            // --- ADD THE NEW "CURRENT_PRICE" MARKER ---
+                                            // Determine the marker color based on price movement compared to the previous close for this symbol.
+                                            String symbol = notification.getSymbol(); // The stock symbol for this notification
+                                            Double notifLastClose = notificationLastClose.get(symbol); // Get the last close, may be null if first tick
+
+                                            // Create a new ValueMarker at the latest close value, with color showing price movement (green/up, red/down, gray/flat)
+                                            ValueMarker priceMarker = getValueMarker(notifLastClose, close);
+
+                                            // Add the new marker to the chart in the foreground layer (so it appears on top)
+                                            plot.addRangeMarker(priceMarker, Layer.FOREGROUND);
+
+                                            // Update the per-symbol last close mapping for the next tick,
+                                            // ensuring the next marker correctly reflects movement since this close.
+                                            notificationLastClose.put(symbol, close);
+
+                                            // === Redraw chart ===
+                                            chartPanel.repaint();
+                                        }
+                                    } catch (Exception ex) {
+                                        // Log any unexpected error during the notification update
+                                        ex.printStackTrace();
+                                    }
+                                });
+                            });
+                        }
+                    }
+                } catch (Exception ex) {
+                    // If something unexpected goes wrong, log it for debugging
+                    ex.printStackTrace();
+                }
+            }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+        }
+    }
+
+    /**
+     * Creates a value marker for the current price in notification mini-charts,
+     * with color reflecting price movement versus the last close for this symbol.
+     * <p>
+     * - Green: price increased since last close.
+     * - Red: price decreased since last close.
+     * - Gray: unchanged or no last close provided.
+     * <p>
+     * Marker includes a label ("CURRENT_PRICE"), semi-transparency, and anchored label positioning.
+     *
+     * @param notifLastClose The last known closing price for this notification (nullable).
+     * @param close          The current price to mark.
+     * @return A configured {@link ValueMarker} for chart overlay.
+     */
+    @NotNull
+    private static ValueMarker getValueMarker(Double notifLastClose, double close) {
+        // Default to gray: indicates unchanged or no prior close
+        Color markerColor = Color.GRAY;
+
+        // Determine marker color based on price movement vs. previous close
+        if (notifLastClose != null) {
+            if (close > notifLastClose) {
+                markerColor = Color.GREEN; // Price increased
+            } else if (close < notifLastClose) {
+                markerColor = Color.RED;   // Price decreased
+            }
+            // If equal, remains gray
+        }
+
+        // Create the ValueMarker at the 'close' price, using the determined color and a solid line stroke
+        ValueMarker priceMarker = new ValueMarker(close, markerColor, new BasicStroke(2f));
+
+        // Set the label for the marker (for legend or overlay)
+        priceMarker.setLabel("CURRENT_PRICE");
+        // Make the marker semi-transparent for better chart readability
+        priceMarker.setAlpha(0.7f);
+        // Position the marker label at the right edge of the plot
+        priceMarker.setLabelAnchor(RectangleAnchor.RIGHT);
+        // Vertically center the label next to the marker line
+        priceMarker.setLabelTextAnchor(TextAnchor.CENTER_LEFT);
+
+        return priceMarker;
     }
 
     /**
@@ -2284,9 +2658,10 @@ public class mainUI extends JFrame {
      * <p>
      * This method is called before starting a new real-time update task, ensuring that
      * only one polling task runs at a time and that no unnecessary background threads are left running.
+     * It cancels only the per-stock real-time updater (not other scheduled tasks, such as notification updaters).
      * <p>
-     * The method only cancels the per-stock real-time updater (not any other scheduled tasks,
-     * such as notification updaters).
+     * The method checks that the task is active and not already cancelled or completed before attempting cancellation,
+     * then nulls out the reference to facilitate garbage collection.
      */
     private void stopRealTimeUpdates() {
         // Check if the current real-time task exists and is still active (not already cancelled or finished)
@@ -3046,16 +3421,23 @@ public class mainUI extends JFrame {
     public static class eventActivateHypeMode implements ActionListener {
         // Single-threaded executor ensures only one Hype Mode scan at a time
         private static final ExecutorService executorService = Executors.newSingleThreadExecutor();
+        // Keep a reference to the currently running task
+        private static Future<?> currentTask = null;
 
         @Override
         public void actionPerformed(ActionEvent e) {
-            // Run the heavy analysis in the background so UI stays responsive
-            executorService.submit(() -> {
+            // Cancel any currently running analysis task to avoid overlap and wasted computation.
+            if (currentTask != null && !currentTask.isDone()) {
+                currentTask.cancel(true); // Attempt to interrupt the ongoing task if possible.
+            }
+
+            // Launch a new background analysis task (non-blocking, keeps UI responsive).
+            currentTask = executorService.submit(() -> {
                 try {
-                    // Kick off the mainDataHandler's hype mode analysis
+                    // Start the mainDataHandler's "hype mode" analysis for the selected market and volume.
                     mainDataHandler.startHypeMode(market, volume);
                 } catch (Exception ex) {
-                    // Log any error (for debugging)
+                    // Print any errors to the console/log for debugging.
                     ex.printStackTrace();
                 }
             });
