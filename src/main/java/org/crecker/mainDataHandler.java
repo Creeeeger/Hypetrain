@@ -13,6 +13,7 @@ import com.crazzyghost.alphavantage.stock.response.StockResponse;
 import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
+import org.jetbrains.annotations.NotNull;
 
 import javax.swing.*;
 import java.awt.*;
@@ -910,6 +911,7 @@ public class mainDataHandler {
         // Announce to the user that the download/fetch sequence is starting.
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+        symbols.add("CRWV"); // Add CoreWeave since its insane
 
         // Countdown latch is used to know when ALL symbol data (from file or API) has loaded.
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
@@ -1825,8 +1827,7 @@ public class mainDataHandler {
                             // Store to thread-safe structure for later analysis
                             timelines.computeIfAbsent(symbolUpper, k -> new ArrayList<>()).addAll(units);
                         } catch (IOException e) {
-                            System.out.println(symbol);
-                            throw new RuntimeException(e); // Surface for debugging
+                            throw new RuntimeException(e + " " + symbol); // Surface for debugging
                         } finally {
                             latch.countDown(); // Always count down, even if error
                             SwingUtilities.invokeLater(updateProgress); // UI progress
@@ -2468,7 +2469,6 @@ public class mainDataHandler {
         // Define how much you want to be able to sell
         double requiredNotional = volume;
         int liquidityLookBack = 10;        // How many bars/minutes to look back for average liquidity (e.g., 10 minutes)
-        System.out.print("liq: " + isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional) + " ");
 
         // Check if current and recent liquidity are sufficient to execute your trade without major slippage or waiting
         if (!isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
@@ -2480,7 +2480,6 @@ public class mainDataHandler {
         // - Uses all normalized features and their respective category weights.
         double dynamicAggro = calculateWeightedAggressiveness(normalizedFeatures, manualAggressiveness); // Higher manualAgg increases sensitivity
 
-        System.out.print("dyna ag: " + dynamicAggro + " ");
         // === 2. Set adaptive threshold for cumulative percentage move, based on feature activations ===
         // - The more bullish the features, the smaller the required cumulative gain for an alert
         double cumulativeThreshold = 0.6 * dynamicAggro;
@@ -2489,7 +2488,6 @@ public class mainDataHandler {
         // - Used to detect sudden strong upward momentum
         double changeUp2 = calculateWindowChange(stocks, 2);
         double changeUp3 = calculateWindowChange(stocks, 3);
-        System.out.print("c2 " + changeUp2 + " c3 " + changeUp3 + " ");
 
         // === 4. Define weighted scores for each feature category (used in "Greed Mode" scoring) ===
         final Map<String, Double> WEIGHTS = Map.of(
@@ -2532,6 +2530,10 @@ public class mainDataHandler {
             }
         }
 
+        if (market == null) {
+            market = "ultraVolatile";
+        }
+
         // Uptrend line detector with advanced conditions - chosen for the correct market
         boolean uptrend = switch (market) {
             // Low aggressiveness config
@@ -2567,15 +2569,6 @@ public class mainDataHandler {
                         features[6] == 1 &&                                   // Keltner channel breakout
                         changeUp2 >= 1.5 * manualAggressiveness &&            // 2-bar momentum strong enough
                         changeUp3 >= 1.5 * manualAggressiveness;              // 3-bar momentum strong enough
-
-        System.out.println("TRIGGER SPIKE? anomaly=" + (features[4] == 1) +
-                " cumGain=" + (features[5] >= cumulativeThreshold) +
-                " dynAggro=" + (dynamicAggro >= threshold) +
-                " pred=" + (prediction >= 0.9) +
-                " keltner=" + (features[6] == 1) +
-                " mom2=" + (changeUp2 >= 1.5 * manualAggressiveness) +
-                " mom3=" + (changeUp3 >= 1.5 * manualAggressiveness) +
-                " --> isTriggered=" + isTriggered);
 
         int notificationCode = -1; // -1 means no notification
 
@@ -3008,8 +3001,7 @@ public class mainDataHandler {
         dbg.append(result ? "✅ TRIGGERED!\n" : "❌ No trigger.\n");
 
         if (debug) {
-            System.out.print(dbg);
-            System.out.println();
+            System.out.print(dbg + "\n");
         }
 
         return result;
@@ -3906,25 +3898,11 @@ public class mainDataHandler {
                 // Use try-with-resources to guarantee file is properly closed even if errors occur
                 try (BufferedWriter writer = new BufferedWriter(new FileWriter(data, true))) { // true: append mode
 
-                    // Format the StockUnit data as a single line (CSV-like but using custom format)
-                    String formatted = String.format(
-                            "StockUnit{open=%.4f, high=%.4f, low=%.4f, close=%.4f, " +
-                                    "adjustedClose=%.1f, volume=%.1f, dividendAmount=%.1f, " +
-                                    "splitCoefficient=%.1f, date=%s, symbol=%s, " +
-                                    "percentageChange=%.1f, target=%d},",
-                            response.getOpen(),
-                            response.getHigh(),
-                            response.getLow(),
-                            response.getClose(),
-                            0.0, // adjustedClose - set to 0.0 here; replace with actual value if needed
-                            response.getVolume(),
-                            0.0, // dividendAmount - set to 0.0 here
-                            0.0, // splitCoefficient - set to 0.0 here
-                            response.getTimestamp(),
-                            response.getSymbol(),
-                            0.0, // percentageChange - set to 0.0 here
-                            0    // target - set to 0 here
-                    );
+                    // ================== TICK DATA PREPROCESSING ==================
+
+                    // Check if we should use extended-hours data (pre- / post-market) and build stock then
+                    // fallback to regular close/open if not present.
+                    String formatted = buildStock(response, useExtended(response));
 
                     writer.write(formatted);
                     writer.newLine();
@@ -3936,6 +3914,60 @@ public class mainDataHandler {
                 System.err.println("Error writing to file: " + e.getMessage());
             }
         }), 0, 1, TimeUnit.SECONDS);
+    }
+
+    /**
+     * Builds a formatted string representing a single stock "tick" as a StockUnit.
+     * <p>
+     * This method takes a real-time market data response and creates a single-line summary
+     * of a stock's state, formatted for further processing or storage. In the context of real-time
+     * streaming, only the latest available price ("close") is reliable. As such, open, high, and low
+     * are set equal to close, since only a single tick's price is known.
+     * <p>
+     * The method supports both regular and extended-hours quotes. Non-essential fields (e.g., adjustedClose,
+     * dividendAmount, splitCoefficient, percentageChange, target) are populated with placeholders and can
+     * be updated post-processing as needed.
+     *
+     * @param response the real-time quote/tick data, encapsulated in a RealTimeResponse.RealTimeMatch object
+     * @param extended whether to use extended-hours quote (if available), otherwise regular close price
+     * @return a formatted string containing all relevant StockUnit fields, ready for CSV-like output
+     */
+    @NotNull
+    private static String buildStock(RealTimeResponse.RealTimeMatch response, boolean extended) {
+        // For a single tick, open/high/low/close are all set to the same value
+        // This value comes from either the extended-hours quote or the regular close price, based on the flag.
+        double open = extended ? response.getExtendedHoursQuote() : response.getClose();
+        double high = extended ? response.getExtendedHoursQuote() : response.getClose();
+        double low = extended ? response.getExtendedHoursQuote() : response.getClose();
+        double close = extended ? response.getExtendedHoursQuote() : response.getClose();
+
+        // Real-time volume (could be zero in extended hours, or not always updated in after-market sessions)
+        double volume = response.getVolume();
+
+        // Format all stock fields into a custom string representation.
+        // - adjustedClose: Placeholder 0.0; typically calculated later for EOD data.
+        // - dividendAmount: 0.0 (Not available in real-time tick data).
+        // - splitCoefficient: 0.0 (No split info in tick data).
+        // - date: timestamp from tick data.
+        // - symbol: ticker symbol.
+        // - percentageChange: Placeholder 0.0 (Calculated in post-processing).
+        // - target: Placeholder 0
+        return String.format(
+                "StockUnit{open=%.4f, high=%.4f, low=%.4f, close=%.4f, " + "adjustedClose=%.1f, volume=%.3f, dividendAmount=%.1f, " +
+                        "splitCoefficient=%.1f, date=%s, symbol=%s, " + "percentageChange=%.1f, target=%d},",
+                open,
+                high,
+                low,
+                close,
+                0.0, // adjustedClose - placeholder
+                volume,
+                0.0, // dividendAmount - placeholder
+                0.0, // splitCoefficient - placeholder
+                response.getTimestamp(),
+                response.getSymbol(),
+                0.0, // percentageChange - placeholder
+                0    // target - placeholder
+        );
     }
 
     /**

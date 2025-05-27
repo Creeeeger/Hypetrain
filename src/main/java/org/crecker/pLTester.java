@@ -40,7 +40,8 @@ import java.util.stream.Collectors;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
-import static org.crecker.mainUI.*;
+import static org.crecker.mainUI.logTextArea;
+import static org.crecker.mainUI.setDarkMode;
 
 /**
  * pLTester is the primary entry point and main orchestrator for
@@ -97,7 +98,7 @@ public class pLTester {
     /**
      * Array of stock symbols currently under analysis/trading.
      */
-    public final static String[] SYMBOLS = {"QBTS"};
+    public final static String[] SYMBOLS = {"CRWV"};
 
     /**
      * Whether to display candlestick charts (true) or time series line charts (false).
@@ -107,7 +108,7 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 7500;
+    private final static int cut = 10000;
 
     /**
      * Program entry point.
@@ -115,7 +116,8 @@ public class pLTester {
      */
     public static void main(String[] args) {
         // updateStocks(); // Optionally refresh/download all stocks (uncomment if needed)
-        PLAnalysis();
+        // PLAnalysis();
+        realTimeDataCollector("NVDA");
     }
 
     /**
