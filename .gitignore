@@ -53,3 +53,9 @@ build/
 
 # Ignore configuration XML files
 config.xml
+
+# ignore cache
+cache/
+!ToDO.txt
+.txt
+/cache/
