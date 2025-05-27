@@ -1228,11 +1228,22 @@ public class mainDataHandler {
      *              close and extended-hours quote.
      * @return <code>true</code> if the extended-hours quote should be used; <code>false</code> otherwise.
      */
+
     static boolean useExtended(RealTimeResponse.RealTimeMatch value) {
-        // Use extended quote if:
-        // - The regular market close is zero (no trade in regular hours or market closed)
-        // - The extended-hours quote is available (nonzero, so we have after/pre-market price)
-        return value.getClose() == 0.0 && value.getExtendedHoursQuote() != 0.0;
+        // Expected timestamp format: "2025-05-27 19:46:41.670"
+        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS");
+        LocalDateTime dateTime = LocalDateTime.parse(value.getTimestamp(), formatter);
+        LocalTime time = dateTime.toLocalTime();
+
+        // US Stock market regular hours: 09:30 - 16:00 ET
+        LocalTime regularOpen = LocalTime.of(9, 30);
+        LocalTime regularClose = LocalTime.of(16, 0);
+
+        // Use extended if outside regular hours and an extended quote is available
+        boolean outsideRegular = time.isBefore(regularOpen) || time.isAfter(regularClose);
+        boolean hasExtended = value.getExtendedHoursQuote() != 0.0;
+
+        return outsideRegular && hasExtended;
     }
 
     /**
