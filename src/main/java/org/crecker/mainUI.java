@@ -96,6 +96,22 @@ public class mainUI extends JFrame {
     private static final ScheduledExecutorService executorService = Executors.newSingleThreadScheduledExecutor();
 
     /**
+     * Scheduled future representing the currently active per-stock real-time update polling task.
+     * <p>
+     * This reference is used to ensure only one polling job runs at any time for a selected stock.
+     * When switching stocks or disabling real-time updates, the existing task is cancelled and replaced.
+     */
+    private ScheduledFuture<?> realTimeTask;
+
+    /**
+     * Scheduled future for the always-on background task that updates all active notification panels.
+     * <p>
+     * This static reference ensures that notification updates are continuously polled, independent
+     * of which stock is currently selected. The task is only cancelled/restarted on shutdown or by design.
+     */
+    private static ScheduledFuture<?> notificationTask;
+
+    /**
      * Caching structure for aggregated chart data, mapping stock symbols and time bucket info
      * to precalculated OHLC (Open, High, Low, Close) data for efficiency.
      */
@@ -2050,8 +2066,7 @@ public class mainUI extends JFrame {
      * <b>Note:</b> This function only starts polling if the global <code>useRealtime</code> flag is set to true.
      */
     public void startRealTimeUpdates() {
-        // Create a new scheduled executor that will handle the polling loop for notifications (not the main chart)
-        final ScheduledExecutorService scheduledExecutor = Executors.newScheduledThreadPool(1);
+        stopRealTimeUpdates(); // Always stop old task before starting new one
 
         // Only set up polling if real-time updates are enabled in settings
         if (useRealtime) {
@@ -2062,7 +2077,7 @@ public class mainUI extends JFrame {
             // - Fetch the latest "tick" for the selected stock.
             // - If new data is available, update all chart datasets (TimeSeries, OHLCSeries).
             // - Redraw the chart panel in the GUI.
-            executorService.scheduleAtFixedRate(() -> {
+            realTimeTask = executorService.scheduleAtFixedRate(() -> {
                 // Double-check flag in case user disables real-time while running
                 if (useRealtime) {
                     // Fetch the latest data point for the selected stock (async API call)
@@ -2150,118 +2165,141 @@ public class mainUI extends JFrame {
             // - Iterates over all active notifications in notificationListModel.
             // - For each, fetches the current tick for the associated stock symbol.
             // - Updates the notification's chart panel and datasets accordingly.
-            scheduledExecutor.scheduleAtFixedRate(() -> {
-                try {
-                    // Only run if there are active notifications
-                    if (!notificationListModel.isEmpty()) {
-                        for (int i = 0; i < notificationListModel.size(); i++) {
-                            Notification notification = notificationListModel.getElementAt(i);
+            if (notificationTask == null || notificationTask.isCancelled() || notificationTask.isDone()) {
 
-                            // For each notification, fetch a real-time tick for that symbol
-                            mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
-                                // Skip if no update available for this notification's symbol
-                                if (value == null) return;
+                notificationTask = executorService.scheduleAtFixedRate(() -> {
+                    try {
+                        // Only run if there are active notifications
+                        if (!notificationListModel.isEmpty()) {
+                            for (int i = 0; i < notificationListModel.size(); i++) {
+                                Notification notification = notificationListModel.getElementAt(i);
 
-                                // All updates must happen on Swing's UI thread
-                                SwingUtilities.invokeLater(() -> {
-                                    try {
-                                        // Parse the time and build a time period for plotting
-                                        Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
-                                        Second period = new Second(newDate);
+                                // For each notification, fetch a real-time tick for that symbol
+                                mainDataHandler.getRealTimeUpdate(notification.getSymbol(), value -> {
+                                    // Skip if no update available for this notification's symbol
+                                    if (value == null) return;
 
-                                        // Get the starting date for this notification's time series window
-                                        Date start = notification.getTimeSeries().getDataItem(0).getPeriod().getStart();
+                                    // All updates must happen on Swing's UI thread
+                                    SwingUtilities.invokeLater(() -> {
+                                        try {
+                                            // Parse the time and build a time period for plotting
+                                            Date newDate = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+                                            Second period = new Second(newDate);
 
-                                        // Add a new candle/bar to the notification's OHLC series if it's new
-                                        OHLCSeries ohlcSeries = notification.getOHLCSeries();
-                                        if (ohlcSeries.getItemCount() == 0 || !ohlcSeries.getPeriod(ohlcSeries.getItemCount() - 1).equals(period)) {
-                                            ohlcSeries.add(new OHLCItem(
-                                                    period,
-                                                    value.getOpen(),
-                                                    value.getHigh(),
-                                                    value.getLow(),
-                                                    value.getClose()
-                                            ));
-                                        }
+                                            // Get the starting date for this notification's time series window
+                                            Date start = notification.getTimeSeries().getDataItem(0).getPeriod().getStart();
 
-                                        // Add/update the closing value for the time series in the notification
-                                        TimeSeries series = notification.getTimeSeries();
-                                        series.addOrUpdate(period, value.getClose());
+                                            // Add a new candle/bar to the notification's OHLC series if it's new
+                                            OHLCSeries ohlcSeries = notification.getOHLCSeries();
+                                            if (ohlcSeries.getItemCount() == 0 || !ohlcSeries.getPeriod(ohlcSeries.getItemCount() - 1).equals(period)) {
+                                                ohlcSeries.add(new OHLCItem(
+                                                        period,
+                                                        value.getOpen(),
+                                                        value.getHigh(),
+                                                        value.getLow(),
+                                                        value.getClose()
+                                                ));
+                                            }
 
-                                        // Only attempt to update chart if it's currently visible
-                                        ChartPanel chartPanel = notification.getChartPanel();
-                                        if (chartPanel != null) {
-                                            // Obtain the chart plot (where axes and data are drawn)
-                                            XYPlot plot = chartPanel.getChart().getXYPlot();
+                                            // Add/update the closing value for the time series in the notification
+                                            TimeSeries series = notification.getTimeSeries();
+                                            series.addOrUpdate(period, value.getClose());
 
-                                            // The X-axis for time (dates) in this chart
-                                            DateAxis axis = (DateAxis) plot.getDomainAxis();
+                                            // Only attempt to update chart if it's currently visible
+                                            ChartPanel chartPanel = notification.getChartPanel();
+                                            if (chartPanel != null) {
+                                                // Obtain the chart plot (where axes and data are drawn)
+                                                XYPlot plot = chartPanel.getChart().getXYPlot();
 
-                                            // === Move X-axis window ===
-                                            // Adjust the horizontal axis so that the chart view always includes the newest point
-                                            // The window will show everything from 'start' to 'newDate'
-                                            axis.setRange(start, newDate);
+                                                // The X-axis for time (dates) in this chart
+                                                DateAxis axis = (DateAxis) plot.getDomainAxis();
 
-                                            // === Prepare for Y-axis dynamic scaling ===
+                                                // === Move X-axis window ===
+                                                // Adjust the horizontal axis so that the chart view always includes the newest point
+                                                // The window will show everything from 'start' to 'newDate'
+                                                axis.setRange(start, newDate);
 
-                                            // Initialize trackers for the minimum and maximum values to extremely wide limits
-                                            // We'll update these as we scan through the data to fit just the relevant window
-                                            double minY = Double.MAX_VALUE;
-                                            double maxY = -Double.MAX_VALUE;
+                                                // === Prepare for Y-axis dynamic scaling ===
 
-                                            // === Scan through all close values in the notification's TimeSeries ===
-                                            // We want to find the lowest and highest close price between 'start' and 'newDate'
-                                            for (int j = 0; j < series.getItemCount(); j++) {
-                                                Date date = series.getTimePeriod(j).getEnd();
-                                                // Only consider points inside the current X-axis window (not before 'start' and not after 'newDate')
-                                                if (!date.before(start) && !date.after(newDate)) {
-                                                    double closeValue = series.getValue(j).doubleValue();
-                                                    // Update minimum and maximum close values found so far
-                                                    minY = Math.min(minY, closeValue);
-                                                    maxY = Math.max(maxY, closeValue);
+                                                // Initialize trackers for the minimum and maximum values to extremely wide limits
+                                                // We'll update these as we scan through the data to fit just the relevant window
+                                                double minY = Double.MAX_VALUE;
+                                                double maxY = -Double.MAX_VALUE;
+
+                                                // === Scan through all close values in the notification's TimeSeries ===
+                                                // We want to find the lowest and highest close price between 'start' and 'newDate'
+                                                for (int j = 0; j < series.getItemCount(); j++) {
+                                                    Date date = series.getTimePeriod(j).getEnd();
+                                                    // Only consider points inside the current X-axis window (not before 'start' and not after 'newDate')
+                                                    if (!date.before(start) && !date.after(newDate)) {
+                                                        double closeValue = series.getValue(j).doubleValue();
+                                                        // Update minimum and maximum close values found so far
+                                                        minY = Math.min(minY, closeValue);
+                                                        maxY = Math.max(maxY, closeValue);
+                                                    }
                                                 }
-                                            }
 
-                                            // === Scan through all OHLC values in the same window ===
-                                            // OHLC (candles) give extra info: check for highest high and lowest low
-                                            for (int k = 0; k < ohlcSeries.getItemCount(); k++) {
-                                                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
-                                                Date itemDate = item.getPeriod().getEnd();
-                                                // Again, only consider OHLC data inside the visible window
-                                                if (!itemDate.before(start) && !itemDate.after(newDate)) {
-                                                    // Update min and max if this OHLC bar sets a new high or low
-                                                    minY = Math.min(minY, item.getLowValue());
-                                                    maxY = Math.max(maxY, item.getHighValue());
+                                                // === Scan through all OHLC values in the same window ===
+                                                // OHLC (candles) give extra info: check for highest high and lowest low
+                                                for (int k = 0; k < ohlcSeries.getItemCount(); k++) {
+                                                    OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
+                                                    Date itemDate = item.getPeriod().getEnd();
+                                                    // Again, only consider OHLC data inside the visible window
+                                                    if (!itemDate.before(start) && !itemDate.after(newDate)) {
+                                                        // Update min and max if this OHLC bar sets a new high or low
+                                                        minY = Math.min(minY, item.getLowValue());
+                                                        maxY = Math.max(maxY, item.getHighValue());
+                                                    }
                                                 }
-                                            }
 
-                                            // === Update the Y-axis range if we found at least one valid value ===
-                                            if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
-                                                ValueAxis yAxis = plot.getRangeAxis();
-                                                // Add a 10% margin above and below for better readability (no data right at the edge)
-                                                yAxis.setRange(
-                                                        minY - (maxY - minY) * 0.1,      // Lower bound: a bit below the min
-                                                        maxY + (maxY - minY) * 0.1 + 0.1 // Upper bound: a bit above the max (+0.1 in case of flat range)
-                                                );
-                                            }
+                                                // === Update the Y-axis range if we found at least one valid value ===
+                                                if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
+                                                    ValueAxis yAxis = plot.getRangeAxis();
+                                                    // Add a 10% margin above and below for better readability (no data right at the edge)
+                                                    yAxis.setRange(
+                                                            minY - (maxY - minY) * 0.1,      // Lower bound: a bit below the min
+                                                            maxY + (maxY - minY) * 0.1 + 0.1 // Upper bound: a bit above the max (+0.1 in case of flat range)
+                                                    );
+                                                }
 
-                                            // === Redraw chart with the newly updated axis ranges and datasets ===
-                                            chartPanel.repaint();
+                                                // === Redraw chart with the newly updated axis ranges and datasets ===
+                                                chartPanel.repaint();
+                                            }
+                                        } catch (Exception ex) {
+                                            // Log any unexpected error during the notification update
+                                            ex.printStackTrace();
                                         }
-                                    } catch (Exception ex) {
-                                        // Log any unexpected error during the notification update
-                                        ex.printStackTrace();
-                                    }
+                                    });
                                 });
-                            });
+                            }
                         }
+                    } catch (Exception ex) {
+                        // If something unexpected goes wrong, log it for debugging
+                        ex.printStackTrace();
                     }
-                } catch (Exception ex) {
-                    // If something unexpected goes wrong, log it for debugging
-                    ex.printStackTrace();
-                }
-            }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+                }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+            }
         }
+    }
+
+    /**
+     * Stops the currently running scheduled real-time update task for the selected stock, if one is active.
+     * <p>
+     * This method is called before starting a new real-time update task, ensuring that
+     * only one polling task runs at a time and that no unnecessary background threads are left running.
+     * <p>
+     * The method only cancels the per-stock real-time updater (not any other scheduled tasks,
+     * such as notification updaters).
+     */
+    private void stopRealTimeUpdates() {
+        // Check if the current real-time task exists and is still active (not already cancelled or finished)
+        if (realTimeTask != null && !realTimeTask.isCancelled() && !realTimeTask.isDone()) {
+            // Cancel the task immediately. 'true' requests an interrupt if the task is currently running.
+            realTimeTask.cancel(true);
+            // Remove the reference to the cancelled task, making it eligible for garbage collection.
+            realTimeTask = null;
+        }
+        // If the task was already stopped or never started, do nothing.
     }
 
     /**
