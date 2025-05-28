@@ -267,19 +267,19 @@ public class mainDataHandler {
         put("allSymbols", new String[]{
                 "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
                 , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
-                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
+                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
                 , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-                , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
+                , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
                 , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
-                , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
-                , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
-                , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "HUT", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY", "INOD"
-                , "INSP", "INTC", "INTU", "IONQ", "IREN", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
-                , "LKNC", "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
+                , "DUOL", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
+                , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
+                , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
+                , "INSP", "INTC", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
+                , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
                 , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
                 , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
                 , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PLD"
-                , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
+                , "PLTR", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
                 , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
                 , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
                 , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
@@ -306,7 +306,7 @@ public class mainDataHandler {
                 "BABA", "BNS", "CNI", "CNQ", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
         });
         put("cryptoBlockchain", new String[]{
-                "BTDR", "CIFR", "CLSK", "COIN", "CORZ", "HSAI", "HUT", "IREN",
+                "BTDR", "COIN", "CORZ", "HSAI",
                 "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "SOUN"
         });
         put("energy", new String[]{
@@ -324,9 +324,9 @@ public class mainDataHandler {
         });
         put("highVolatile", new String[]{
                 "ACHR", "AFRM", "AMC", "AER", "ASPI", "ASTS", "BNTX", "BTDR", "CELH",
-                "CIFR", "CLSK", "COIN", "CORZ", "CVNA", "DJT", "DUOL",
-                "ENPH", "FLNC", "FIVE", "FOUR", "FUTU", "GME", "GMAB", "HUT",
-                "HOOD", "INOD", "INSP", "IREN", "JOBY", "LPLA", "LCID", "LMND",
+                "COIN", "CORZ", "CVNA", "DJT", "DUOL",
+                "ENPH", "FIVE", "FOUR", "FUTU", "GME", "GMAB",
+                "HOOD", "INSP", "JOBY", "LPLA", "LCID", "LMND",
                 "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
                 "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
                 "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
@@ -351,7 +351,7 @@ public class mainDataHandler {
                 "JNJ", "LLY", "MDGL", "MDT", "MRNA", "PFE", "REGN", "SNY", "VRTX", "ZTS"
         });
         put("quantum", new String[]{
-                "DXYZ", "IONQ", "QCOM", "QBTS", "QUBT", "RGTI"
+                "IONQ", "QCOM", "QBTS", "QUBT", "RGTI"
         });
         put("retail", new String[]{
                 "AMZN", "BBY", "COST", "HD", "LOW", "LULU", "MGM", "SONY",
@@ -366,10 +366,10 @@ public class mainDataHandler {
                 "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
         });
         put("smallCaps", new String[]{
-                "ACHR", "ASTS", "BE", "BTDR", "CAVA", "CIFR",
-                "CLSK", "CORZ", "CRDO", "DJT", "FLNC", "HUT", "IESC",
-                "INOD", "IONQ", "JOBY", "KODK", "LMND", "LUMN", "LUNR", "LX",
-                "MARA", "MBLY", "MDGL", "PLUG", "POWL", "QBTS", "QUBT", "RCAT",
+                "ACHR", "ASTS", "BE", "BTDR", "CAVA",
+                "CORZ", "CRDO", "DJT", "HUT", "IESC",
+                "IONQ", "JOBY", "KODK", "LMND", "LUMN", "LUNR", "LX",
+                "MARA", "MBLY", "MDGL", "POWL", "QBTS", "QUBT", "RCAT",
                 "RDDT", "RKLB", "RXRX", "SMR", "SOUN",
                 "STRL", "TMDX", "UPST", "VIR", "VKTX", "XPEV"
         });
@@ -378,13 +378,13 @@ public class mainDataHandler {
                 "META", "MSFT", "NVDA", "ORCL"
         });
         put("ultraVolatile", new String[]{
-                "ACHR", "AMC", "ASTS", "BTDR", "CIFR", "CLSK", "CORZ", "DJT",
-                "ENPH", "FLNC", "GME", "HUT", "INOD", "IONQ", "IREN", "JOBY", "LMND",
-                "LUMN", "LUNR", "MARA", "PLUG", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
+                "ACHR", "AMC", "ASTS", "BTDR", "CORZ", "DJT",
+                "ENPH", "GME", "IONQ", "JOBY", "LMND",
+                "LUMN", "LUNR", "MARA", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
                 "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
         });
         put("favourites", new String[]{
-                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "JOBY", "PLUG"
+                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "JOBY", "AMC", "U"
         });
     }};
 
@@ -836,19 +836,21 @@ public class mainDataHandler {
                                     boolean canBuyEnough = data != null && sharesToTrade <= data.maxOpenQuantity();
 
                                     // [OPTIONAL] Print detailed liquidity filter diagnostics for debugging
-                                    System.out.println("===== Liquidity Check for: " + symbol + " =====");
-                                    System.out.println("Trade Volume ($): " + tradeVolume);
-                                    System.out.println("Close Price: " + close);
-                                    System.out.println("Shares to Trade: " + sharesToTrade);
-                                    System.out.println("Market Cap: " + marketCapitalization);
-                                    System.out.println("Average Volume (30-day): " + averageVolume);
-                                    System.out.println("Shares Outstanding: " + sharesOutstanding);
-                                    System.out.println("Max Open Quantity: " + (data != null ? data.maxOpenQuantity() : "N/A"));
-                                    System.out.println("Valid Market Cap? " + validMarketCap);
-                                    System.out.println("Valid Volume? " + validVolume);
-                                    System.out.println("Valid Shares Outstanding? " + validSharesOutstanding);
-                                    System.out.println("Can Buy Enough? " + canBuyEnough);
-                                    System.out.println("=====================================");
+                                    System.out.println(
+                                            "===== Liquidity Check for: " + symbol + " =====\n" +
+                                                    "Trade Volume ($): " + tradeVolume + "\n" +
+                                                    "Close Price: " + close + "\n" +
+                                                    "Shares to Trade: " + sharesToTrade + "\n" +
+                                                    "Market Cap: " + marketCapitalization + "\n" +
+                                                    "Average Volume (30-day): " + averageVolume + "\n" +
+                                                    "Shares Outstanding: " + sharesOutstanding + "\n" +
+                                                    "Max Open Quantity: " + (data != null ? data.maxOpenQuantity() : "N/A") + "\n" +
+                                                    "Valid Market Cap? " + validMarketCap + "\n" +
+                                                    "Valid Volume? " + validVolume + "\n" +
+                                                    "Valid Shares Outstanding? " + validSharesOutstanding + "\n" +
+                                                    "Can Buy Enough? " + canBuyEnough + "\n" +
+                                                    "====================================="
+                                    );
 
                                     // [E] Only add to final result if ALL filters pass
                                     if (validMarketCap && validVolume && validSharesOutstanding && canBuyEnough) {
@@ -1066,57 +1068,40 @@ public class mainDataHandler {
                                     .outputSize(OutputSize.COMPACT)          // Only recent bars (smallest payload)
                                     .entitlement("realtime")                 // Specify real-time data entitlement
                                     .onSuccess(response -> {                 // Success callback (executed for each API call)
+                                        // Parse the response as a time series and extract all bars for the symbol
                                         TimeSeriesResponse tsResponse = (TimeSeriesResponse) response;
                                         List<StockUnit> stockUnits = tsResponse.getStockUnits();
 
                                         if (!stockUnits.isEmpty()) {
-                                            // Reverse the order so we process from oldest → newest (API returns newest first)
+                                            // AlphaVantage API returns newest bars first; reverse to chronological order (oldest → newest)
                                             List<StockUnit> reversedUnits = new ArrayList<>(stockUnits);
                                             Collections.reverse(reversedUnits);
 
-                                            // Retrieve or initialize the timeline for this symbol.
-                                            // Timelines are thread-safe lists, so updates from multiple fetches won't collide.
-                                            List<StockUnit> timeline = symbolTimelines
-                                                    .computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>()));
+                                            // Tag each bar with the symbol for clarity/tracking
+                                            reversedUnits.forEach(e -> e.setSymbol(symbol));
 
-                                            // Track which dates are already in the timeline, so we avoid duplicates.
-                                            Set<Date> existingDates = timeline.stream()
-                                                    .map(StockUnit::getDateDate)
-                                                    .collect(Collectors.toSet());
-
-                                            // Determine the last known bar's LocalDateTime (null if the timeline is empty)
-                                            LocalDateTime lastDate = timeline.isEmpty()
-                                                    ? null
-                                                    : timeline.get(timeline.size() - 1).getLocalDateTimeDate();
-                                            LocalDateTime now = LocalDateTime.now();
-                                            boolean refreshAll = false;
-
-                                            // If the timeline isn't empty, check for staleness:
-                                            if (lastDate != null) {
-                                                // If the most recent data is more than 10 minutes old, mark for full refresh.
-                                                if (lastDate.isBefore(now.minusMinutes(10))) {
-                                                    refreshAll = true;
+                                            // Ensure thread-safe update of the global timeline map
+                                            synchronized (symbolTimelines) {
+                                                // Retrieve the current timeline for this symbol, or create a new one if missing/empty
+                                                List<StockUnit> timeline = symbolTimelines.get(symbol);
+                                                if (timeline == null || timeline.isEmpty()) {
+                                                    timeline = new ArrayList<>();
+                                                    symbolTimelines.put(symbol, timeline);
                                                 }
-                                            }
 
-                                            if (refreshAll || lastDate == null) {
-                                                // Timeline too old or empty: add all bars from the API
-                                                for (StockUnit unit : reversedUnits) {
-                                                    unit.setSymbol(symbol);
-                                                    // Only add if this date hasn't already been recorded (extra safety)
-                                                    if (!existingDates.contains(unit.getDateDate())) {
-                                                        timeline.add(unit);
-                                                        existingDates.add(unit.getDateDate()); // Prevent duplicate add in this batch
-                                                    }
-                                                }
-                                            } else {
-                                                // Timeline is up-to-date: Only add bars with a timestamp after the last known one
-                                                for (StockUnit unit : reversedUnits) {
-                                                    unit.setSymbol(symbol);
-                                                    if (unit.getLocalDateTimeDate().isAfter(lastDate)) {
-                                                        timeline.add(unit);
-                                                    }
-                                                }
+                                                // Find the most recent bar already in our timeline (or null if none exist)
+                                                LocalDateTime newestTimelineDate = timeline.isEmpty()
+                                                        ? null
+                                                        : timeline.get(timeline.size() - 1).getLocalDateTimeDate();
+
+                                                // Only add API bars that are strictly newer than our latest cached/timeline bar
+                                                // If timeline is empty, keep all bars (for full reload)
+                                                List<StockUnit> newBars = reversedUnits.stream()
+                                                        .filter(unit -> newestTimelineDate == null || unit.getLocalDateTimeDate().isAfter(newestTimelineDate))
+                                                        .toList();
+
+                                                // Add the filtered new bars to our timeline
+                                                timeline.addAll(newBars);
                                             }
                                         }
                                         // Signal that this symbol's fetch is complete (success).
@@ -1132,7 +1117,7 @@ public class mainDataHandler {
 
                         // --- Wait for all fetches to complete (or timeout after 25 seconds) ---
                         // The main thread blocks here until all symbol requests finish or timeout is reached.
-                        if (!latch.await(25, TimeUnit.SECONDS)) {
+                        if (!latch.await(35, TimeUnit.SECONDS)) {
                             // If not all latches counted down, warn the user (could be slow API or network)
                             logTextArea.append("Warning: Timed out waiting for some data\n");
                         }
@@ -1314,9 +1299,6 @@ public class mainDataHandler {
                         updates++;
                     }
                 }
-
-                // Log to user/debug: how many bars were changed
-                logTextArea.append(symbol + ": Updated " + updates + " percentage changes\n");
             });
         }
 
@@ -1627,8 +1609,14 @@ public class mainDataHandler {
      */
     public static double normalizeScore(String indicator, double rawValue, String symbol) {
         // Lookup normalization range for this symbol/indicator
-        Map<String, Map<String, Double>> symbolRanges = SYMBOL_INDICATOR_RANGES.get(symbol);
-        Map<String, Double> range = symbolRanges.get(indicator);
+        Map<String, Double> range = null;
+        try {
+            Map<String, Map<String, Double>> symbolRanges = SYMBOL_INDICATOR_RANGES.get(symbol);
+            range = symbolRanges.get(indicator);
+        } catch (Exception e) {
+            e.printStackTrace();
+            System.out.println(symbol);
+        }
 
         if (range == null) {
             // Defensive: prevents silent bugs if an indicator is missing from ranges

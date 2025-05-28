@@ -108,7 +108,7 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 10000;
+    private final static int cut = 900; // analyse the day
 
     /**
      * Program entry point.
@@ -126,7 +126,7 @@ public class pLTester {
      */
     private static void updateStocks() {
         // Specify which stocks to update in batch
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "IREN", "PLTR", "MSTR", "ARM")) {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "PLTR", "MSTR", "ARM", "QUBT", "CRWV", "GME", "JOBY", "RCAT")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
     }
