@@ -464,3 +464,27 @@ You should only invest what you can afford to lose.
 ---
 
 **By using this program, you confirm that you have read, understood, and agree to this disclaimer.**
+
+---
+
+Launch command to ensure app stays awake
+
+- sudo caffeinate nice -n -18 "/Users/greg/Library/Java/JavaVirtualMachines/openjdk-24.0.1/Contents/Home/bin/java"
+  -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -classpath
+  /Users/greg/Desktop/Hypetrain/target/classes:
+  /Users/greg/.m2/repository/org/jfree/jfreechart/1.5.5/jfreechart-1.5.5.jar:
+  /Users/greg/.m2/repository/com/toedter/jcalendar/1.4/jcalendar-1.4.jar:
+  /Users/greg/.m2/repository/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar:
+  /Users/greg/.m2/repository/com/squareup/okio/okio/3.6.0/okio-3.6.0.jar:
+  /Users/greg/.m2/repository/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar:
+  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.9.10/kotlin-stdlib-common-1.9.10.jar:
+  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.8.21/kotlin-stdlib-jdk8-1.8.21.jar:
+  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.8.21/kotlin-stdlib-1.8.21.jar:
+  /Users/greg/.m2/repository/org/jetbrains/annotations/13.0/annotations-13.0.jar:
+  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.8.21/kotlin-stdlib-jdk7-1.8.21.jar:
+  /Users/greg/.m2/repository/com/squareup/moshi/moshi-adapters/1.15.1/moshi-adapters-1.15.1.jar:
+  /Users/greg/.m2/repository/com/squareup/moshi/moshi/1.15.1/moshi-1.15.1.jar:
+  /Users/greg/.m2/repository/org/json/json/20240303/json-20240303.jar:
+  /Users/greg/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.20.0/onnxruntime-1.20.0.jar:
+  /Users/greg/.m2/repository/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar:
+  /Users/greg/.m2/repository/com/formdev/flatlaf/3.6/flatlaf-3.6.jar org.crecker.mainUI

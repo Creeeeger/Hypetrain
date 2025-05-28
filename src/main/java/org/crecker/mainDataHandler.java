@@ -266,11 +266,11 @@ public class mainDataHandler {
     public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
         put("allSymbols", new String[]{
                 "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
-                , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "AOSL", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
+                , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
                 , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "Al", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
                 , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
                 , "CI", "CIFR", "CLSK", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
-                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DAVE", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
+                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
                 , "DUOL", "DXYZ", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
                 , "FIVE", "FLNC", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
                 , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "HUT", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY", "INOD"
@@ -280,11 +280,11 @@ public class mainDataHandler {
                 , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
                 , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PLD"
                 , "PLTR", "PLUG", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
-                , "RIO", "RIOT", "RIVN", "RKLB", "ROOT", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
-                , "SLB", "SMCI", "SMFG", "SMLR", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
+                , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
+                , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
                 , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
                 , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
-                , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "WULF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
+                , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
                 , "ZIM", "ZTO", "ZTS"
         });
         put("aiStocks", new String[]{
@@ -307,7 +307,7 @@ public class mainDataHandler {
         });
         put("cryptoBlockchain", new String[]{
                 "BTDR", "CIFR", "CLSK", "COIN", "CORZ", "HSAI", "HUT", "IREN",
-                "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "RIOT", "SOUN", "WULF"
+                "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "SOUN"
         });
         put("energy", new String[]{
                 "BP", "COP", "CVX", "ENB", "EOG", "ET", "OKE", "SLB", "VLO", "XOM"
@@ -324,14 +324,14 @@ public class mainDataHandler {
         });
         put("highVolatile", new String[]{
                 "ACHR", "AFRM", "AMC", "AER", "ASPI", "ASTS", "BNTX", "BTDR", "CELH",
-                "CIFR", "CLSK", "COIN", "CORZ", "CVNA", "DAVE", "DJT", "DUOL",
+                "CIFR", "CLSK", "COIN", "CORZ", "CVNA", "DJT", "DUOL",
                 "ENPH", "FLNC", "FIVE", "FOUR", "FUTU", "GME", "GMAB", "HUT",
                 "HOOD", "INOD", "INSP", "IREN", "JOBY", "LPLA", "LCID", "LMND",
                 "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
-                "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT", "RIOT",
-                "RKLB", "ROOT", "RIVN", "RUN", "RXRX", "SHOP", "SMCI", "SMLR",
+                "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
+                "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
                 "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "SWKS", "TMDX",
-                "TRU", "TTD", "UPST", "VKTX", "WOLF", "WULF", "XPEV", "GME", "AMC"
+                "TRU", "TTD", "UPST", "VKTX", "WOLF", "XPEV", "GME", "AMC"
         });
         put("industrials", new String[]{
                 "BA", "CAT", "DE", "GE", "HON", "LMT", "MMM", "NOC", "RTX", "UNP", "WM"
@@ -344,7 +344,7 @@ public class mainDataHandler {
                 "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MT", "MTRN",
                 "NFE", "NIO", "NOVA", "ODFL", "OKLO", "OPEN", "PTON", "RIVN",
                 "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL", "SWKS",
-                "TCOM", "TEM", "TRU", "TTD", "UPST", "VKTX", "WULF", "XPO", "ZETA", "ZIM"
+                "TCOM", "TEM", "TRU", "TTD", "UPST", "VKTX", "XPO", "ZETA", "ZIM"
         });
         put("pharma", new String[]{
                 "ABBV", "AMGN", "AZN", "BMRN", "BMY", "BNTX", "CELH", "GILD",
@@ -366,22 +366,25 @@ public class mainDataHandler {
                 "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
         });
         put("smallCaps", new String[]{
-                "AOSL", "ACHR", "ASTS", "BE", "BTDR", "CAVA", "CIFR",
-                "CLSK", "CORZ", "CRDO", "DAVE", "DJT", "FLNC", "HUT", "IESC",
+                "ACHR", "ASTS", "BE", "BTDR", "CAVA", "CIFR",
+                "CLSK", "CORZ", "CRDO", "DJT", "FLNC", "HUT", "IESC",
                 "INOD", "IONQ", "JOBY", "KODK", "LMND", "LUMN", "LUNR", "LX",
                 "MARA", "MBLY", "MDGL", "PLUG", "POWL", "QBTS", "QUBT", "RCAT",
-                "RDDT", "RIOT", "RKLB", "ROOT", "RXRX", "SMLR", "SMR", "SOUN",
-                "STRL", "TMDX", "UPST", "VIR", "VKTX", "WULF", "XPEV"
+                "RDDT", "RKLB", "RXRX", "SMR", "SOUN",
+                "STRL", "TMDX", "UPST", "VIR", "VKTX", "XPEV"
         });
         put("techGiants", new String[]{
                 "AAPL", "ADBE", "AMZN", "CRM", "CSCO", "GOOGL", "INTC",
                 "META", "MSFT", "NVDA", "ORCL"
         });
         put("ultraVolatile", new String[]{
-                "ACHR", "AMC", "ASTS", "BTDR", "CIFR", "CLSK", "CORZ", "DAVE", "DJT",
+                "ACHR", "AMC", "ASTS", "BTDR", "CIFR", "CLSK", "CORZ", "DJT",
                 "ENPH", "FLNC", "GME", "HUT", "INOD", "IONQ", "IREN", "JOBY", "LMND",
                 "LUMN", "LUNR", "MARA", "PLUG", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
-                "RIOT", "RKLB", "ROOT", "RXRX", "SMLR", "SMR", "SOUN", "UPST", "VKTX", "WOLF", "WULF"
+                "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
+        });
+        put("favourites", new String[]{
+                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "JOBY", "PLUG"
         });
     }};
 
@@ -1142,9 +1145,35 @@ public class mainDataHandler {
                         calculateStockPercentageChange(true);
 
                         // ====== Rate limiting: Sleep for 60 seconds before polling again ======
-                        // (Prevents API bans and excessive usage. If your API supports higher frequency, you can tune this.)
-                        Thread.sleep(60000);
+                        // ======= SLEEP UNTIL THE NEXT FULL MINUTE =======
 
+                        // Get the current system time in milliseconds since epoch
+                        long currentMillis = System.currentTimeMillis();
+
+                        // Calculate the timestamp (in millis) of the next full minute boundary
+                        // E.g., if now is 12:34:45.789, nextMinuteMillis will be 12:35:00.000
+                        long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000;
+
+                        // Compute how many milliseconds to sleep to reach the next full minute
+                        long sleepTime = nextMinuteMillis - currentMillis;
+
+                        // Only sleep if we're not already exactly at a full minute
+                        if (sleepTime > 0) {
+                            try {
+                                // Log the next fetch timestamp (for debugging/monitoring)
+                                java.time.Instant fetchTime = java.time.Instant.ofEpochMilli(nextMinuteMillis);
+                                System.out.println("[INFO] Next fetch scheduled at: " + fetchTime);
+                                logTextArea.append("Next fetch scheduled at: " + fetchTime + "\n");
+
+                                // Sleep until the calculated next full minute
+                                Thread.sleep(sleepTime);
+                            } catch (InterruptedException e) {
+                                // Handle interruption (e.g., if shutting down)
+                                Thread.currentThread().interrupt();
+                                logTextArea.append("Data pull interrupted during sleep\n");
+                                break;
+                            }
+                        }
                     } catch (InterruptedException e) {
                         // If thread is interrupted (shutdown requested), exit loop cleanly.
                         e.printStackTrace();
@@ -1317,6 +1346,7 @@ public class mainDataHandler {
                 .parallelStream() // Multithreaded: processes each symbol in its own thread for speed
                 .forEach(symbol -> {
                     List<StockUnit> timeline = getSymbolTimeline(symbol);
+
                     if (!timeline.isEmpty()) {
                         // For each symbol, analyze its full or most recent window
                         processTimeWindows(symbol, timeline, minutesPeriod, realFrame);
@@ -1351,6 +1381,7 @@ public class mainDataHandler {
 
                 // Extract the relevant window (maybe smaller than needed)
                 LinkedList<StockUnit> timeWindow = new LinkedList<>(getTimeWindow(timeline, startTime, endTime));
+
                 int startIndex = findTimeIndex(timeline, startTime);
 
                 // Pad window from left if it's too short (backfill with earlier bars)
@@ -2558,9 +2589,9 @@ public class mainDataHandler {
                             0.09, 0.40, 3, 0.12, 0.15, true);
 
             // High aggressiveness config
-            case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum", "allSymbols" ->
-                    shouldTrigger(stocks, 5, 1.5, 0.8,
-                            0.08, 0.39, 3, 0.15, 0.5, false);
+            case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum", "allSymbols",
+                 "favourites" -> shouldTrigger(stocks, 5, 1.5, 0.8,
+                    0.08, 0.39, 3, 0.15, 0.5, false);
 
             default -> throw new RuntimeException("Need to specify a market: " + market);
         };
