@@ -714,7 +714,16 @@ public class mainUI extends JFrame {
             // Loop backwards to safely remove notifications while iterating
             for (int i = notificationListModel.size() - 1; i >= 0; i--) {
                 Notification existing = notificationListModel.getElementAt(i);
-                long minutesOld = ChronoUnit.MINUTES.between(existing.getLocalDateTime(), now);
+                // Suppose the notification stores a naive LocalDateTime as US/Eastern
+                ZoneId notificationZone = ZoneId.of("America/New_York"); // or whatever was used originally
+                ZoneId systemZone = ZoneId.systemDefault(); // e.g. "Europe/London"
+
+                // Convert existing notification time to an instant (absolute time)
+                ZonedDateTime notificationTime = existing.getLocalDateTime().atZone(notificationZone);
+                ZonedDateTime nowTime = LocalDateTime.now(systemZone).atZone(systemZone);
+
+                // Compute the difference in minutes
+                long minutesOld = ChronoUnit.MINUTES.between(notificationTime.toInstant(), nowTime.toInstant());
 
                 // Remove notifications if:
                 // 1. They are older than 20 minutes (stale) OR
