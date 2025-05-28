@@ -747,6 +747,10 @@ public class mainUI extends JFrame {
 
         // --- macOS native notification (requires terminal-notifier to be installed) ---
         if (osName.contains("mac")) {
+            // Prepare a button that links to an external trading platform (e.g. Trading212) for this symbol
+            String tickerCode = getTicker(symbol);  // Convert to web-usable ticker
+            String url = "https://app.trading212.com/?lang=de&ticker=" + tickerCode;
+
             try {
                 String[] terminalNotifierCommand = {
                         "terminal-notifier",
@@ -754,7 +758,8 @@ public class mainUI extends JFrame {
                         "-message", notificationContent,
                         "-contentImage", Paths.get(System.getProperty("user.dir"), "train.png").toString(),
                         "-sound", "default",
-                        "-timeout", "5"
+                        "-timeout", "5",
+                        "-open", url  // This makes notification clickable
                 };
                 // Launch system notification as a background process
                 new ProcessBuilder(terminalNotifierCommand).start();
@@ -1410,7 +1415,8 @@ public class mainUI extends JFrame {
             Class<? extends RegularTimePeriod> periodClass, ZoneId zone, Date startDate) {
 
         // Filter to only include data after the given start date (for the visible chart window)
-        List<StockUnit> filteredStocks = stockUnitList
+        // Defensive copy to avoid ConcurrentModificationException
+        List<StockUnit> filteredStocks = new ArrayList<>(stockUnitList)
                 .stream()
                 .filter(stock -> stock.getDateDate().after(startDate))
                 .sorted(Comparator.comparing(StockUnit::getDateDate))
@@ -3462,7 +3468,7 @@ public class mainUI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime,
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey,  useRealtime,
                     aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market);
             gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
