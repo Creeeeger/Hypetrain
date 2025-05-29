@@ -62,6 +62,7 @@ public class mainDataHandler {
      *   <li>Each entry maps to a specific type of indicator.</li>
      * </ul>
      */
+
     public static final List<String> INDICATOR_KEYS = List.of(
             "SMA_CROSS",              // 0: Simple Moving Average crossover event (binary state: -1, 0, 1)
             "TRIX",                   // 1: TRIX triple exponential average (momentum/trend indicator)
@@ -72,6 +73,7 @@ public class mainDataHandler {
             "KELTNER",                // 6: Keltner channel breakout (binary)
             "ELDER_RAY"               // 7: Elder Ray Index (numeric)
     );
+
     /**
      * Set of technical indicators that should be interpreted as binary (0 or 1) in the normalization process.
      * <p>
@@ -83,12 +85,14 @@ public class mainDataHandler {
             "KELTNER",                // Keltner breakout: 1 if present, else 0
             "CUMULATIVE_PERCENTAGE"   // Cumulative spike: 1 if present, else 0
     );
+
     /**
      * Directory path for disk cache of stock data (e.g., "cache/" in current working directory).
      * <p>
      * Used for storing and retrieving locally cached minute-bar or indicator data to minimize API calls.
      */
     public static final String CACHE_DIR = Paths.get(System.getProperty("user.dir"), "cache").toString();
+
     /**
      * Central timeline map: stores the loaded or downloaded time series for each stock symbol.
      * <ul>
@@ -101,12 +105,30 @@ public class mainDataHandler {
      * Thread-safe for concurrent reads and writes.
      */
     static final Map<String, List<StockUnit>> symbolTimelines = new ConcurrentHashMap<>();
+
+    /**
+     * Central real-time timeline map: stores the live, incoming time series for each stock symbol.
+     * <ul>
+     *   <li>Key: Stock symbol (always uppercase, e.g., "AAPL")</li>
+     *   <li>Value: List of {@link StockUnit} representing each real-time time bar (chronological order)</li>
+     * </ul>
+     * <p>
+     * This is a separate in-memory data store dedicated exclusively to real-time or streaming data,
+     * ensuring that live updates do not interfere with the main {@link #symbolTimelines} historical or batch data.
+     * <p>
+     * Used for handling and analyzing live market feeds, short-term analytics, and immediate technical calculations.
+     * <p>
+     * Thread-safe for concurrent reads and writes.
+     */
+    static final Map<String, List<StockUnit>> realTimeTimelines = new ConcurrentHashMap<>();
+
     /**
      * Stores all generated {@link Notification} objects relevant to PL (Profit & Loss) analysis or spike detection.
      * <p>
      * Populated throughout analytics; used for summary UI panels, notification feeds, or backtesting.
      */
     static final List<Notification> notificationsForPLAnalysis = new ArrayList<>();
+
     /**
      * Stores precomputed min/max ranges for each technical indicator per symbol.
      * <p>
@@ -117,6 +139,7 @@ public class mainDataHandler {
      * Populated by {@link #precomputeIndicatorRanges(boolean)} and consumed by {@link #normalizeScore(String, double, String)}
      */
     private static final Map<String, Map<String, Map<String, Double>>> SYMBOL_INDICATOR_RANGES = new ConcurrentHashMap<>();
+
     /**
      * Category weights for calculating final 'aggressiveness' score for a stock signal.
      * <p>
@@ -266,24 +289,24 @@ public class mainDataHandler {
     public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
         put("allSymbols", new String[]{
                 "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
-                , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
-                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
+                , "AMAT", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
+                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
                 , "BN", "BNS", "BNTX", "BP", "BSX", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
                 , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRWD", "CRWV"
                 , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
                 , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
                 , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
                 , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
-                , "INSP", "INTC", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
+                , "INSP", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK", "LIN"
                 , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
                 , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MRK", "MRNA", "MRVL", "MS", "MSFT"
-                , "MSI", "MSTR", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
+                , "MSI", "MSTR", "MU", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
                 , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR"
                 , "PLTR", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
-                , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
+                , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
                 , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
                 , "SYY", "TCOM", "TD", "TDG", "TEM", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
-                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
+                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
                 , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
                 , "ZIM", "ZTO", "ZTS"
         });
@@ -291,16 +314,16 @@ public class mainDataHandler {
                 "AMD", "DDOG", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "SMCI", "SNOW"
         });
         put("autoEV", new String[]{
-                "F", "GM", "LCID", "NIO", "RIVN", "TSLA", "XPEV"
+                "F", "GM", "NIO", "RIVN", "TSLA", "XPEV"
         });
         put("bigCaps", new String[]{
                 "AAPL", "ABBV", "ABT", "AMGN", "AMZN", "AMD", "AVGO", "AXP",
-                "BA", "BAC", "BMY", "CAT", "CSCO", "COST", "CVX",
+                "BAC", "BMY", "CAT", "CSCO", "COST", "CVX",
                 "DE", "DIS", "DUK", "GE", "GOOGL", "HD", "HON", "IBM",
-                "INTC", "JNJ", "JPM", "LIN", "LLY", "LOW", "LMT", "MA",
+                "JNJ", "JPM", "LIN", "LLY", "LOW", "LMT", "MA",
                 "MCD", "MDT", "META", "MMM", "MRK", "MSFT", "NFLX", "NVDA",
-                "ORCL", "PEP", "PFE", "PG", "QCOM", "RTX", "SBUX",
-                "SBUX", "TGT", "TMO", "TMUS", "TXN", "UNH", "UPS", "V", "WFC", "XOM"
+                "ORCL", "PEP", "PFE", "PG", "QCOM", "SBUX",
+                "SBUX", "TGT", "TMO", "TMUS", "TXN", "UPS", "V", "WFC", "XOM"
         });
         put("chineseTech", new String[]{
                 "BABA", "BNS", "CNI", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
@@ -320,27 +343,27 @@ public class mainDataHandler {
                 "CELH", "COST", "DPZ", "GIS", "KHC", "MDLZ", "PEP", "SBUX", "TGT", "WMT", "YUM"
         });
         put("healthcareProviders", new String[]{
-                "ANTM", "CI", "CNC", "CVS", "ELV", "HCA", "HUM", "UHS", "UNH"
+                "ANTM", "CI", "CNC", "CVS", "ELV", "HCA", "HUM", "UHS"
         });
         put("highVolatile", new String[]{
-                "ACHR", "AFRM", "AMC", "AER", "ASPI", "ASTS", "BNTX", "CELH",
+                "ACHR", "AFRM", "AER", "ASPI", "ASTS", "BNTX", "CELH",
                 "COIN", "CORZ", "CVNA", "DJT", "DUOL",
                 "ENPH", "FIVE", "FOUR", "FUTU", "GME", "GMAB",
-                "HOOD", "INSP", "LPLA", "LCID", "LMND",
+                "HOOD", "INSP", "LPLA", "LMND",
                 "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
                 "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
                 "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
                 "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "SWKS", "TMDX",
-                "TRU", "TTD", "UPST", "VKTX", "WOLF", "XPEV", "GME", "AMC"
+                "TRU", "TTD", "UPST", "VKTX", "WOLF", "XPEV", "GME"
         });
         put("industrials", new String[]{
-                "BA", "CAT", "DE", "GE", "HON", "LMT", "MMM", "NOC", "RTX", "UNP", "WM"
+                "CAT", "DE", "GE", "HON", "LMT", "MMM", "NOC", "UNP", "WM"
         });
         put("midCaps", new String[]{
                 "AAOI", "ACGL", "AER", "AFRM", "ALAB", "APLD", "APP", "ARWR",
                 "ASPI", "BMRN", "BN", "BNTX", "BUD", "CELH", "COHR", "CRWV",
                 "CVNA", "DOCU", "DUOL", "ENPH", "FIVE", "FOUR", "FTAI", "FUTU",
-                "GMAB", "HIMS", "HOOD", "HSY", "IEP", "INFY", "INSP", "LCID",
+                "GMAB", "HIMS", "HOOD", "HSY", "IEP", "INFY", "INSP",
                 "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MTRN",
                 "NFE", "NIO", "NOVA", "ODFL", "OKLO", "OPEN", "PTON", "RIVN",
                 "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL", "SWKS",
@@ -362,7 +385,7 @@ public class mainDataHandler {
         });
         put("semiconductors", new String[]{
                 "ADI", "AMAT", "AMD", "ARM", "ASML", "AVGO", "CDNS", "COHR",
-                "CRDO", "INNTC", "INTC", "KLAC", "LRCX", "MCHP", "MRVL",
+                "CRDO", "INNTC", "KLAC", "LRCX", "MCHP", "MRVL",
                 "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
         });
         put("smallCaps", new String[]{
@@ -374,17 +397,16 @@ public class mainDataHandler {
                 "STRL", "TMDX", "UPST", "VIR", "VKTX", "XPEV"
         });
         put("techGiants", new String[]{
-                "AAPL", "ADBE", "AMZN", "CSCO", "GOOGL", "INTC",
-                "META", "MSFT", "NVDA", "ORCL"
+                "AAPL", "ADBE", "AMZN", "CSCO", "GOOGL", "META", "MSFT", "NVDA", "ORCL"
         });
         put("ultraVolatile", new String[]{
-                "ACHR", "AMC", "ASTS", "CORZ", "DJT",
+                "ACHR", "ASTS", "CORZ", "DJT",
                 "ENPH", "GME", "IONQ", "LMND",
                 "LUMN", "LUNR", "MARA", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
                 "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
         });
         put("favourites", new String[]{
-                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "AMC", "U"
+                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "U"
         });
     }};
 
@@ -897,6 +919,415 @@ public class mainDataHandler {
     }
 
     /**
+     * Periodically fetches real-time market data in bulk for a list of stock symbols using the AlphaVantage API.
+     * <p>
+     * This method runs asynchronously in a background thread when {@code useSecondFramework} is enabled.
+     * It splits the input symbol list into batches of up to 100 (API limitation), fetches real-time data for each batch concurrently,
+     * and processes the aggregated results. It includes timeout handling, robust error logging, and rate limiting
+     * to avoid overwhelming the API or the UI.
+     *
+     * <p>
+     * <b>Key Features:</b>
+     * <ul>
+     *   <li>Batched fetching to respect AlphaVantage's per-request limit (100 symbols).</li>
+     *   <li>Concurrent batch requests with completion coordination via {@link CountDownLatch}.</li>
+     *   <li>Aggregated results processed into the application after each polling cycle.</li>
+     *   <li>Timeout and error handling to maintain responsiveness and robustness.</li>
+     *   <li>Rate limiting to 5 seconds per polling cycle.</li>
+     * </ul>
+     *
+     * @param symbols List of stock symbols to fetch real-time data for.
+     */
+    public static void fetchRealTimeBulk(List<String> symbols) {
+        if (useSecondFramework) {
+            new Thread(() -> {
+                // Outer loop keeps thread alive as long as framework is enabled
+                while (useSecondFramework) {
+                    // Inner loop allows for clean interruption handling
+                    while (!Thread.currentThread().isInterrupted()) {
+                        // Thread-safe list for accumulating all matches this polling round
+                        List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
+                        try {
+                            // Split symbols into batches of max 100, per AlphaVantage API restrictions
+                            List<String> symbolsSnapshot = new ArrayList<>(symbols);
+                            int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
+                            CountDownLatch latch = new CountDownLatch(totalBatches);
+
+                            for (int i = 0; i < totalBatches; i++) {
+                                List<String> batchSymbols = symbolsSnapshot.subList(
+                                        i * 100,
+                                        Math.min((i + 1) * 100, symbolsSnapshot.size())
+                                );
+                                String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
+                                // Asynchronous API call for this batch
+                                AlphaVantage.api()
+                                        .Realtime()
+                                        .setSymbols(symbolsBatch)
+                                        .entitlement("realtime")
+                                        .onSuccess(response -> {
+                                            // On success: collect all symbol results from this batch
+                                            matches.addAll(response.getMatches());
+                                            latch.countDown();
+                                        })
+                                        .onFailure(e -> {
+                                            // On failure: log the error, count down latch, but do not stop the loop
+                                            handleFailure(e);
+                                            latch.countDown();
+                                        })
+                                        .fetch();
+                            }
+
+                            // Wait for all batch requests to finish (max 5 seconds to avoid hangs)
+                            if (!latch.await(5, TimeUnit.SECONDS)) {
+                                logTextArea.append("Warning: Timed out waiting for data\n");
+                            }
+
+                            // At this point, all successful matches have been aggregated in 'matches'
+                            // Process results: update data structures, trigger analytics/ML, alert user as needed
+                            processStockData(matches);
+
+                            // ================= Rate Limiting: Pause 5s before next poll =================
+                            Thread.sleep(5000);
+
+                        } catch (InterruptedException e) {
+                            // Thread was interrupted (likely shutdown request): log and exit gracefully
+                            e.printStackTrace();
+                            Thread.currentThread().interrupt();
+                            logTextArea.append("Data pull interrupted\n");
+                            break;
+                        } catch (Exception e) {
+                            // Any other exception: log and continue to next polling cycle
+                            e.printStackTrace();
+                            logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
+                        }
+                    }
+                }
+            }).start();
+        }
+    }
+
+    /**
+     * Orchestrates the end-to-end processing pipeline for a batch of real-time stock data matches.
+     * <p>
+     * This method performs three major steps, in order:
+     * <ol>
+     *   <li><b>prepareMatches:</b> Integrates raw real-time data into application data structures and updates timelines.</li>
+     *   <li><b>calculateChangesForSeconds:</b> Computes and updates percentage changes for each stock symbol across the most recent time windows.</li>
+     *   <li><b>evaluateSeconds:</b> Runs analytics, event detection, and/or alert logic based on the updated time series.</li>
+     * </ol>
+     *
+     * <p>
+     * This method should be called every polling cycle after new real-time data is fetched.
+     * <b>Side effects:</b> Mutates application state by updating time series, computed fields, and possibly triggering user-facing events or notifications.
+     *
+     * @param matches List of new real-time data results, one per stock symbol, to be processed.
+     */
+    public static void processStockData(List<RealTimeResponse.RealTimeMatch> matches) {
+        // Step 1: Assimilate new real-time matches into main data structures and timelines.
+        prepareMatches(matches);
+
+        // Step 2: For all timelines, calculate percentage changes.
+        calculateChangesForSeconds();
+
+        // Step 3: Evaluate analytics, technical signals, or alert triggers based on the latest data.
+        evaluateSeconds();
+    }
+
+    /**
+     * Integrates a batch of real-time stock data into the application's main data structures.
+     * <p>
+     * For each real-time data match:
+     * <ul>
+     *   <li>Converts the API-provided match object to an internal {@link StockUnit} representation.</li>
+     *   <li>Chooses between regular and extended-hours prices depending on current market context.</li>
+     *   <li>Ensures all timeline data is stored in a thread-safe structure for the given stock symbol.</li>
+     *   <li>Keeps a temporary map of the most recent update per symbol for quick access (useful for UI or later logic).</li>
+     *   <li>Appends a summary status message for diagnostics or user feedback.</li>
+     * </ul>
+     * <p>
+     * Side effects: Updates the global {@code realTimeTimelines} and writes to {@code logTextArea}.
+     *
+     * @param matches List of API-provided real-time matches to process and store.
+     */
+    private static void prepareMatches(List<RealTimeResponse.RealTimeMatch> matches) {
+        // Tracks the most recent StockUnit inserted per symbol in this batch (not always needed, but may help with UI/summaries)
+        Map<String, StockUnit> currentBatch = new ConcurrentHashMap<>();
+
+        // Process each real-time match entry individually
+        for (RealTimeResponse.RealTimeMatch match : matches) {
+            // Ensure symbol keys are always uppercase for consistency in data structures
+            String symbol = match.getSymbol().toUpperCase();
+
+            // Decide whether to use extended-hours (pre-/post-market) data for this tick; fallback to regular hours if not available
+            boolean extended = useExtended(match);
+
+            // For a real-time tick, only the "close" price is meaningful; set all OHLC fields to the same value for this tick
+            double close = extended ? match.getExtendedHoursQuote() : match.getClose();
+            double open = extended ? match.getExtendedHoursQuote() : match.getOpen();
+            double high = extended ? match.getExtendedHoursQuote() : match.getHigh();
+            double low = extended ? match.getExtendedHoursQuote() : match.getLow();
+            double volume = match.getVolume(); // Extended-hours volume is often zero or not reported, but use what’s available
+
+            // Build the StockUnit object with all relevant data for this instant
+            StockUnit unit = new StockUnit.Builder()
+                    .symbol(symbol)
+                    .open(open)
+                    .high(high)
+                    .low(low)
+                    .close(close)
+                    .time(match.getTimestamp())
+                    .volume(volume)
+                    .build();
+
+            // Add the StockUnit to the thread-safe timeline for this symbol (initialize list if necessary)
+            realTimeTimelines
+                    .computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>()))
+                    .add(unit);
+
+            // Track this unit in the local batch map (for UI, summary, or further per-batch logic)
+            currentBatch.put(symbol, unit);
+        }
+
+        // Provide a user/debug message indicating how many distinct symbols/entries were processed in this run
+        logTextArea.append("Processed " + currentBatch.size() + " valid stock entries\n");
+    }
+
+    /**
+     * Calculates and updates the percentage change between consecutive {@link StockUnit} entries
+     * for each tracked stock symbol in the {@code realTimeTimelines} data structure.
+     * <p>
+     * This method is thread-safe: it synchronizes on the {@code realTimeTimelines} map to ensure
+     * consistency if other threads are also updating timelines.
+     * <p>
+     * For each symbol, iterates through its timeline (list of StockUnits) and sets the
+     * percent change (relative to previous close) on each {@link StockUnit} (starting from the second item).
+     * <ul>
+     *   <li>Skips symbols with fewer than 2 data points (nothing to compare).</li>
+     *   <li>Skips calculations where the previous close is zero or negative (avoids divide-by-zero or nonsensical math).</li>
+     * </ul>
+     *
+     * <b>Side effects:</b> Mutates each {@link StockUnit} in {@code realTimeTimelines} by calling {@code setPercentageChange()}.
+     */
+    private static void calculateChangesForSeconds() {
+        // Thread safety: lock the timelines map during calculation
+        synchronized (realTimeTimelines) {
+            // Parallel stream: handles each symbol's timeline concurrently for speed (safe because no symbol's timeline is shared)
+            realTimeTimelines.keySet().parallelStream().forEach(symbol -> {
+                // Get this symbol's time series of StockUnit entries
+                List<StockUnit> timeline = realTimeTimelines.get(symbol);
+
+                // Defensive: Need at least 2 data points to calculate a percentage change
+                if (timeline.size() < 2) {
+                    return;
+                }
+
+                // Iterate through timeline, calculating percentage change for each pair (i-1, i)
+                for (int i = 1; i < timeline.size(); i++) {
+                    StockUnit current = timeline.get(i);
+                    StockUnit previous = timeline.get(i - 1);
+
+                    // Only compute if the previous close price is positive (avoid divide-by-zero and negative price anomalies)
+                    if (previous.getClose() > 0) {
+                        // Calculate percent change: ((current - previous) / previous) * 100
+                        double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
+                        // Store the result in the current StockUnit
+                        current.setPercentageChange(change);
+                    }
+                }
+            });
+        }
+    }
+
+    /**
+     * Analyzes second-by-second stock data for each symbol, detects rapid uptrends ("spikes"),
+     * and, if detected, aggregates the relevant window into a 1-minute bar and triggers further advanced processing.
+     * <p>
+     * This method performs several key operations:
+     * <ul>
+     *   <li><b>Cleanup:</b> Removes StockUnit entries older than 90 seconds for each symbol to conserve memory and processing power.</li>
+     *   <li><b>De-duplication:</b> Removes duplicate StockUnits with the same timestamp to ensure clean analytics.</li>
+     *   <li><b>Statistical Analysis:</b> Calculates total percent change and counts "green bars" (positive movement) over the current time window.</li>
+     *   <li><b>Spike Detection:</b> Detects strong uptrend's based on configurable percentage and ratio of green bars.</li>
+     *   <li><b>Aggregation:</b> If a spike is found, aggregates second bars into a single 1-minute StockUnit bar.</li>
+     *   <li><b>Advanced Processing Trigger:</b> Launches advanced analysis/alerting for the detected spike using a high-priority thread.</li>
+     * </ul>
+     * <b>Side effects:</b> Mutates {@code realTimeTimelines} and {@code symbolTimelines}, and may trigger UI/log actions or background processing.
+     */
+    private static void evaluateSeconds() {
+        // Step 1: For each symbol, remove any StockUnit older than the most recent 55 seconds.
+        // This keeps memory and processing focused on the most relevant, recent market activity.
+        realTimeTimelines.forEach((symbol, timeline) ->
+                timeline.removeIf(unit ->
+                        unit.getLocalDateTimeDate().isBefore(
+                                timeline.get(timeline.size() - 1) // Reference: most recent bar's time
+                                        .getLocalDateTimeDate()
+                                        .minusSeconds(55)            // Define "too old" as >55 seconds ago
+                        )
+                )
+        );
+
+        // Step 2: For every symbol, analyze its timeline in parallel for real-time event detection.
+        realTimeTimelines.keySet()
+                .parallelStream() // Multithreaded: handles each symbol concurrently for speed/scalability.
+                .forEach(symbol -> {
+                    // Create a working copy of this symbol's recent StockUnit objects for processing.
+                    // Avoids mutating the global list during parallel analysis.
+                    List<StockUnit> realTimeWindow = new ArrayList<>(realTimeTimelines.getOrDefault(symbol.toUpperCase(), new ArrayList<>()));
+
+                    // Proceed only if we have data points to analyze.
+                    if (!realTimeWindow.isEmpty()) {
+                        // Step 3: Remove duplicate StockUnits that share the same timestamp (by LocalDateTime).
+                        // This ensures no duplicate events/reads affect calculations.
+                        Set<LocalDateTime> seenTimes = new HashSet<>();
+                        Iterator<StockUnit> it = realTimeWindow.iterator();
+                        while (it.hasNext()) {
+                            StockUnit unit = it.next();
+                            LocalDateTime t = unit.getLocalDateTimeDate();
+                            if (!seenTimes.add(t)) {
+                                it.remove(); // Remove duplicate bar.
+                            }
+                        }
+
+                        // Step 4: Calculate the total percentage price change in this time window
+                        // and count the number of "green bars" (bars with a positive price move).
+                        double pctChange = realTimeWindow.stream()
+                                .skip(1) // Skip first (no prior to compare against)
+                                .mapToDouble(StockUnit::getPercentageChange)
+                                .sum();
+
+                        long greenBars = realTimeWindow.stream()
+                                .skip(1)
+                                .filter(bar -> bar.getPercentageChange() > 0)
+                                .count();
+
+                        // Step 5: Event detection logic (uptrend spike detection)
+                        // - pctChange: checks if the sum of price changes is above a threshold
+                        // - greenBars: ensures at least 60% of the bars in this window are positive.
+                        boolean strongUptrend =
+                                pctChange > 0.4 &&
+                                        greenBars >= realTimeWindow.size() * 0.6;
+
+                        // If an uptrend spike is detected, continue to aggregate and process the bar.
+                        if (strongUptrend) {
+                            // Step 6: Aggregate all second bars in this window into a single 1-minute StockUnit bar.
+                            StockUnit first = realTimeWindow.get(0); // Oldest in window (start of aggregation)
+                            StockUnit last = realTimeWindow.get(realTimeWindow.size() - 1); // Most recent in window
+
+                            // High: max close in window, Low: min close, Volume: sum of all, Time: end of window
+                            double high = realTimeWindow.stream().mapToDouble(StockUnit::getClose).max().orElse(first.getClose());
+                            double low = realTimeWindow.stream().mapToDouble(StockUnit::getClose).min().orElse(first.getClose());
+                            double volume = realTimeWindow.stream().mapToDouble(StockUnit::getVolume).sum();
+                            LocalDateTime barTime = last.getLocalDateTimeDate(); // Use the most recent bar's timestamp for aggregation
+                            String formattedTime = barTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")); // Consistent with rest of pipeline
+
+                            // Build the new 1-minute aggregated bar for rolling analytics.
+                            StockUnit aggregatedRealTimeBar = new StockUnit.Builder()
+                                    .symbol(symbol)
+                                    .open(first.getClose())   // Set "open" to the oldest close in window
+                                    .high(high)
+                                    .low(low)
+                                    .close(last.getClose())   // Set "close" to the newest close in window
+                                    .time(formattedTime)
+                                    .volume(volume)
+                                    .build();
+
+                            // Step 7: Get a rolling window of the most recent 29 bars from the main symbol timeline.
+                            // This supports robust moving calculations and avoids excess memory growth.
+                            List<StockUnit> symbolTimeLineUnits;
+                            synchronized (symbolTimelines) {
+                                List<StockUnit> timeline = symbolTimelines.get(symbol);
+                                int window = 29;
+                                int from = Math.max(0, timeline.size() - window);
+                                symbolTimeLineUnits = new ArrayList<>(timeline.subList(from, timeline.size()));
+                            }
+
+                            LocalDateTime minuteBarTime = aggregatedRealTimeBar.getLocalDateTimeDate();
+
+                            // Step 7b: Add new minute bar if this is a new bar (time strictly after last bar in window).
+                            // This ensures we don't double-add or duplicate bars if polling overlaps or is too frequent.
+                            if (symbolTimeLineUnits.isEmpty()) {
+                                symbolTimeLineUnits.add(aggregatedRealTimeBar);
+                            } else {
+                                StockUnit lastBar = symbolTimeLineUnits.get(symbolTimeLineUnits.size() - 1);
+                                LocalDateTime lastBarTime = lastBar.getLocalDateTimeDate();
+
+                                if (minuteBarTime.isAfter(lastBarTime)) {
+                                    symbolTimeLineUnits.add(aggregatedRealTimeBar); // Append only if newer.
+                                }
+                            }
+
+                            // --- Logging for monitoring and debugging ---
+                            System.out.println("⚡ Uptrend spike detected for " + symbol +
+                                    ": +" + String.format("%.2f", pctChange) + "% in " + realTimeWindow.size() +
+                                    " seconds (" + greenBars + "/" + realTimeWindow.size() + " green bars)\n"
+                            );
+
+                            // Step 8: Run post-aggregation analytics in a dedicated high-priority thread.
+                            // Passes the updated rolling window for further event detection, ML, or alerting.
+                            if (SYMBOL_INDICATOR_RANGES.get(symbol) != null) {
+                                Thread highPriorityThread = new Thread(() -> advancedProcessing(symbolTimeLineUnits, symbol));
+                                highPriorityThread.setPriority(Thread.MAX_PRIORITY); // Ensures quick ML/alert reaction.
+                                highPriorityThread.start();
+                            }
+                        }
+                    }
+                });
+    }
+
+    /**
+     * Performs advanced event and signal detection on a list of {@link StockUnit} objects for a given symbol.
+     * <p>
+     * This includes:
+     * <ul>
+     *   <li>Running notification/event analysis (such as technical indicators or unusual market activity).</li>
+     *   <li>Forwarding generated notifications to the UI, dashboard, or alerting system.</li>
+     *   <li>Safely batching all generated notifications for later profit/loss analysis in a global list.</li>
+     * </ul>
+     *
+     * <p>
+     * All errors during processing are caught and logged to avoid aborting the processing loop for one bad symbol or frame.
+     * Notification list is updated in a thread-safe manner to support multithreaded batch processing.
+     *
+     * @param stockUnits The time series or recent frame of market data for one stock symbol.
+     * @param symbol     The stock symbol being analyzed (ticker code).
+     */
+    private static void advancedProcessing(List<StockUnit> stockUnits, String symbol) {
+        // Temporary collection for all notifications generated in this pass (for this symbol)
+        List<Notification> stockNotifications = new ArrayList<>();
+
+        try {
+            // Step 1: Detect any actionable events/signals (spikes, crossovers, patterns, etc.)
+            List<Notification> notifications = getNotificationForFrame(stockUnits, symbol);
+            stockNotifications.addAll(notifications);
+
+            // Step 2: If any notifications were generated, push them to the UI/dashboard
+            if (!notifications.isEmpty()) {
+                for (Notification notification : notifications) {
+                    addNotification(
+                            notification.getTitle(),
+                            notification.getContent(),
+                            notification.getStockUnitList(),
+                            notification.getLocalDateTime(),
+                            notification.getSymbol(),
+                            notification.getChange(),
+                            5
+                    );
+                }
+            }
+        } catch (Exception e) {
+            // Defensive: Catch all to ensure that a bad symbol/data window doesn't halt processing
+            e.printStackTrace();
+        }
+
+        // Step 3: Batch add all notifications from this run to the global list for P/L (profit/loss) analysis.
+        // Synchronized for thread safety if this method is called concurrently for multiple symbols.
+        synchronized (notificationsForPLAnalysis) {
+            notificationsForPLAnalysis.addAll(stockNotifications);
+        }
+    }
+
+    /**
      * Loads and maintains up-to-date time series (OHLCV) data for a given set of stock symbols.
      * <p>
      * This method coordinates all required pre-processing and continuous polling for "hype mode":
@@ -917,7 +1348,7 @@ public class mainDataHandler {
         // Announce to the user that the download/fetch sequence is starting.
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        symbols.add("CRWV"); // Add CoreWeave since its insane
+        // symbols.add("CRWV"); // Add CoreWeave since its insane
 
         // Countdown latch is used to know when ALL symbol data (from file or API) has loaded.
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
@@ -1051,6 +1482,9 @@ public class mainDataHandler {
                 // Perform another % change scan and prepare notifications (triggers the ML/alert pipeline).
                 calculateStockPercentageChange(false);
 
+                // use second based support Framework
+                fetchRealTimeBulk(symbols);
+
                 // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
                 while (!Thread.currentThread().isInterrupted()) {
                     // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
@@ -1149,7 +1583,7 @@ public class mainDataHandler {
 
                         // Calculate the timestamp (in millis) of the next full minute boundary
                         // E.g., if now is 12:34:45.789, nextMinuteMillis will be 12:35:00.000
-                        long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000;
+                        long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000 + 5000;
 
                         // Compute how many milliseconds to sleep to reach the next full minute
                         long sleepTime = nextMinuteMillis - currentMillis;
@@ -3863,10 +4297,12 @@ public class mainDataHandler {
      * @param date          The date/time of the event (LocalDateTime).
      * @param prediction    Model prediction value (if available).
      * @param config        Type of event:
-     *                      0 = dip,
+     *                      0 = greed,
      *                      1 = gap filler,
      *                      2 = R-line spike,
      *                      3 = spike.
+     *                      4 = uptrend movement
+     *                      5 = Second based spike
      */
     private static void createNotification(String symbol, double totalChange, List<Notification> alertsList,
                                            List<StockUnit> stockUnitList, LocalDateTime date,
@@ -3902,6 +4338,12 @@ public class mainDataHandler {
                     String.format("%.3f%% %s Uptrend %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Uptrend slope: %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
                     stockUnitList, date, symbol, totalChange, 4));
+        } else if (config == 5) {
+            // Second based pre predicted spike
+            alertsList.add(new Notification(
+                    String.format("%.3f%% %s Second Spike %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Second based spike: %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    stockUnitList, date, symbol, totalChange, 5));
         }
     }
 

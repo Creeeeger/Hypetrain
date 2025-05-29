@@ -226,6 +226,11 @@ public class configHandler {
             market.appendChild(doc.createTextNode("allSymbols"));
             root.appendChild(market);
 
+            // Example: Second Framework
+            Element secondFrameWork = doc.createElement("secondFrameWork");
+            secondFrameWork.appendChild(doc.createTextNode("false"));
+            root.appendChild(secondFrameWork);
+
             // Add any additional default settings below as needed for the application
 
             // Prepare to write the DOM Document to XML file with indentation (pretty print)
