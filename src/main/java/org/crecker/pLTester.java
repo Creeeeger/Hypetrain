@@ -35,7 +35,8 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.stream.Collectors;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
@@ -126,7 +127,7 @@ public class pLTester {
      */
     private static void updateStocks() {
         // Specify which stocks to update in batch
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "PLTR", "MSTR", "ARM", "QUBT", "CRWV", "GME", "JOBY", "RCAT")) {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "PLTR", "MSTR", "ARM", "QUBT", "CRWV", "GME", "RCAT")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
     }
@@ -556,69 +557,79 @@ public class pLTester {
     }
 
     /**
-     * Reads a list of StockUnit objects from a file, using a custom parsing strategy.
+     * Reads and parses a list of {@code StockUnit} objects from a text file.
+     * <p>
+     * This method expects the file to contain multiple {@code StockUnit} entries, formatted as {@code StockUnit{...}}.
      * <ul>
-     *     <li>Removes leading/trailing square brackets.</li>
-     *     <li>Splits by '},' (end of a stock unit) to extract each record.</li>
-     *     <li>Handles malformed lines and ensures robust parsing.</li>
-     *     <li>Reverses order (for time ordering) and truncates to the last retainLast records.</li>
+     *   <li>Removes leading/trailing square brackets if present (handles JSON-like arrays).</li>
+     *   <li>Extracts each {@code StockUnit} block using a regular expression.</li>
+     *   <li>Parses each block into a {@code StockUnit} instance with error handling for malformed data.</li>
+     *   <li>Only the most recent {@code retainLast} units are kept (if {@code retainLast > 0}).</li>
      * </ul>
+     * Any parsing errors are logged to {@code System.err}, but do not halt processing.
      *
-     * @param filePath   Path to the file to read (should be plain text, each StockUnit as string).
-     * @param retainLast How many most recent entries to keep (for memory/performance).
-     * @return List of StockUnit objects parsed from the file.
-     * @throws IOException if file cannot be read.
+     * @param filePath   path to the text file containing serialized {@code StockUnit} entries
+     * @param retainLast the maximum number of most recent entries to keep; if 0 or less, all are retained
+     * @return a list of successfully parsed {@code StockUnit} objects
+     * @throws IOException if there is a problem reading the file
      */
     public static List<StockUnit> readStockUnitsFromFile(String filePath, int retainLast) throws IOException {
-        List<StockUnit> stockUnits = new ArrayList<>();
+        // LinkedList allows efficient removal from the head when limiting size
+        List<StockUnit> lastUnits = new LinkedList<>();
 
+        // Read entire file content into a StringBuilder
+        StringBuilder sb = new StringBuilder();
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
-            // Read the whole file as a single string and remove leading/trailing brackets
-            String content = reader.lines()
-                    .collect(Collectors.joining("\n"))
-                    .replaceAll("^\\[|]$", "") // Remove array brackets if present
-                    .trim();
-
-            if (content.isEmpty()) {
-                System.out.println("The file is empty or incorrectly formatted.");
-                return stockUnits;
+            String line;
+            while ((line = reader.readLine()) != null) {
+                sb.append(line); // Append each line (file may be minified or pretty-printed)
             }
+        }
 
-            // Split by each closing brace that ends a StockUnit (note: this may need improvement for deeply nested structures)
-            String[] entries = content.split("},\\s*");
+        String content = sb.toString().trim();
 
-            for (String entry : entries) {
-                try {
-                    entry = entry.trim();
+        // Remove surrounding brackets (e.g. [ ... ]) if present
+        if (content.startsWith("[")) content = content.substring(1);
+        if (content.endsWith("]")) content = content.substring(0, content.length() - 1);
 
-                    // Remove final closing brace (if present)
-                    if (entry.endsWith("}")) {
-                        entry = entry.substring(0, entry.length() - 1);
-                    }
+        // Prepare to extract all occurrences of StockUnit{...}
+        Pattern pattern = Pattern.compile("StockUnit\\{.*?}", Pattern.DOTALL);
+        Matcher matcher = pattern.matcher(content);
 
-                    // Remove StockUnit{ prefix for each entry, if present
-                    entry = entry.replace("StockUnit{", "").trim();
+        int errorCount = 0; // Track how many entries fail to parse
 
-                    // Now, try to parse the entry into a StockUnit object using your custom parser
-                    stockUnits.add(parseStockUnit(entry));
-                } catch (Exception e) {
-                    // Print error but continue parsing next entries
-                    e.printStackTrace();
+        // Iterate through each matched StockUnit entry in the content
+        while (matcher.find()) {
+            String entry = matcher.group();
+
+            // Remove the 'StockUnit{' prefix and trailing '}'
+            entry = entry.replaceFirst("^StockUnit\\{", "").replaceFirst("}$", "");
+
+            try {
+                // Attempt to parse this entry into a StockUnit object
+                StockUnit unit = parseStockUnit(entry);
+
+                lastUnits.add(unit); // Add parsed StockUnit to our list
+
+                // If we're only keeping a limited number of entries, remove the oldest as needed
+                if (retainLast > 0 && lastUnits.size() > retainLast) {
+                    lastUnits.remove(0);
                 }
+            } catch (Exception e) {
+                // Log error, but continue processing remaining entries
+                errorCount++;
+                System.err.println("Failed to parse StockUnit: " + entry);
+                e.printStackTrace();
             }
         }
 
-        // Reverse order to maintain most recent data at the end of the list
-        Collections.reverse(stockUnits);
-
-        // Only keep the last 'retainLast' entries
-        int keepFrom;
-        try {
-            keepFrom = Math.max(0, stockUnits.size() - retainLast);
-        } catch (Exception e) {
-            keepFrom = 0;
+        // Optionally log if there were any parse failures
+        if (errorCount > 0) {
+            System.err.println("Encountered " + errorCount + " errors while parsing StockUnit file.");
         }
-        return new ArrayList<>(stockUnits.subList(keepFrom, stockUnits.size()));
+
+        // Return a copy as ArrayList to decouple from internal LinkedList
+        return new ArrayList<>(lastUnits);
     }
 
     /**

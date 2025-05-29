@@ -1,6 +1,7 @@
 package org.crecker;
 
 import com.crazzyghost.alphavantage.news.response.NewsResponse;
+import com.crazzyghost.alphavantage.realtime.response.RealTimeResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.formdev.flatlaf.themes.FlatMacDarkLaf;
 import org.jetbrains.annotations.NotNull;
@@ -46,6 +47,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -288,7 +290,7 @@ public class mainUI extends JFrame {
     /**
      * Remembers the last selected time window (for efficiency in chart refresh).
      */
-    private static int lastChoice = -1;
+    private static int lastChoice = 9;
 
     /**
      * Constructs the main user interface for the stock monitor.
@@ -709,8 +711,6 @@ public class mainUI extends JFrame {
     public static void addNotification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
         // Ensure all notification updates happen on the Swing Event Dispatch Thread for UI safety
         SwingUtilities.invokeLater(() -> {
-            LocalDateTime now = LocalDateTime.now(); // Current time to check notification age
-
             // Loop backwards to safely remove notifications while iterating
             for (int i = notificationListModel.size() - 1; i >= 0; i--) {
                 Notification existing = notificationListModel.getElementAt(i);
@@ -1152,34 +1152,9 @@ public class mainUI extends JFrame {
             // Only proceed with data fetching and replotting if:
             //  - 'fill' is true (caller wants fresh data)
             //  - A valid stock (not the default "-Select a Stock-") is selected
-            if (fill && !selectedStock.contains("lect a Stock")) {
+            if (fill && !selectedStock.contains("-Select a Stock-")) {
                 // Asynchronously fetch historical timeline data for the selected stock
-                mainDataHandler.getTimeline(selectedStock, values -> {
-                    // Prepare a list of the original close prices to detect outliers (big jumps)
-                    List<Double> originalCloses = new ArrayList<>(values.size());
-                    for (StockUnit stock : values) {
-                        originalCloses.add(stock.getClose());
-                    }
-
-                    // Smooth the data: if a close jumps >10% from previous,
-                    // set it to previous close to avoid weird spikes in the chart
-                    IntStream.range(1, values.size()).parallel().forEach(i -> {
-                        double currentOriginalClose = originalCloses.get(i);
-                        double previousOriginalClose = originalCloses.get(i - 1);
-                        // Detect "outlier" jumps greater than 10%
-                        if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
-                            // Clamp value too previous to avoid plotting a spike
-                            values.get(i).setClose(previousOriginalClose);
-                        }
-                    });
-
-                    // Now update the global stock data and refresh the chart to show the data
-                    // The chart will default to a 3-day window on refresh (choice 9)
-                    SwingUtilities.invokeLater(() -> {
-                        stocks = values;
-                        refreshChartData(9);
-                    });
-                });
+                fetchTimeLine();
             }
         });
     }
@@ -1225,33 +1200,13 @@ public class mainUI extends JFrame {
                     final ZoneId zone = ZoneId.systemDefault();
 
                     if (useCandles) {
-                        // --- CANDLESTICK AGGREGATION ---
-                        // Pick aggregation period based on requested range (e.g. Hour/Day)
-                        Class<? extends RegularTimePeriod> periodClass = determineAggregationPeriod(choice);
-
-                        // Compute duration and time range
-                        long duration = getDurationMillis(choice);
-                        Date endDate = stocks.get(0).getDateDate(); // Latest date in dataset
-                        Date startDate = new Date(endDate.getTime() - duration);
-
-                        // Build a cache key for storing aggregation results to speed up re-renders
-                        String cacheKey = periodClass.getName() + "_" + endDate.getTime();
-
-                        // Try retrieving from cache (for performance on repeated redraws)
-                        Map<RegularTimePeriod, AggregatedStockData> aggregatedData = aggregationCache.get(cacheKey);
-                        if (aggregatedData == null) {
-                            // If not cached, aggregate the raw stock data into OHLC "candles"
-                            aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
-                            aggregationCache.put(cacheKey, aggregatedData);
-                        }
-
-                        // Always aggregate raw tick data into the selected period to ensure the chart reflects the latest data.
-                        // This produces a map of time period -> aggregated OHLC values.
-                        aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
-
-                        // Clear the previous OHLC series before repopulating with new data.
                         ohlcSeries.clear();
+                        // receive and prepare aggregated data
+                        Map<RegularTimePeriod, AggregatedStockData> aggregatedData = getAggregatedData(choice, zone);
                         double spikeThreshold = 0.01; // Limit wicks/spikes to 1% outside of open/close range to prevent visual outliers.
+
+                        // Before you start adding bars, disable notifications for better performance.
+                        ohlcSeries.setNotify(false); // Pause automatic chart updates during bulk data addition.
 
                         // For each aggregated period, clamp the high/low as needed, and add the OHLC bar to the series.
                         for (Map.Entry<RegularTimePeriod, AggregatedStockData> e : aggregatedData.entrySet()) {
@@ -1274,53 +1229,90 @@ public class mainUI extends JFrame {
                             // Add the processed OHLC bar to the chart's data series.
                             ohlcSeries.add(e.getKey(), open, high, low, close);
                         }
-                    } else {
-                        // --- TIME SERIES (LINE CHART) MODE ---
-                        // Prepare and smooth data to avoid visual spikes on the chart
-                        List<Map.Entry<Second, Double>> dataPoints = stocks.stream().map(stock -> {
-                            // Convert each stock data timestamp to a JFreeChart "Second" object
-                            LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
-                            return new AbstractMap.SimpleEntry<>(
-                                    new Second(ldt.getSecond(), ldt.getMinute(), ldt.getHour(),
-                                            ldt.getDayOfMonth(), ldt.getMonthValue(), ldt.getYear()),
-                                    stock.getClose()
-                            );
-                        }).collect(Collectors.toList());
 
-                        // Sort by date for reliable charting
+                        // After all bars are added, re-enable notifications to trigger a single chart refresh.
+                        ohlcSeries.setNotify(true);
+
+                    } else {
+                        timeSeries.clear();           // Remove all existing data points from the chart dataset.
+                        // --- TIME SERIES (LINE CHART) MODE ---
+                        //
+                        // This code transforms a list of StockUnit objects into a time series chart data format compatible with JFreeChart.
+                        // The logic handles date conversions, sorting, smoothing to clamp outliers, and efficient updating of the chart dataset.
+
+                        // STEP 1: Make a copy of the stock data to avoid modifying the original input list.
+                        //  - Rationale: Defensive copying ensures we don't accidentally affect any other part of the application that might use the 'stocks' list.
+                        List<StockUnit> stocksCopy = new ArrayList<>(stocks);
+
+                        // STEP 2: Convert each StockUnit's date and close price into chart-friendly (Second, Close) pairs.
+                        //  - 'Second' is a JFreeChart class representing an exact timestamp down to the second.
+                        //  - 'LocalDateTime' ensures we respect the user's time zone (variable 'zone' should be set to the user's preferred ZoneId).
+                        //  - Each pair is represented as a Map.Entry<Second, Double> (where Double is the closing price for that second).
+                        List<Map.Entry<Second, Double>> dataPoints = stocksCopy.stream()
+                                .map(stock -> {
+                                    // Extract the timestamp from the StockUnit and convert it to the user's time zone.
+                                    LocalDateTime ldt = LocalDateTime.ofInstant(stock.getDateDate().toInstant(), zone);
+
+                                    // Create a JFreeChart Second object for precise time mapping.
+                                    Second chartSecond = new Second(
+                                            ldt.getSecond(),        // seconds (0–59)
+                                            ldt.getMinute(),        // minutes (0–59)
+                                            ldt.getHour(),          // hour (0–23)
+                                            ldt.getDayOfMonth(),    // day of the month (1–31)
+                                            ldt.getMonthValue(),    // month (1–12)
+                                            ldt.getYear()           // year (e.g. 2024)
+                                    );
+
+                                    // Pair the chartSecond timestamp with the closing price for charting.
+                                    return new AbstractMap.SimpleEntry<>(chartSecond, stock.getClose());
+                                })
+                                .collect(Collectors.toList()); // Collect results into a List
+
+                        // STEP 3: Sort the data points in ascending date order to guarantee correct time series plotting.
+                        //  - JFreeChart expects ordered data for proper rendering.
+                        //  - Map.Entry.comparingByKey() compares by the 'Second' timestamp.
                         dataPoints.sort(Map.Entry.comparingByKey());
 
-                        // Smooth the time series: if a single point varies >10% from the previous, clamp it
+                        // STEP 4: Smooth the time series by clamping outliers
+                        //  - Purpose: Stock data sometimes contains erroneous spikes/dips (data glitches).
+                        //  - Logic: If a point changes more than 10% from the previous, we clamp it to the previous value.
+                        //  - This prevents one-off anomalies from visually disrupting the chart.
                         List<Map.Entry<Second, Double>> filteredPoints = new ArrayList<>();
-                        Double previousClose = null;
+                        Double previousClose = null; // Holds the last valid (possibly clamped) closing price
                         for (Map.Entry<Second, Double> entry : dataPoints) {
                             double currentClose = entry.getValue();
                             if (previousClose != null) {
+                                // Calculate percentage difference (as a fraction, e.g., 0.12 = 12%)
                                 double variance = Math.abs((currentClose - previousClose) / previousClose);
-                                if (variance > 0.1) currentClose = previousClose;
+
+                                // If difference > 10% (0.1), clamp the current close to the previous
+                                if (variance > 0.1) {
+                                    currentClose = previousClose; // Outlier detected: clamp!
+                                }
                             }
                             previousClose = currentClose;
                             filteredPoints.add(new AbstractMap.SimpleEntry<>(entry.getKey(), currentClose));
                         }
 
-                        // Add smoothed values to the JFreeChart TimeSeries for display
-                        filteredPoints.forEach(entry -> timeSeries.addOrUpdate(entry.getKey(), entry.getValue()));
+                        // STEP 5: Efficiently update the JFreeChart TimeSeries with the new, smoothed data
+                        //  - timeSeries is assumed to be a JFreeChart org.jfree.data.time.TimeSeries object.
+                        //  - setNotify(false) temporarily suspends chart updates, improving performance during bulk data updates.
+                        //  - clear() removes all previous data, ensuring the chart will only show the latest processed points.
+                        timeSeries.setNotify(false);  // Pause chart notifications for batch update speed.
+
+                        // STEP 6: Add the processed (Second, Close) pairs to the TimeSeries for rendering
+                        //  - Each entry is added as a single point on the chart.
+                        filteredPoints.forEach(entry ->
+                                timeSeries.add(entry.getKey(), entry.getValue())
+                        );
+
+                        // STEP 7: Re-enable chart updates and trigger a single redraw
+                        //  - This ensures the chart is only redrawn once after all points are added, improving performance.
+                        timeSeries.setNotify(true);
                     }
 
-                    // --- DATASET & PLOT REFRESHING ---
-                    XYPlot plot = chartDisplay.getChart().getXYPlot();
-
-                    if (useCandles) {
-                        // Set the plot dataset to the new OHLC (candlestick) data
-                        OHLCSeriesCollection ohlcDataset = new OHLCSeriesCollection();
-                        ohlcDataset.addSeries(ohlcSeries);
-                        plot.setDataset(ohlcDataset);
-                    } else {
-                        // Set the plot dataset to the new time series data
-                        TimeSeriesCollection tsDataset = new TimeSeriesCollection();
-                        tsDataset.addSeries(timeSeries);
-                        plot.setDataset(tsDataset);
-                    }
+                    // after preparing data populate the series
+                    populateDatasets();
                 }
             } catch (Exception e) {
                 // Log any errors so the user sees what went wrong
@@ -1329,6 +1321,99 @@ public class mainUI extends JFrame {
             }
         }
 
+        // Update the axis
+        updateAxis(choice);
+    }
+
+    /**
+     * Refreshes the chart's dataset and updates the plot to display either the latest OHLC (candlestick)
+     * data or the time series (line chart) data, depending on the current chart mode.
+     * <p>
+     * This method constructs the appropriate dataset collection for the chart type in use and assigns
+     * it to the plot, ensuring that the chart visually updates to reflect any new or changed data.
+     * It should be called after any data or aggregation update.
+     */
+    private static void populateDatasets() {
+        // --- DATASET & PLOT REFRESHING ---
+        // Retrieve the chart's current plot for dataset assignment
+        XYPlot plot = chartDisplay.getChart().getXYPlot();
+
+        if (useCandles) {
+            // Candlestick mode:
+            // - Create a new OHLC dataset collection (for open-high-low-close candles)
+            // - Add the current OHLC series to it
+            // - Set this dataset as the plot's active dataset
+            OHLCSeriesCollection ohlcDataset = new OHLCSeriesCollection();
+            ohlcDataset.addSeries(ohlcSeries);
+            plot.setDataset(ohlcDataset);
+        } else {
+            // Time series (line chart) mode:
+            // - Create a new time series dataset collection
+            // - Add the current time series to it
+            // - Set this dataset as the plot's active dataset
+            TimeSeriesCollection tsDataset = new TimeSeriesCollection();
+            tsDataset.addSeries(timeSeries);
+            plot.setDataset(tsDataset);
+        }
+    }
+
+    /**
+     * Aggregates the global list of stock data ({@code stocks}) into time buckets of the requested period
+     * (such as hourly, daily, etc.) for charting or analysis. Uses a cache to avoid redundant aggregation
+     * on repeated redraws of the same time window and period. The aggregation covers only the selected
+     * time window, based on the provided {@code choice} and {@code zone}.
+     * <p>
+     * The returned map associates each time bucket ({@link RegularTimePeriod}) with its corresponding
+     * aggregated OHLC (open, high, low, close, volume, etc.) values, suitable for use in chart series.
+     * <p>
+     * The internal OHLC series is cleared before new data is added to ensure visual consistency.
+     *
+     * @param choice an integer representing the time window/aggregation granularity (e.g., 1 hour, 1 day)
+     * @param zone   the {@link ZoneId} for proper time zone alignment of periods
+     * @return a map from {@link RegularTimePeriod} to {@link AggregatedStockData} containing aggregated OHLC data
+     */
+    @NotNull
+    private static Map<RegularTimePeriod, AggregatedStockData> getAggregatedData(int choice, ZoneId zone) {
+        // --- CANDLESTICK AGGREGATION ---
+        // Pick aggregation period based on requested range (e.g. Hour/Day)
+        Class<? extends RegularTimePeriod> periodClass = determineAggregationPeriod(choice);
+
+        // Compute duration and time range
+        long duration = getDurationMillis(choice);
+        Date endDate = stocks.get(0).getDateDate(); // Latest date in dataset
+        Date startDate = new Date(endDate.getTime() - duration);
+
+        // Build a cache key for storing aggregation results to speed up re-renders
+        String cacheKey = periodClass.getName() + "_" + endDate.getTime();
+
+        // Try retrieving from cache (for performance on repeated redraws)
+        Map<RegularTimePeriod, AggregatedStockData> aggregatedData = aggregationCache.get(cacheKey);
+        if (aggregatedData == null) {
+            // If not cached, aggregate the raw stock data into OHLC "candles"
+            aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
+            aggregationCache.put(cacheKey, aggregatedData);
+        }
+
+        // Always aggregate raw tick data into the selected period to ensure the chart reflects the latest data.
+        // This produces a map of time period -> aggregated OHLC values.
+        aggregatedData = aggregateData(stocks, periodClass, zone, startDate);
+
+        // Clear the previous OHLC series before repopulating with new data.
+        ohlcSeries.clear();
+        return aggregatedData;
+    }
+
+    /**
+     * Updates both the X (time) and Y (price) axes of the chart to display the currently selected time window and
+     * fit the visible data. The time window duration is determined by the provided {@code choice} parameter,
+     * and the end date is based on the latest data in either the OHLC (candlestick) or line chart series.
+     * <p>
+     * The X-axis is set to display the selected window, and the Y-axis is dynamically rescaled to fit
+     * the visible range of data. All relevant time window selection buttons are enabled after the update.
+     *
+     * @param choice an integer value indicating the desired time window (e.g., 3 days, 1 week, etc.)
+     */
+    private static void updateAxis(int choice) {
         // --- AXIS & TIME WINDOW UPDATING ---
 
         // Get the correct time window for the current choice (e.g. 3 days, 1 week, etc.)
@@ -1345,6 +1430,7 @@ public class mainUI extends JFrame {
                     ? timeSeries.getTimePeriod(timeSeries.getItemCount() - 1).getEnd()
                     : new Date();
         }
+
         // Start date is window duration before end
         Date startDate = new Date(endDate.getTime() - duration);
 
@@ -1411,16 +1497,15 @@ public class mainUI extends JFrame {
      */
     // Data aggregation logic
     private static Map<RegularTimePeriod, AggregatedStockData> aggregateData(
-            List<StockUnit> stockUnitList,
-            Class<? extends RegularTimePeriod> periodClass, ZoneId zone, Date startDate) {
+            List<StockUnit> stockUnitList, Class<? extends RegularTimePeriod> periodClass, ZoneId zone, Date startDate) {
 
         // Filter to only include data after the given start date (for the visible chart window)
         // Defensive copy to avoid ConcurrentModificationException
-        List<StockUnit> filteredStocks = new ArrayList<>(stockUnitList)
-                .stream()
-                .filter(stock -> stock.getDateDate().after(startDate))
-                .sorted(Comparator.comparing(StockUnit::getDateDate))
-                .toList();
+        List<StockUnit> filteredStocks = new ArrayList<>(stockUnitList) // Defensive copy (optional, if you want to avoid changing original)
+                .parallelStream()
+                .filter(stock -> stock.getDateDate().after(startDate))      // Keep only stocks after the startDate
+                .sorted(Comparator.comparing(StockUnit::getDateDate))       // Sort ascending by date
+                .toList();                                                  // Collect to an immutable List (Java 16+)
 
         // Determine what unit to truncate timestamps to: days, hours, or minutes
         TemporalUnit unit = (periodClass == Day.class) ? ChronoUnit.DAYS
@@ -1500,38 +1585,35 @@ public class mainUI extends JFrame {
         double minY = Double.MAX_VALUE;
         double maxY = Double.MIN_VALUE;
 
-        // --- HANDLE CANDLESTICK MODE ---
+        // --- Efficiently scan only visible points within the X window using binary search indices ---
         if (useCandles) {
-            // Loop over all OHLC (candlestick) data points in the current data series
-            for (int i = 0; i < ohlcSeries.getItemCount(); i++) {
+            // Candlestick (OHLC) mode:
+            // Find the first OHLC data point whose period ends after the visible window's start.
+            int from = findFirstOHLCIndexAfter(start, ohlcSeries);
+            // Find the last OHLC data point whose period ends before the visible window's end.
+            int to = findLastOHLCIndexBefore(end, ohlcSeries);
+
+            // Only process the range of data points that are actually visible on the chart.
+            // This avoids unnecessary work and speeds up large data sets.
+            for (int i = from; i <= to; i++) {
+                // For each visible OHLC item, update minY and maxY for the y-axis range.
                 OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(i);
-
-                // Use the period's end time for window comparison
-                Date itemDate = item.getPeriod().getEnd();
-
-                // Only consider points inside the currently visible X window (between start and end)
-                if (itemDate.after(start) && itemDate.before(end)) {
-                    // Update min/max if this data point is lower/higher than previous seen
-                    minY = Math.min(minY, item.getLowValue());
-                    maxY = Math.max(maxY, item.getHighValue());
-                }
+                minY = Math.min(minY, item.getLowValue());
+                maxY = Math.max(maxY, item.getHighValue());
             }
         } else {
-            // --- HANDLE SIMPLE TIME SERIES (LINE CHART) MODE ---
-            // Loop through all data points in the TimeSeries object
-            for (int i = 0; i < timeSeries.getItemCount(); i++) {
-                // Each item corresponds to one "period" (e.g., a Second, Minute, etc.)
-                Date itemDate = timeSeries.getTimePeriod(i).getEnd();
+            // Simple time series (line chart) mode:
+            // Find the first time series data point whose period ends after the window's start.
+            int from = findFirstTimeSeriesIndexAfter(start, timeSeries);
+            // Find the last data point whose period ends before the window's end.
+            int to = findLastTimeSeriesIndexBefore(end, timeSeries);
 
-                // Restrict calculations to data within [start, end] window
-                if (itemDate.after(start) && itemDate.before(end)) {
-                    // Get the data value for this time period
-                    double value = timeSeries.getValue(i).doubleValue();
-
-                    // Update min/max trackers as needed
-                    minY = Math.min(minY, value);
-                    maxY = Math.max(maxY, value);
-                }
+            // Only process the subset of points that are currently visible.
+            for (int i = from; i <= to; i++) {
+                // Update minY and maxY with the value for each visible data point.
+                double value = timeSeries.getValue(i).doubleValue();
+                minY = Math.min(minY, value);
+                maxY = Math.max(maxY, value);
             }
         }
 
@@ -1542,6 +1624,102 @@ public class mainUI extends JFrame {
             yAxis.setRange(minY * 0.99, maxY * 1.01);
         }
         // If no points were found, do not touch the axis (prevents axis errors when series is empty)
+    }
+
+    /**
+     * Finds the first index in the TimeSeries whose period end is strictly after the given target date.
+     * Returns timeSeries.getItemCount() if all periods end before or at the target.
+     *
+     * @param target     The date to compare against.
+     * @param timeSeries The TimeSeries (assumed sorted in ascending time).
+     * @return The first index where period.getEnd() > target, or timeSeries.getItemCount() if none.
+     */
+    private static int findFirstTimeSeriesIndexAfter(Date target, TimeSeries timeSeries) {
+        int low = 0, high = timeSeries.getItemCount() - 1, result = timeSeries.getItemCount();
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            // Retrieve the period end date for binary search
+            Date midDate = timeSeries.getDataItem(mid).getPeriod().getEnd();
+            if (midDate.after(target)) {
+                result = mid;   // This index might be the first after; search left
+                high = mid - 1;
+            } else {
+                low = mid + 1;  // Still before or at target, move right
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Finds the last index in the TimeSeries whose period end is strictly before the given target date.
+     * Returns -1 if all periods end after or at the target.
+     *
+     * @param target     The date to compare against.
+     * @param timeSeries The TimeSeries (assumed sorted in ascending time).
+     * @return The last index where period.getEnd() < target, or -1 if none.
+     */
+    private static int findLastTimeSeriesIndexBefore(Date target, TimeSeries timeSeries) {
+        int low = 0, high = timeSeries.getItemCount() - 1, result = -1;
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            // Retrieve the period end date for binary search
+            Date midDate = timeSeries.getDataItem(mid).getPeriod().getEnd();
+            if (midDate.before(target)) {
+                result = mid;   // This index might be the last before; search right
+                low = mid + 1;
+            } else {
+                high = mid - 1; // Too late, move left
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Finds the first index in the OHLCSeries whose period end is strictly after the given target date.
+     * Returns ohlcSeries.getItemCount() if all periods end before or at the target.
+     *
+     * @param target     The date to compare against.
+     * @param ohlcSeries The OHLCSeries (assumed sorted in ascending time).
+     * @return The first index where period.getEnd() > target, or ohlcSeries.getItemCount() if none.
+     */
+    private static int findFirstOHLCIndexAfter(Date target, OHLCSeries ohlcSeries) {
+        int low = 0, high = ohlcSeries.getItemCount() - 1, result = ohlcSeries.getItemCount();
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            // Retrieve the period end date for binary search
+            Date midDate = ((OHLCItem) ohlcSeries.getDataItem(mid)).getPeriod().getEnd();
+            if (midDate.after(target)) {
+                result = mid;   // This index might be the first after; search left
+                high = mid - 1;
+            } else {
+                low = mid + 1;  // Still before or at target, move right
+            }
+        }
+        return result;
+    }
+
+    /**
+     * Finds the last index in the OHLCSeries whose period end is strictly before the given target date.
+     * Returns -1 if all periods end after or at the target.
+     *
+     * @param target     The date to compare against.
+     * @param ohlcSeries The OHLCSeries (assumed sorted in ascending time).
+     * @return The last index where period.getEnd() < target, or -1 if none.
+     */
+    private static int findLastOHLCIndexBefore(Date target, OHLCSeries ohlcSeries) {
+        int low = 0, high = ohlcSeries.getItemCount() - 1, result = -1;
+        while (low <= high) {
+            int mid = (low + high) / 2;
+            // Retrieve the period end date for binary search
+            Date midDate = ((OHLCItem) ohlcSeries.getDataItem(mid)).getPeriod().getEnd();
+            if (midDate.before(target)) {
+                result = mid;   // This index might be the last before; search right
+                low = mid + 1;
+            } else {
+                high = mid - 1; // Too late, move left
+            }
+        }
+        return result;
     }
 
     /**
@@ -1841,30 +2019,8 @@ public class mainUI extends JFrame {
             // Normalize input: always uppercase and no leading/trailing spaces
             selectedStock = symbol.toUpperCase().trim();
 
-            // Asynchronously fetch the historical timeline for the stock
-            mainDataHandler.getTimeline(selectedStock, values -> {
-                // Build a list of original close prices to detect "jumps"
-                List<Double> originalCloses = new ArrayList<>(values.size());
-                for (StockUnit stock : values) {
-                    originalCloses.add(stock.getClose());
-                }
-
-                // Smoothing: For every price, if the jump from the previous is >10%,
-                // clamp it to the previous value to avoid chart spikes/artifacts
-                IntStream.range(1, values.size()).parallel().forEach(i -> {
-                    double currentOriginalClose = originalCloses.get(i);
-                    double previousOriginalClose = originalCloses.get(i - 1);
-                    if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
-                        values.get(i).setClose(previousOriginalClose);
-                    }
-                });
-
-                // After smoothing, update global stock data and refresh the chart (UI-safe thread)
-                SwingUtilities.invokeLater(() -> {
-                    stocks = values;
-                    refreshChartData(9); // Default to 3-day view
-                });
-            });
+            // receive the timeLine
+            fetchTimeLine();
 
             // Start real-time updates for this stock (on UI thread)
             SwingUtilities.invokeLater(this::startRealTimeUpdates);
@@ -1873,6 +2029,61 @@ public class mainUI extends JFrame {
             // Any exceptions (network, JSON, etc.) are logged for debugging
             ex.printStackTrace();
         }
+    }
+
+    private static volatile long latestFetchRequestId = 0;
+
+
+    /**
+     * Asynchronously fetches the historical timeline data for the currently selected stock,
+     * applies smoothing to the close prices to reduce large outlier jumps, and updates the chart display.
+     * <p>
+     * Smoothing logic: If a closing price jumps more than 10% from the previous close,
+     * it is clamped to the previous value to avoid chart artifacts and improve visual stability.
+     * After processing, the UI is updated on the Swing Event Dispatch Thread.
+     */
+    private static void fetchTimeLine() {
+        final long thisRequestId = ++latestFetchRequestId; // Unique ID for this fetch
+
+        // Clear datasets right away for immediate UI feedback
+        SwingUtilities.invokeLater(() -> {
+            ohlcSeries.clear();
+            timeSeries.clear();
+        });
+
+        // Asynchronously fetch the historical timeline for the selected stock.
+        mainDataHandler.getTimeline(selectedStock, values -> {
+            if (thisRequestId != latestFetchRequestId) return; // Ignore outdated response
+
+            // --- Step 1: Build a list of original close prices for outlier detection ---
+            // - Stream over all StockUnit objects in 'values'.
+            // - Extract the close price from each.
+            // - Collect the results into a new List<Double>, preserving order.
+            List<Double> originalCloses = values.stream()
+                    .map(StockUnit::getClose)
+                    .toList();
+
+            // --- Step 2: Smooth outliers in the close price data ---
+            // For every price (starting from the 2nd), if it jumps more than 10% from the previous close,
+            // replace it with the previous close to squash unnatural spikes in the chart.
+            IntStream.range(1, values.size()).forEach(i -> {
+                double currentOriginalClose = originalCloses.get(i);
+                double previousOriginalClose = originalCloses.get(i - 1);
+                // Detect outlier (jump >10% up or down)
+                if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
+                    values.get(i).setClose(previousOriginalClose); // Clamp outlier to previous value
+                }
+            });
+
+            // --- Step 3: Update chart data on the Swing UI thread ---
+            // Assign the (possibly smoothed) list to the global 'stocks' variable,
+            // then refresh the chart, defaulting to a 3-day window (index 9).
+            SwingUtilities.invokeLater(() -> {
+                if (thisRequestId != latestFetchRequestId) return; // Double-check on the UI thread
+                stocks = values;
+                refreshChartData(9); // 3-day view
+            });
+        });
     }
 
     /**
@@ -1942,7 +2153,7 @@ public class mainUI extends JFrame {
         });
 
         // ---- WATCHLIST SELECTION HANDLER ----
-        // When the user selects a stock in their watchlist, fetch all its info/news/data in parallel
+        // When the user selects a stock in their watchlist, fetch all its info/news/data
         stockList.addListSelectionListener(e -> {
             // This check prevents duplicate/extra events when the selection changes
             if (!e.getValueIsAdjusting()) { // Only react when selection is finalized, not as the mouse moves
@@ -1979,27 +2190,7 @@ public class mainUI extends JFrame {
 
                 // 2. === Fetch and display price timeline data (for the main chart) ===
                 // Timeline is fetched and "smoothed": outlier points with >10% jump from previous are clamped for cleaner charts.
-                mainDataHandler.getTimeline(selectedStock, values -> {
-                    // Gather the original closing prices in a list for reference
-                    List<Double> originalCloses = new ArrayList<>(values.size());
-                    for (StockUnit stock : values)
-                        originalCloses.add(stock.getClose());
-
-                    // Parallel smoothing: For each value, if >10% away from previous, set to previous
-                    IntStream.range(1, values.size()).parallel().forEach(i -> {
-                        double currentOriginalClose = originalCloses.get(i);
-                        double previousOriginalClose = originalCloses.get(i - 1);
-                        if (Math.abs((currentOriginalClose - previousOriginalClose) / previousOriginalClose) >= 0.1) {
-                            values.get(i).setClose(previousOriginalClose); // Outlier squashed
-                        }
-                    });
-
-                    // On the UI thread: update the current stock data and refresh the chart for the new symbol
-                    SwingUtilities.invokeLater(() -> {
-                        stocks = values;
-                        refreshChartData(9); // Default to 3-day window
-                    });
-                });
+                fetchTimeLine();
 
                 // 3. === Fetch and display latest news headlines for the selected symbol ===
                 mainDataHandler.receiveNews(selectedStock, values -> {
@@ -2221,9 +2412,9 @@ public class mainUI extends JFrame {
                                     periodClass, tickDate, TimeZone.getDefault(), Locale.getDefault()
                             );
 
-                            // Find if this period already has a candle in the OHLC series.
+                            // Find if this period already has a candle in the OHLC series. (do it reverse around 500x faster)
                             int periodIndex = -1;
-                            for (int i = 0; i < ohlcSeries.getItemCount(); i++) {
+                            for (int i = ohlcSeries.getItemCount() - 1; i >= 0; i--) {
                                 OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(i);
                                 RegularTimePeriod itemPeriod = item.getPeriod();
                                 if (itemPeriod.equals(tickPeriod)) {
@@ -2263,65 +2454,11 @@ public class mainUI extends JFrame {
                         // All chart and UI updates must run on the Swing EDT for safety
                         SwingUtilities.invokeLater(() -> {
                             try {
-                                // Parse the server timestamp into a Java Date for plotting
-                                Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+                                // update ranges
+                                XYPlot plot = updateRanges(value, close);
 
-                                // Get the current plot and X-axis for auto-scrolling logic
-                                XYPlot plot = chartDisplay.getChart().getXYPlot();
-                                DateAxis xAxis = (DateAxis) plot.getDomainAxis();
-
-                                // Calculate current time window in milliseconds (e.g., 5 min, 1 hr)
-                                long window = getDurationMillis(currentTimeRangeChoice);
-
-                                /*
-                                 * If the user hasn't zoomed in or out (auto-range is true),
-                                 * scroll the chart window forward to always show the latest data.
-                                 * This acts like a rolling window—otherwise, respect user zoom.
-                                 */
-                                if (xAxis.isAutoRange()) {
-                                    xAxis.setAutoRange(true);            // re-apply auto-range
-                                    xAxis.setFixedAutoRange(window);     // window width in ms
-                                    Date lower = new Date(date.getTime() - window);
-                                    updateYAxisRange(plot, lower, date); // auto-adjust y-axis range for window
-                                }
-
-                                // ==================== TIME SERIES AND CURRENT PRICE MARKER UPDATE ====================
-
-                                // Update the chart's TimeSeries dataset with the new close price for this tick.
-                                // Each Second object represents a unique timestamp (to-the-second granularity).
-                                timeSeries.addOrUpdate(new Second(date), close);
-
-                                // --- Add or Update the "Current Price" marker on the chart ---
-                                // First, remove any previous marker so only one is shown at a time.
-
-                                if (!Double.isNaN(close)) { // Only act if the close price is a valid number (not missing)
-                                    // Retrieve all current range markers on the plot in the FOREGROUND layer.
-                                    Collection<?> existingMarkers = plot.getRangeMarkers(Layer.FOREGROUND);
-                                    List<ValueMarker> toRemove = new ArrayList<>(); // List to hold markers we want to remove
-
-                                    // Scan through all foreground markers to find those labeled "CURRENT_PRICE".
-                                    // (We use this label to distinguish from other types of markers/overlays.)
-                                    if (existingMarkers != null) {
-                                        for (Object obj : existingMarkers) {
-                                            // instanceof with pattern matching (Java 16+): checks type and casts at once
-                                            if (obj instanceof ValueMarker marker && "CURRENT_PRICE".equals(marker.getLabel())) {
-                                                toRemove.add(marker); // Mark this marker for removal
-                                            }
-                                        }
-                                        // Remove all "CURRENT_PRICE" markers found above (should only be one, but robust for multiple)
-                                        for (ValueMarker marker : toRemove) {
-                                            plot.removeRangeMarker(marker, Layer.FOREGROUND);
-                                        }
-                                    }
-
-                                    // --- Add the new "Current Price" marker at the latest close ---
-                                    // Marker color is determined by the movement since the last close (green=up, red=down, gray=flat).
-                                    ValueMarker priceMarker = getValueMarker(close);
-                                    plot.addRangeMarker(priceMarker, Layer.FOREGROUND);
-
-                                    // Update the stored last close value for use on the next tick.
-                                    lastClose = close;
-                                }
+                                // add price marker
+                                addMarker(close, plot);
 
                                 chartPanel.repaint();
                             } catch (Exception e) {
@@ -2339,6 +2476,98 @@ public class mainUI extends JFrame {
                 });
             }
         }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+    }
+
+    /**
+     * Updates the X and Y axis ranges of the chart plot based on the latest real-time data point,
+     * and appends the latest close price to the chart's time series.
+     * <p>
+     * If the chart's domain axis (X-axis) is in auto-range mode, this method scrolls the view forward
+     * to show the most recent {@code currentTimeRangeChoice} window, emulating a rolling time window.
+     * The Y-axis range is also updated to fit the data within this window.
+     * The new close price is then added to the chart's {@code TimeSeries} at the given timestamp.
+     *
+     * @param value The real-time data object containing the server timestamp and other relevant info.
+     * @param close The latest closing price for this data point.
+     * @return The updated {@link XYPlot} with refreshed axes and data.
+     * @throws ParseException if the timestamp from the data cannot be parsed into a {@code Date}.
+     */
+    @NotNull
+    private static XYPlot updateRanges(RealTimeResponse.RealTimeMatch value, double close) throws ParseException {
+        // Parse the server timestamp into a Java Date for plotting
+        Date date = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss").parse(value.getTimestamp());
+
+        // Get the current plot and X-axis for auto-scrolling logic
+        XYPlot plot = chartDisplay.getChart().getXYPlot();
+        DateAxis xAxis = (DateAxis) plot.getDomainAxis();
+
+        // Calculate current time window in milliseconds (e.g., 5 min, 1 hr)
+        long window = getDurationMillis(currentTimeRangeChoice);
+
+        /*
+         * If the user hasn't zoomed in or out (auto-range is true),
+         * scroll the chart window forward to always show the latest data.
+         * This acts like a rolling window—otherwise, respect user zoom.
+         */
+        if (xAxis.isAutoRange()) {
+            xAxis.setAutoRange(true);            // re-apply auto-range
+            xAxis.setFixedAutoRange(window);     // window width in ms
+            Date lower = new Date(date.getTime() - window);
+            updateYAxisRange(plot, lower, date); // auto-adjust y-axis range for window
+        }
+
+        // ==================== TIME SERIES AND CURRENT PRICE MARKER UPDATE ====================
+
+        // Update the chart's TimeSeries dataset with the new close price for this tick.
+        // Each Second object represents a unique timestamp (to-the-second granularity).
+        timeSeries.addOrUpdate(new Second(date), close);
+        return plot;
+    }
+
+    /**
+     * Adds or updates a Current Price marker on the specified chart plot.
+     * <p>
+     * This method first removes any existing markers labeled "CURRENT_PRICE" in the {@code FOREGROUND} layer
+     * to ensure only one "Current Price" marker is visible at a time. It then adds a new marker at the given
+     * {@code close} value, colored according to the latest price movement.
+     * <p>
+     * If the provided close price is not a valid number (i.e., {@code Double.NaN}), no action is taken.
+     *
+     * @param close The latest closing price to mark on the chart. If this is {@code Double.NaN}, the method does nothing.
+     * @param plot  The {@link XYPlot} to which the marker should be added.
+     */
+    private static void addMarker(double close, XYPlot plot) {
+        // --- Add or Update the "Current Price" marker on the chart ---
+        // First, remove any previous marker so only one is shown at a time.
+
+        if (!Double.isNaN(close)) { // Only act if the close price is a valid number (not missing)
+            // Retrieve all current range markers on the plot in the FOREGROUND layer.
+            Collection<?> existingMarkers = plot.getRangeMarkers(Layer.FOREGROUND);
+            List<ValueMarker> toRemove = new ArrayList<>(); // List to hold markers we want to remove
+
+            // Scan through all foreground markers to find those labeled "CURRENT_PRICE".
+            // (We use this label to distinguish from other types of markers/overlays.)
+            if (existingMarkers != null) {
+                for (Object obj : existingMarkers) {
+                    // instanceof with pattern matching (Java 16+): checks type and casts at once
+                    if (obj instanceof ValueMarker marker && "CURRENT_PRICE".equals(marker.getLabel())) {
+                        toRemove.add(marker); // Mark this marker for removal
+                    }
+                }
+                // Remove all "CURRENT_PRICE" markers found above (should only be one, but robust for multiple)
+                for (ValueMarker marker : toRemove) {
+                    plot.removeRangeMarker(marker, Layer.FOREGROUND);
+                }
+            }
+
+            // --- Add the new "Current Price" marker at the latest close ---
+            // Marker color is determined by the movement since the last close (green=up, red=down, gray=flat).
+            ValueMarker priceMarker = getValueMarker(close);
+            plot.addRangeMarker(priceMarker, Layer.FOREGROUND);
+
+            // Update the stored last close value for use on the next tick.
+            lastClose = close;
+        }
     }
 
     /**
@@ -2517,51 +2746,55 @@ public class mainUI extends JFrame {
                                             DateAxis axis = (DateAxis) plot.getDomainAxis();
 
                                             // === Move X-axis window ===
-                                            // Adjust the horizontal axis so that the chart view always includes the newest point
-                                            // The window will show everything from 'start' to 'tickDate'
+                                            // Adjust the horizontal axis so the chart view always includes the newest point
+                                            // The window shows everything from 'start' to 'tickDate'
                                             axis.setRange(start, new Date(tickDate.getTime() + 60 * 1000));
 
                                             // === Prepare for Y-axis dynamic scaling ===
-
-                                            // Initialize trackers for the minimum and maximum values to extremely wide limits
-                                            // We'll update these as we scan through the data to fit just the relevant window
+                                            // Trackers for min and max Y values (for axis range)
                                             double minY = Double.MAX_VALUE;
                                             double maxY = -Double.MAX_VALUE;
 
-                                            // === Scan through all close values in the notification's TimeSeries ===
-                                            // We want to find the lowest and highest close price between 'start' and 'tickDate'
-                                            for (int j = 0; j < series.getItemCount(); j++) {
-                                                Date date = series.getTimePeriod(j).getEnd();
-                                                // Only consider points inside the current X-axis window (not before 'start' and not after 'tickDate')
-                                                if (!date.before(start) && !date.after(tickDate)) {
-                                                    double closeValue = series.getValue(j).doubleValue();
-                                                    // Update minimum and maximum close values found so far
-                                                    minY = Math.min(minY, closeValue);
-                                                    maxY = Math.max(maxY, closeValue);
-                                                }
+                                            // === Efficient scan of close values in visible TimeSeries window ===
+                                            // Use binary search to find the subset of indices to scan
+                                            int firstSeriesIdx = findFirstTimeSeriesIndexAfter(start, series);
+                                            int lastSeriesIdx = findLastTimeSeriesIndexBefore(tickDate, series);
+
+                                            for (int j = firstSeriesIdx; j <= lastSeriesIdx; j++) {
+                                                double closeValue = series.getValue(j).doubleValue();
+                                                minY = Math.min(minY, closeValue);
+                                                maxY = Math.max(maxY, closeValue);
                                             }
 
-                                            // === Scan through all OHLC values in the same window ===
-                                            // OHLC (candles) give extra info: check for highest high and lowest low
-                                            for (int k = 0; k < ohlcSeries.getItemCount(); k++) {
+                                            // === Efficient scan of OHLC values in visible window ===
+                                            // Again, use binary search to restrict scan to visible data only
+                                            int firstOhlcIdx = findFirstOHLCIndexAfter(start, ohlcSeries);
+                                            int lastOhlcIdx = findLastOHLCIndexBefore(tickDate, ohlcSeries);
+
+                                            for (int k = firstOhlcIdx; k <= lastOhlcIdx; k++) {
                                                 OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
-                                                Date itemDate = item.getPeriod().getEnd();
-                                                // Again, only consider OHLC data inside the visible window
-                                                if (!itemDate.before(start) && !itemDate.after(tickDate)) {
-                                                    // Update min and max if this OHLC bar sets a new high or low
-                                                    minY = Math.min(minY, item.getLowValue());
-                                                    maxY = Math.max(maxY, item.getHighValue());
-                                                }
+                                                minY = Math.min(minY, item.getLowValue());
+                                                maxY = Math.max(maxY, item.getHighValue());
                                             }
 
-                                            // === Update the Y-axis range if we found at least one valid value ===
+                                            // === Update the Y-axis range if at least one valid data point is in the window ===
                                             if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
                                                 ValueAxis yAxis = plot.getRangeAxis();
-                                                // Add a 10% margin above and below for better readability (no data right at the edge)
-                                                yAxis.setRange(
-                                                        minY - (maxY - minY) * 0.05,      // Lower bound: a bit below the min
-                                                        maxY + (maxY - minY) * 0.05 + 0.05 // Upper bound: a bit above the max (+0.1 in case of flat range)
-                                                );
+                                                double margin = 0.01; // 1% margin for visual padding above/below data
+                                                double range = maxY - minY;
+
+                                                if (range == 0) {
+                                                    // Special case: All values are the same (flat line).
+                                                    // Use a fixed small margin (±0.01) so the line doesn't sit on the chart edge.
+                                                    yAxis.setRange(minY - 0.01, maxY + 0.01);
+                                                } else {
+                                                    // Standard case: Add a 2% margin above and below the min/max for better readability.
+                                                    // This prevents the chart from looking cramped and ensures the data is not flush with the axis.
+                                                    yAxis.setRange(
+                                                            minY - range * margin, // Lower bound: 1% below minimum
+                                                            maxY + range * margin  // Upper bound: 1% above maximum
+                                                    );
+                                                }
                                             }
 
                                             // === Redraw chart with the newly updated axis ranges and datasets ===
@@ -3468,7 +3701,7 @@ public class mainUI extends JFrame {
         @Override
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
-            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey,  useRealtime,
+            settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime,
                     aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market);
             gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
