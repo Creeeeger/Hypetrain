@@ -297,7 +297,7 @@ public class mainDataHandler {
                 , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
                 , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
                 , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
-                , "INSP", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK", "LIN"
+                , "INSP", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK"
                 , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
                 , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MRK", "MRNA", "MRVL", "MS", "MSFT"
                 , "MSI", "MSTR", "MU", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
@@ -320,7 +320,7 @@ public class mainDataHandler {
                 "AAPL", "ABBV", "ABT", "AMGN", "AMZN", "AMD", "AVGO", "AXP",
                 "BAC", "BMY", "CAT", "CSCO", "COST", "CVX",
                 "DE", "DIS", "DUK", "GE", "GOOGL", "HD", "HON", "IBM",
-                "JNJ", "JPM", "LIN", "LLY", "LOW", "LMT", "MA",
+                "JNJ", "JPM", "LLY", "LOW", "LMT", "MA",
                 "MCD", "MDT", "META", "MMM", "MRK", "MSFT", "NFLX", "NVDA",
                 "ORCL", "PEP", "PFE", "PG", "QCOM", "SBUX",
                 "SBUX", "TGT", "TMO", "TMUS", "TXN", "UPS", "V", "WFC", "XOM"
@@ -4367,7 +4367,7 @@ public class mainDataHandler {
     }
 
     /**
-     * Continuously collects real-time price data for a given symbol and appends it to "realtime.txt".
+     * Continuously collects real-time price data for a given symbol and appends it to "Symbol + realtime.txt".
      * This function schedules a background task (runs every second) that fetches a single real-time update,
      * then writes the bar's data to file (one line per update, appending).
      *
@@ -4385,7 +4385,8 @@ public class mainDataHandler {
         // Schedule a task to run every 1 second (fetching and writing latest data)
         executorService.scheduleAtFixedRate(() -> getRealTimeUpdate(symbol, response -> {
             try {
-                File data = new File("realtime.txt");
+                File data = new File(symbol.toUpperCase() + "realtime.txt");
+
                 // Create the output file if it does not exist yet
                 if (!data.exists()) {
                     data.createNewFile();
@@ -4409,7 +4410,7 @@ public class mainDataHandler {
                 // Print file errors (e.g., disk full, permissions) to the standard error stream
                 System.err.println("Error writing to file: " + e.getMessage());
             }
-        }), 0, 1, TimeUnit.SECONDS);
+        }), 0, 5, TimeUnit.SECONDS);
     }
 
     /**
