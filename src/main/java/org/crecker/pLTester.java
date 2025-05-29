@@ -117,8 +117,11 @@ public class pLTester {
      */
     public static void main(String[] args) {
         // updateStocks(); // Optionally refresh/download all stocks (uncomment if needed)
-        PLAnalysis();
-        // realTimeDataCollector("NVDA");
+        //PLAnalysis();
+        realTimeDataCollector("RGTI");
+        realTimeDataCollector("MARA");
+        realTimeDataCollector("QBTS");
+        realTimeDataCollector("QUBT");
     }
 
     /**
