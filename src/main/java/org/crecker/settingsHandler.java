@@ -6,6 +6,7 @@ import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
 import java.util.Dictionary;
 import java.util.Hashtable;
+import java.util.Objects;
 
 import static org.crecker.mainDataHandler.stockCategoryMap;
 import static org.crecker.mainUI.*;
@@ -23,32 +24,33 @@ public class settingsHandler extends JDialog {
     static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel, candleLabel, T212Label, pushCutLabel;
     static JTextField volumeText, keyText, T212textField, pushCutTextField;
     static JSlider algoAggressivenessSlider;
-    static JCheckBox sortCheckBox, realtimeBox, candleBox, greedCheckBox;
+    static JCheckBox sortCheckBox, realtimeBox, candleBox, greedCheckBox, useSecondFrameworkBox;
     // Internal variables to hold settings values
     int vol;
     float aggressiveness;
     String sym, key, T212, push, market;
-    boolean sort, realtime, useCandles, greed;
+    boolean sort, realtime, useCandles, greed, useSecondFramework;
     static JComboBox<String> marketRegimeComboBox;
 
     /**
      * Constructs a new settingsHandler dialog with the current config values.
      * Populates the dialog with Swing controls for user input.
      *
-     * @param vol            Initial volume value.
-     * @param sym            Symbols string (not directly editable here).
-     * @param sort           Whether to sort hype entries.
-     * @param key            API key.
-     * @param realtime       Enable real-time updates.
-     * @param aggressiveness Aggressiveness for hype algorithm.
-     * @param useCandles     Use candle charts.
-     * @param T212           Trading212 Api Key
-     * @param push           PushCut URL endpoint
-     * @param greed          Whether Greed Mode is turned on
-     * @param market         Market to hype in.
+     * @param vol                Initial volume value.
+     * @param sym                Symbols string (not directly editable here).
+     * @param sort               Whether to sort hype entries.
+     * @param key                API key.
+     * @param realtime           Enable real-time updates.
+     * @param aggressiveness     Aggressiveness for hype algorithm.
+     * @param useCandles         Use candle charts.
+     * @param T212               Trading212 Api Key
+     * @param push               PushCut URL endpoint
+     * @param greed              Whether Greed Mode is turned on
+     * @param market             Market to hype in.
+     * @param useSecondFramework Boolean for activating second based scanning
      */
     public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness,
-                           boolean useCandles, String T212, String push, boolean greed, String market) {
+                           boolean useCandles, String T212, String push, boolean greed, String market, Boolean useSecondFramework) {
         // Set layout manager for this JFrame: BorderLayout allows a central content area
         setLayout(new BorderLayout(10, 10));
 
@@ -64,6 +66,7 @@ public class settingsHandler extends JDialog {
         this.push = push;
         this.greed = greed;
         this.market = market;
+        this.useSecondFramework = useSecondFramework;
 
         // Initialize main settings panel with vertical layout (BoxLayout.Y_AXIS stacks items top to bottom)
         settingsPanel = new JPanel();
@@ -187,6 +190,20 @@ public class settingsHandler extends JDialog {
         // This ensures that when the UI loads, it defaults to the market regime currently in use
         marketRegimeComboBox.setSelectedItem(market);
 
+        // Create and configure a label describing the second-based scanning feature.
+        JLabel useSecondFrameworkLabel = new JLabel("Activate improved Second based scanning");
+
+        // Left-align the label within its parent container for consistent UI layout.
+        useSecondFrameworkLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
+
+        // Create a checkbox allowing users to enable or disable the second-based scanning framework.
+        // Its initial checked state is determined by the configuration value 'useSecondFramework'.
+        useSecondFrameworkBox = new JCheckBox("Second based Framework");
+        useSecondFrameworkBox.setSelected(useSecondFramework); // Initialize checkbox state from config
+
+        // Vertically center-align the checkbox relative to other components in the layout.
+        useSecondFrameworkBox.setAlignmentY(Component.CENTER_ALIGNMENT);
+
         // Add all components to the settings panel, with spacing for neatness
         settingsPanel.add(volume);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -224,6 +241,10 @@ public class settingsHandler extends JDialog {
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(marketRegimeComboBox);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(useSecondFrameworkLabel);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
+        settingsPanel.add(useSecondFrameworkBox);
+        settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
 
         // "Apply Settings" button for saving and applying configuration
         JButton apply = new JButton("Apply Settings");
@@ -260,7 +281,8 @@ public class settingsHandler extends JDialog {
                         {"T212", T212textField.getText()},
                         {"push", pushCutTextField.getText()},
                         {"greed", String.valueOf(greedCheckBox.isSelected())},
-                        {"market", marketRegimeComboBox.getSelectedItem().toString()}
+                        {"market", Objects.requireNonNull(marketRegimeComboBox.getSelectedItem()).toString()},
+                        {"secondFrameWork", String.valueOf(useSecondFrameworkBox.isSelected())}
                 };
 
                 // Save updated settings to the config XML file

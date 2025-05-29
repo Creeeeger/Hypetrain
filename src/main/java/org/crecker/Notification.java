@@ -70,8 +70,19 @@ public class Notification {
      * @param localDateTime Time of the event.
      * @param symbol        Stock symbol this notification refers to.
      * @param change        Percentage change for the notification (e.g. dip/spike).
-     * @param config        Event type (0=dip, 1=gap, 2=R-line spike, 3=spike, else=purple).
+     * @param config        Event type code, which determines the visual highlight color:
+     *                      <ul>
+     *                          <li>0 - GREED (bright red)</li>
+     *                          <li>1 - Gap filler (deep orange)</li>
+     *                          <li>2 - R-line spike (blue)</li>
+     *                          <li>3 - Spike (green)</li>
+     *                          <li>4 - Uptrend (royal purple)</li>
+     *                          <li>5 - Second-based alarm (alarm red)</li>
+     *                          <li>Other - Gray</li>
+     *                      </ul>
+     *                      <p>Use bright colors to enhance text visibility.</p>
      */
+
     public Notification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
         this.title = title;
         this.content = content;
@@ -82,17 +93,18 @@ public class Notification {
         this.config = config;
 
         /*
-          config 0 GREED       - bright red
-          config 1 gap filler  - deep orange
-          config 2 R-line spike- blue
-          config 3 spike       - green
-          config 4 uptrend     - royal purple
-          other                - gray
+          config 0 GREED        - bright red
+          config 1 gap filler   - deep orange
+          config 2 R-line spike - blue
+          config 3 spike        - green
+          config 4 uptrend      - royal purple
+          config 5 second based - Alarm red
+          other                 - gray
           -- use brighter colors in order to see text better and more clear --
          */
 
         if (config == 0) {
-            this.color = new Color(255, 73, 73);         // Bright Red
+            this.color = new Color(255, 73, 73, 182);         // Bright Red
         } else if (config == 1) {
             this.color = new Color(255, 171, 70);       // Deep Orange
         } else if (config == 2) {
@@ -101,6 +113,8 @@ public class Notification {
             this.color = new Color(60, 184, 93);       // Leaf Green
         } else if (config == 4) {
             this.color = new Color(255, 58, 255);       // Royal Purple
+        } else if (config == 5) {
+            this.color = new Color(255, 0, 0, 255);   // alarm red
         } else {
             this.color = new Color(147, 147, 159);        // Gray
         }

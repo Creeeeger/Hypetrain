@@ -1,12 +1,6 @@
 TODO
 Version 1.5:
-- Improve speed of spike up percentage change detection by supportive second data framework
-    - fetch data every second
-    - store in new data structure
-    - add settings option
-    - evaluate big rises within short time
-    - if rise then prepare data for short term evaluation with absolute priority
-    - if a rise occurs then display an ultra important message
+- evaluate big rises within short time - improve it
 
 Version 2.0:
 - Add Institutional purchase Hunter

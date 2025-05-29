@@ -191,6 +191,11 @@ public class mainUI extends JFrame {
     static String selectedStock = "-Select a Stock-";
 
     /**
+     * Value for activating second framework
+     */
+    public static boolean useSecondFramework;
+
+    /**
      * The currently selected market segment or asset group for alerting and strategy tuning.
      * <p>
      * Examples: "bigCaps", "midCaps", "techGiants", "cryptoBlockchain", etc.
@@ -356,6 +361,7 @@ public class mainUI extends JFrame {
             pushCutUrlEndpoint = settingData[8][1];
             greed = Boolean.parseBoolean(settingData[9][1]);
             market = settingData[10][1];
+            useSecondFramework = Boolean.parseBoolean(settingData[11][1]);
         } catch (Exception e) {
             System.out.println("Config error - Create new config " + e.getMessage());
             createConfig();
@@ -425,7 +431,7 @@ public class mainUI extends JFrame {
 
             // Immediately open settings so user can edit config before using the app
             settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness,
-                    useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market);
+                    useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market, useSecondFramework);
             guiSetting.setSize(500, 700);
             guiSetting.setAlwaysOnTop(true);
             guiSetting.setModalityType(Dialog.ModalityType.APPLICATION_MODAL); // makes it blocking
@@ -685,7 +691,8 @@ public class mainUI extends JFrame {
                 {"T212", t212ApiToken},
                 {"push", pushCutUrlEndpoint},
                 {"greed", String.valueOf(greed)},
-                {"market", market}
+                {"market", market},
+                {"secondFrameWork", String.valueOf(useSecondFramework)}
         };
     }
 
@@ -3702,7 +3709,7 @@ public class mainUI extends JFrame {
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
             settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime,
-                    aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market);
+                    aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market, useSecondFramework);
             gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
             gui.setTitle("Config handler ");  // Dialog window title
