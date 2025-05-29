@@ -268,27 +268,27 @@ public class mainDataHandler {
                 "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
                 , "AMAT", "AMC", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
                 , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BA", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
-                , "BN", "BNS", "BNTX", "BP", "BSX", "BTDR", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-                , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "CNQ", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRM", "CRWD", "CRWV"
+                , "BN", "BNS", "BNTX", "BP", "BSX", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
+                , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRWD", "CRWV"
                 , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
-                , "DUOL", "EA", "ECL", "ELF", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
+                , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
                 , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
                 , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
-                , "INSP", "INTC", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JOBY", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
+                , "INSP", "INTC", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK", "LCID", "LIN"
                 , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
-                , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MPWR", "MRK", "MRNA", "MRVL", "MS", "MSFT"
-                , "MSI", "MSTR", "MT", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
-                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR", "PLD"
+                , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MRK", "MRNA", "MRVL", "MS", "MSFT"
+                , "MSI", "MSTR", "MU", "MUFG", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
+                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR"
                 , "PLTR", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
                 , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RTX", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
                 , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
-                , "SYY", "TCOM", "TD", "TDG", "TEM", "TFC", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
-                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "ULTA", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
+                , "SYY", "TCOM", "TD", "TDG", "TEM", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
+                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "UNH", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
                 , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
                 , "ZIM", "ZTO", "ZTS"
         });
         put("aiStocks", new String[]{
-                "AMD", "CRM", "DDOG", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "SMCI", "SNOW"
+                "AMD", "DDOG", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "SMCI", "SNOW"
         });
         put("autoEV", new String[]{
                 "F", "GM", "LCID", "NIO", "RIVN", "TSLA", "XPEV"
@@ -299,14 +299,14 @@ public class mainDataHandler {
                 "DE", "DIS", "DUK", "GE", "GOOGL", "HD", "HON", "IBM",
                 "INTC", "JNJ", "JPM", "LIN", "LLY", "LOW", "LMT", "MA",
                 "MCD", "MDT", "META", "MMM", "MRK", "MSFT", "NFLX", "NVDA",
-                "ORCL", "PEP", "PFE", "PG", "PLD", "QCOM", "RTX", "SBUX",
+                "ORCL", "PEP", "PFE", "PG", "QCOM", "RTX", "SBUX",
                 "SBUX", "TGT", "TMO", "TMUS", "TXN", "UNH", "UPS", "V", "WFC", "XOM"
         });
         put("chineseTech", new String[]{
-                "BABA", "BNS", "CNI", "CNQ", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
+                "BABA", "BNS", "CNI", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
         });
         put("cryptoBlockchain", new String[]{
-                "BTDR", "COIN", "CORZ", "HSAI",
+                "COIN", "CORZ", "HSAI",
                 "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "SOUN"
         });
         put("energy", new String[]{
@@ -323,10 +323,10 @@ public class mainDataHandler {
                 "ANTM", "CI", "CNC", "CVS", "ELV", "HCA", "HUM", "UHS", "UNH"
         });
         put("highVolatile", new String[]{
-                "ACHR", "AFRM", "AMC", "AER", "ASPI", "ASTS", "BNTX", "BTDR", "CELH",
+                "ACHR", "AFRM", "AMC", "AER", "ASPI", "ASTS", "BNTX", "CELH",
                 "COIN", "CORZ", "CVNA", "DJT", "DUOL",
                 "ENPH", "FIVE", "FOUR", "FUTU", "GME", "GMAB",
-                "HOOD", "INSP", "JOBY", "LPLA", "LCID", "LMND",
+                "HOOD", "INSP", "LPLA", "LCID", "LMND",
                 "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
                 "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
                 "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
@@ -341,7 +341,7 @@ public class mainDataHandler {
                 "ASPI", "BMRN", "BN", "BNTX", "BUD", "CELH", "COHR", "CRWV",
                 "CVNA", "DOCU", "DUOL", "ENPH", "FIVE", "FOUR", "FTAI", "FUTU",
                 "GMAB", "HIMS", "HOOD", "HSY", "IEP", "INFY", "INSP", "LCID",
-                "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MT", "MTRN",
+                "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MTRN",
                 "NFE", "NIO", "NOVA", "ODFL", "OKLO", "OPEN", "PTON", "RIVN",
                 "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL", "SWKS",
                 "TCOM", "TEM", "TRU", "TTD", "UPST", "VKTX", "XPO", "ZETA", "ZIM"
@@ -355,36 +355,36 @@ public class mainDataHandler {
         });
         put("retail", new String[]{
                 "AMZN", "BBY", "COST", "HD", "LOW", "LULU", "MGM", "SONY",
-                "TGT", "TJX", "ULTA", "WMT", "YUM"
+                "TGT", "TJX", "WMT", "YUM"
         });
         put("robotics", new String[]{
-                "ACHR", "ISRG", "JOBY", "KODK", "MBLY", "RKLB"
+                "ACHR", "ISRG", "KODK", "MBLY", "RKLB"
         });
         put("semiconductors", new String[]{
                 "ADI", "AMAT", "AMD", "ARM", "ASML", "AVGO", "CDNS", "COHR",
-                "CRDO", "INNTC", "INTC", "KLAC", "LRCX", "MCHP", "MPWR", "MRVL",
+                "CRDO", "INNTC", "INTC", "KLAC", "LRCX", "MCHP", "MRVL",
                 "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
         });
         put("smallCaps", new String[]{
-                "ACHR", "ASTS", "BE", "BTDR", "CAVA",
+                "ACHR", "ASTS", "BE", "CAVA",
                 "CORZ", "CRDO", "DJT", "HUT", "IESC",
-                "IONQ", "JOBY", "KODK", "LMND", "LUMN", "LUNR", "LX",
+                "IONQ", "KODK", "LMND", "LUMN", "LUNR", "LX",
                 "MARA", "MBLY", "MDGL", "POWL", "QBTS", "QUBT", "RCAT",
                 "RDDT", "RKLB", "RXRX", "SMR", "SOUN",
                 "STRL", "TMDX", "UPST", "VIR", "VKTX", "XPEV"
         });
         put("techGiants", new String[]{
-                "AAPL", "ADBE", "AMZN", "CRM", "CSCO", "GOOGL", "INTC",
+                "AAPL", "ADBE", "AMZN", "CSCO", "GOOGL", "INTC",
                 "META", "MSFT", "NVDA", "ORCL"
         });
         put("ultraVolatile", new String[]{
-                "ACHR", "AMC", "ASTS", "BTDR", "CORZ", "DJT",
-                "ENPH", "GME", "IONQ", "JOBY", "LMND",
+                "ACHR", "AMC", "ASTS", "CORZ", "DJT",
+                "ENPH", "GME", "IONQ", "LMND",
                 "LUMN", "LUNR", "MARA", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
                 "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
         });
         put("favourites", new String[]{
-                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "JOBY", "AMC", "U"
+                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "AMC", "U"
         });
     }};
 
@@ -497,7 +497,7 @@ public class mainDataHandler {
      *   [7] 52-week low (from fundamentals)
      *   [8] Market capitalization (from fundamentals)
      * </pre>
-     * <b>Note:</b> This method launches two asynchronous API calls (fundamental and quote data) in parallel.
+     * <b>Note:</b> This method launches two asynchronous API calls (fundamental and quote data).
      * The callback is called only after the quote data is received (but before fundamentals necessarily finish).
      * For fully synchronized fundamental+quote delivery, consider a custom latch.
      *
@@ -521,7 +521,8 @@ public class mainDataHandler {
                     data[5] = response.getPEGRatio() != null ? response.getPEGRatio() : 0.0;
                     data[6] = response.getFiftyTwoWeekHigh() != null ? response.getFiftyTwoWeekHigh() : 0.0;
                     data[7] = response.getFiftyTwoWeekLow() != null ? response.getFiftyTwoWeekLow() : 0.0;
-                    data[8] = Objects.requireNonNullElse(Double.valueOf(response.getMarketCapitalization()), 0.0);
+                    Long mktCap = response.getMarketCapitalization();
+                    data[8] = (mktCap == null) ? 0.0 : mktCap.doubleValue();
                 })
                 .onFailure(mainDataHandler::handleFailure)  // Logs any API failure for debugging
                 .fetch();
@@ -1020,7 +1021,9 @@ public class mainDataHandler {
 
                 // --- Post-load: Prepare all in-memory timelines for ML/alerting ---
                 synchronized (symbolTimelines) {
-                    symbolTimelines.forEach((symbol, timeline) -> {
+                    symbolTimelines.keySet().parallelStream().forEach(symbol -> {
+                        // Get the list of StockUnit objects (the timeline) for this symbol.
+                        List<StockUnit> timeline = symbolTimelines.get(symbol);
                         // If too little data, alert user and skip further analysis for this symbol.
                         if (timeline.size() < 2) {
                             logTextArea.append("Not enough data for " + symbol + "\n");
@@ -1055,6 +1058,8 @@ public class mainDataHandler {
                     // --- Create a CountDownLatch with a count equal to the number of symbols we want to fetch ---
                     // Each symbol's asynchronous API call will decrement this latch when finished (success or failure).
                     CountDownLatch latch = new CountDownLatch(symbols.size());
+                    Set<String> pendingSymbols = Collections.newSetFromMap(new ConcurrentHashMap<>());
+                    pendingSymbols.addAll(symbols); // Initialize with all symbols
 
                     try {
                         // Loop through all symbols that need to be updated in real-time.
@@ -1104,22 +1109,29 @@ public class mainDataHandler {
                                                 timeline.addAll(newBars);
                                             }
                                         }
+
+                                        pendingSymbols.remove(symbol);
                                         // Signal that this symbol's fetch is complete (success).
                                         latch.countDown();
                                     })
                                     .onFailure(e -> {
                                         // On API failure, log which symbol failed (and still signal completion)
                                         logTextArea.append("Failed for symbol: " + symbol + "\n");
+                                        pendingSymbols.remove(symbol);
                                         latch.countDown();
                                     })
                                     .fetch(); // Start the async request
                         }
 
-                        // --- Wait for all fetches to complete (or timeout after 25 seconds) ---
+                        // --- Wait for all fetches to complete (or timeout after 50 seconds) ---
                         // The main thread blocks here until all symbol requests finish or timeout is reached.
-                        if (!latch.await(35, TimeUnit.SECONDS)) {
+                        if (!latch.await(58, TimeUnit.SECONDS)) {
                             // If not all latches counted down, warn the user (could be slow API or network)
                             logTextArea.append("Warning: Timed out waiting for some data\n");
+
+                            // Log timed out symbols
+                            logTextArea.append("Timed out symbols: " + pendingSymbols + "\n");
+                            logTextArea.append("Number of timed out symbols: " + pendingSymbols.size() + "\n");
                         }
 
                         // Log the number of processed stock entries for debugging/feedback.
@@ -1276,27 +1288,39 @@ public class mainDataHandler {
      */
     public static void calculateStockPercentageChange(boolean realFrame) {
         // Thread safety: synchronize on the global timeline structure
+        // Synchronize on symbolTimelines to prevent concurrent modification
+        // while the parallel stream processes all symbols in parallel.
+        // This ensures thread safety if other threads may add/remove symbols while this runs.
         synchronized (symbolTimelines) {
-            symbolTimelines.forEach((symbol, timeline) -> {
+            // Process each symbol in symbolTimelines using parallel threads.
+            // This improves speed when there are many symbols to analyze.
+            symbolTimelines.keySet().parallelStream().forEach(symbol -> {
+                // Get the list of StockUnit objects (the timeline) for this symbol.
+                List<StockUnit> timeline = symbolTimelines.get(symbol);
+
+                // If there aren't at least two data points, skip calculation and log a warning.
                 if (timeline.size() < 2) {
-                    // Not enough data for change calculation, log warning
+                    // Log a message indicating not enough data for this symbol.
                     logTextArea.append("Not enough data for " + symbol + "\n");
                     return;
                 }
 
-                int updates = 0; // Track how many bars were updated
-                // Start from the second bar, since the first has no previous
+                // Start from the second item (index 1) since percentage change needs a previous value.
                 for (int i = 1; i < timeline.size(); i++) {
                     StockUnit current = timeline.get(i);
                     StockUnit previous = timeline.get(i - 1);
 
-                    // Only update if previous close is positive (avoid div by zero)
+                    // Only calculate change if the previous close price is positive (avoids division by zero).
                     if (previous.getClose() > 0) {
+                        // Calculate the percent change between the current and previous close.
                         double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
-                        // Clamp outliers (e.g., from splits, bad ticks, or overnight moves)
+
+                        // Clamp outliers: If the change is abnormally large (>= 14% up/down),
+                        // use the previous bar's value instead. This reduces noise from splits or bad ticks.
                         change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
-                        current.setPercentageChange(change); // Store change in bar for later indicator use
-                        updates++;
+
+                        // Store the calculated (or clamped) change in the current StockUnit for later use (e.g., indicators).
+                        current.setPercentageChange(change);
                     }
                 }
             });
