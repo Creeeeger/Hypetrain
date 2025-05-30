@@ -653,13 +653,11 @@ public class mainDataHandler {
      * {@link #hypeModeFinder(List)} with the selected symbol set.
      *
      * <ul>
-     *   <li><b>For trade volumes above 90,000</b>, the function uses a regime-specific cache file
+     *   <li><b>For all trade volumes</b>, the function uses a regime-specific cache file
      *       (named "{@code [marketRegime]_[tradeVolume].txt}").</li>
      *   <li>If the file exists, it loads symbols for that regime directly from disk to save time and API quota.</li>
      *   <li>If the file does not exist, it dynamically filters symbols for that regime via
      *       {@link #getAvailableSymbols}, then writes them to the cache for future use.</li>
-     *   <li><b>For trade volumes 90,000 or below</b>, it simply uses the full list of symbols for the
-     *       current regime (from {@code stockCategoryMap}).</li>
      *   <li>In all cases, the resulting list is passed to {@link #hypeModeFinder(List)} for analysis.</li>
      * </ul>
      * <p>
@@ -688,61 +686,48 @@ public class mainDataHandler {
         File file = new File(cacheFileName);
 
         // ======= MAIN LOGIC BRANCH: LARGE TRADE VOLUME =======
-        if (tradeVolume > 90000) {
-            if (file.exists()) {
-                // ------------ [1] FILE EXISTS: LOAD SYMBOLS FROM DISK ------------
-                try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
-                    String line;
-                    // Read every line as a symbol and add to possibleSymbols
-                    while ((line = reader.readLine()) != null) {
-                        possibleSymbols.add(line);
-                    }
-                } catch (IOException e) {
-                    e.printStackTrace(); // Print to stderr for debugging if file can't be read
+        if (file.exists()) {
+            // ------------ [1] FILE EXISTS: LOAD SYMBOLS FROM DISK ------------
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String line;
+                // Read every line as a symbol and add to possibleSymbols
+                while ((line = reader.readLine()) != null) {
+                    possibleSymbols.add(line);
                 }
-
-                // Log success to UI (shows which regime file was loaded)
-                logTextArea.append("Loaded symbols from file: " + cacheFileName + "\n");
-                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-
-                // Proceed to next step with the loaded symbols
-                hypeModeFinder(possibleSymbols);
-
-            } else {
-                // ------------ [2] FILE DOES NOT EXIST: FETCH AND CACHE SYMBOLS ------------
-                logTextArea.append("Started getting possible symbols for regime: " + marketRegime + "\n");
-                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-
-                // Dynamically fetch suitable symbols for this regime and cache to file for next run
-                getAvailableSymbols(tradeVolume, symbolsForRegime, result -> {
-                    try (FileWriter writer = new FileWriter(file)) {
-                        for (String s : result) {
-                            String symbol = s.toUpperCase();
-                            possibleSymbols.add(symbol);  // Add to runtime set
-                            writer.write(symbol + System.lineSeparator()); // Write to cache file
-                        }
-                    } catch (IOException e) {
-                        e.printStackTrace(); // Error writing cache file (still proceeds)
-                    }
-
-                    // Log finish and proceed to main analysis (with regime info)
-                    logTextArea.append("Finished getting possible symbols for regime: " + marketRegime + "\n");
-                    logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-
-                    hypeModeFinder(possibleSymbols); // Continue with filtered set
-                });
+            } catch (IOException e) {
+                e.printStackTrace(); // Print to stderr for debugging if file can't be read
             }
-        } else {
-            // ======= MAIN LOGIC BRANCH: SMALL OR DEFAULT TRADE VOLUME =======
-            // No filtering or API hit—simply use all available symbols for the selected regime
-            possibleSymbols.addAll(Arrays.asList(symbolsForRegime));
 
-            // Log to UI for transparency (regime-aware)
-            logTextArea.append("Using pre-set symbols for regime: " + marketRegime + "\n");
+            // Log success to UI (shows which regime file was loaded)
+            logTextArea.append("Loaded symbols from file: " + cacheFileName + "\n");
             logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
 
-            // Begin hype mode scan on the unfiltered set
+            // Proceed to next step with the loaded symbols
             hypeModeFinder(possibleSymbols);
+
+        } else {
+            // ------------ [2] FILE DOES NOT EXIST: FETCH AND CACHE SYMBOLS ------------
+            logTextArea.append("Started getting possible symbols for regime: " + marketRegime + "\n");
+            logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+
+            // Dynamically fetch suitable symbols for this regime and cache to file for next run
+            getAvailableSymbols(tradeVolume, symbolsForRegime, result -> {
+                try (FileWriter writer = new FileWriter(file)) {
+                    for (String s : result) {
+                        String symbol = s.toUpperCase();
+                        possibleSymbols.add(symbol);  // Add to runtime set
+                        writer.write(symbol + System.lineSeparator()); // Write to cache file
+                    }
+                } catch (IOException e) {
+                    e.printStackTrace(); // Error writing cache file (still proceeds)
+                }
+
+                // Log finish and proceed to main analysis (with regime info)
+                logTextArea.append("Finished getting possible symbols for regime: " + marketRegime + "\n");
+                logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+            });
+
+            hypeModeFinder(possibleSymbols); // Continue with filtered set
         }
     }
 
@@ -910,13 +895,12 @@ public class mainDataHandler {
                                     // ========== LIQUIDITY FILTERS ==========
                                     // [A] Is trade small enough relative to market cap?
                                     boolean validMarketCap = (double) tradeVolume <= MARKET_CAP_PERCENTAGE * marketCapitalization;
+
                                     // [B] Is trade small enough relative to daily trading volume?
-                                    boolean validVolume = sharesToTrade <= AVG_VOLUME_PERCENTAGE * averageVolume;
+                                    boolean validVolume = tradeVolume <= AVG_VOLUME_PERCENTAGE * averageVolume;
+
                                     // [C] Is trade small enough relative to total shares outstanding?
                                     boolean validSharesOutstanding = sharesToTrade <= SHARES_OUTSTANDING_PERCENTAGE * sharesOutstanding;
-                                    // [D] Custom limit from static TickerData cache (if available)
-                                    TickerData data = nameToData.get(symbol);
-                                    boolean canBuyEnough = data != null && sharesToTrade <= data.maxOpenQuantity();
 
                                     // [OPTIONAL] Print detailed liquidity filter diagnostics for debugging
                                     System.out.println(
@@ -927,16 +911,14 @@ public class mainDataHandler {
                                                     "Market Cap: " + marketCapitalization + "\n" +
                                                     "Average Volume (30-day): " + averageVolume + "\n" +
                                                     "Shares Outstanding: " + sharesOutstanding + "\n" +
-                                                    "Max Open Quantity: " + (data != null ? data.maxOpenQuantity() : "N/A") + "\n" +
                                                     "Valid Market Cap? " + validMarketCap + "\n" +
                                                     "Valid Volume? " + validVolume + "\n" +
                                                     "Valid Shares Outstanding? " + validSharesOutstanding + "\n" +
-                                                    "Can Buy Enough? " + canBuyEnough + "\n" +
                                                     "====================================="
                                     );
 
-                                    // [E] Only add to final result if ALL filters pass
-                                    if (validMarketCap && validVolume && validSharesOutstanding && canBuyEnough) {
+                                    // [D] Only add to final result if ALL filters pass
+                                    if (validMarketCap && validVolume && validSharesOutstanding) {
                                         actualSymbols.add(symbol);
                                     }
 
@@ -1243,12 +1225,15 @@ public class mainDataHandler {
                                 .filter(bar -> bar.getPercentageChange() > 0)
                                 .count();
 
+                        // get dynamically the threshold
+                        double threshold = getThreshold(symbol);
+
                         // Step 5: Event detection logic (uptrend spike detection)
                         // - pctChange: checks if the sum of price changes is above a threshold
                         // - greenBars: ensures at least 60% of the bars in this window are positive.
                         boolean strongUptrend =
-                                pctChange > 0.4 &&
-                                        greenBars >= realTimeWindow.size() * 0.6;
+                                pctChange > threshold &&
+                                        greenBars >= realTimeWindow.size() * 0.7;
 
                         // If an uptrend spike is detected, continue to aggregate and process the bar.
                         if (strongUptrend) {
@@ -1276,12 +1261,21 @@ public class mainDataHandler {
 
                             // Step 7: Get a rolling window of the most recent 29 bars from the main symbol timeline.
                             // This supports robust moving calculations and avoids excess memory growth.
-                            List<StockUnit> symbolTimeLineUnits;
-                            synchronized (symbolTimelines) {
-                                List<StockUnit> timeline = symbolTimelines.get(symbol);
-                                int window = 29;
-                                int from = Math.max(0, timeline.size() - window);
-                                symbolTimeLineUnits = new ArrayList<>(timeline.subList(from, timeline.size()));
+                            List<StockUnit> symbolTimeLineUnits; // Declare the list to hold the 29 most recent StockUnit entries for the current symbol
+
+                            synchronized (symbolTimelines) { // Synchronize access to the shared symbolTimelines map to prevent race conditions in multithreaded environments
+                                List<StockUnit> timeline = symbolTimelines.get(symbol); // Retrieve the list of historical StockUnit entries for the given symbol
+
+                                if (timeline == null || timeline.isEmpty()) { // Defensive check: handle the case where no data exists yet for the symbol
+                                    symbolTimeLineUnits = new ArrayList<>(); // Initialize as an empty list to avoid NullPointerException
+                                } else {
+                                    int window = 29; // Define the window size — how many of the most recent entries to keep
+                                    int from = Math.max(0, timeline.size() - window); // Calculate the starting index to ensure we don't go below 0 (in case there are fewer than 29 entries)
+
+                                    // Create a new list containing only the most recent `window` number of StockUnit entries
+                                    // This is done by copying a sublist from the original timeline
+                                    symbolTimeLineUnits = new ArrayList<>(timeline.subList(from, timeline.size()));
+                                }
                             }
 
                             LocalDateTime minuteBarTime = aggregatedRealTimeBar.getLocalDateTimeDate();
@@ -1299,12 +1293,6 @@ public class mainDataHandler {
                                 }
                             }
 
-                            // --- Logging for monitoring and debugging ---
-                            System.out.println("⚡ Uptrend spike detected for " + symbol +
-                                    ": +" + String.format("%.2f", pctChange) + "% in " + realTimeWindow.size() +
-                                    " seconds (" + greenBars + "/" + realTimeWindow.size() + " green bars)\n"
-                            );
-
                             // Step 8: Run post-aggregation analytics in a dedicated high-priority thread.
                             // Passes the updated rolling window for further event detection, ML, or alerting.
                             if (SYMBOL_INDICATOR_RANGES.get(symbol) != null) {
@@ -1315,6 +1303,40 @@ public class mainDataHandler {
                         }
                     }
                 });
+    }
+
+    /**
+     * Utility class defining volatility tiers for a universe of stock symbols
+     * and providing per-symbol "spike" thresholds for minute-bar range detection.
+     *
+     * <p>Tier definitions (by market cap estimate):
+     * <ul>
+     *   <li><b>TIER_1 (Mega-Caps):</b>   > $300 B → threshold = 0.005 (0.5%)</li>
+     *   <li><b>TIER_2 (Large-Caps):</b>  $100 B–$300 B → threshold = 0.010 (1.0%)</li>
+     *   <li><b>TIER_3 (Mid-Caps):</b>    $20 B–$100 B → threshold = 0.015 (1.5%)</li>
+     *   <li><b>TIER_4 (Small/Micro):</b> < $20 B → threshold = 0.025 (2.5%)</li>
+     * </ul>
+     */
+    private static double getThreshold(String symbol) {
+        /* Mega-caps: typically the largest, most liquid names. */
+        final List<String> MEGA_CAPS = List.of("AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "AVGO", "TSLA");
+
+        /* Large-caps: still very liquid but a notch below the giants. */
+        final List<String> LARGE_CAPS = List.of("BABA", "AMD", "PLTR", "UBER", "CMCSA", "DIS", "SBUX", "XOM", "BP", "CSCO");
+
+        /* Mid-caps: moderate liquidity and volatility. */
+        final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "TTD", "FCX", "MARA", "RIVN");
+
+        /* Small/micro-caps: prone to sharp one-minute swings. */
+        final List<String> SMALL_CAPS = List.of("ACHR", "AES", "APLD", "COIN", "CORZ", "ET", "GME", "HIMS", "HOOD", "IONQ", "LUMN", "LUV", "MSTR", "MU", "NIO", "NVO", "OKLO", "OPEN", "PCG", "QBTS", "QUBT", "RGTI", "RKLB", "RUN", "RXRX", "SLB", "SMR", "SHOP", "SMCI", "SOUN", "TEM");
+
+        double threshold;
+        if (MEGA_CAPS.contains(symbol)) threshold = 0.3;
+        else if (LARGE_CAPS.contains(symbol)) threshold = 0.4;
+        else if (MID_CAPS.contains(symbol)) threshold = 0.8;
+        else if (SMALL_CAPS.contains(symbol)) threshold = 1.4;
+        else threshold = 1.0;
+        return threshold;
     }
 
     /**
@@ -1347,7 +1369,7 @@ public class mainDataHandler {
             if (!notifications.isEmpty()) {
                 for (Notification notification : notifications) {
                     addNotification(
-                            notification.getTitle(),
+                            "Second Alert: " + notification.getTitle(),
                             notification.getContent(),
                             notification.getStockUnitList(),
                             notification.getLocalDateTime(),
@@ -1890,7 +1912,7 @@ public class mainDataHandler {
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
                                 addNotification(
-                                        notification.getTitle(),
+                                        notification.getTitle() + " Amt: " + nameToData.get(symbol).maxOpenQuantity(),
                                         notification.getContent(),
                                         notification.getStockUnitList(),
                                         notification.getLocalDateTime(),

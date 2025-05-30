@@ -2040,7 +2040,6 @@ public class mainUI extends JFrame {
 
     private static volatile long latestFetchRequestId = 0;
 
-
     /**
      * Asynchronously fetches the historical timeline data for the currently selected stock,
      * applies smoothing to the close prices to reduce large outlier jumps, and updates the chart display.
