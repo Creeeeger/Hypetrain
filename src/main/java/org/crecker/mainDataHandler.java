@@ -165,6 +165,7 @@ public class mainDataHandler {
         put("STATISTICAL", 0.45);// Features 4-5 (Spike, Cumulative) - Highest in 'scraper' regime
         put("ADVANCED", 0.35);   // Features 6-7 (Keltner, Elder) - Secondary importance
     }};
+
     /**
      * Maps feature index to its category for weighted scoring.
      * <p>
@@ -184,6 +185,7 @@ public class mainDataHandler {
         put(6, "ADVANCED");     // Keltner
         put(7, "ADVANCED");     // Elder Ray
     }};
+
     /**
      * State-tracking map for per-symbol SMA crossover state.
      * <ul>
@@ -219,6 +221,7 @@ public class mainDataHandler {
      * Set to 100 to provide a robust estimate across typical trading weeks.
      */
     private static final int HISTORICAL_LOOK_BACK = 100;
+
     /**
      * Number of minutes to aggregate per bar in rally analysis compression.
      * <p>
@@ -227,6 +230,7 @@ public class mainDataHandler {
      * Typical value: 120 minutes (2 hours per bar).
      */
     private static final int MINUTES = 120;
+
     /**
      * Number of look-back days for rally detection algorithms.
      * <p>
@@ -242,18 +246,21 @@ public class mainDataHandler {
      * Used for window slicing in regression and channel width calculations.
      */
     private static final int W = DAYS * 8;
+
     /**
      * Minimum required regression slope (in percent per bar) for a rally to qualify as an "uptrend".
      * <p>
      * Used to reject trends that are too flat to be significant.
      */
     private static final double SLOPE_MIN = 0.1;
+
     /**
      * Maximum allowable regression channel width as percent of price.
      * <p>
      * Rejects "rallies" where the price action is too volatile or inconsistent with a clean trend.
      */
     private static final double WIDTH_MAX = 0.06;
+
     /**
      * Array of different day-based windows for multi-horizon rally checking.
      * <p>
@@ -261,50 +268,55 @@ public class mainDataHandler {
      * Each is mapped to a number of bars for regression analysis.
      */
     private static final int[] DAYS_OPTIONS = {4, 6, 8, 10, 14};
+
     /**
      * Minimum R^2 (coefficient of determination) for accepting a regression trend as meaningful.
      * <p>
      * Rejects trends with too much scatter or inconsistency.
      */
     private static final double R2_MIN = 0.6;
+
     /**
      * Allowed tolerance as a percent for checking alignment of price to regression line at rally end.
      * <p>
      * If actual prices are outside this band, trend is considered broken.
      */
     private static final double TOLERANCE_PCT = 0.03;
+
     /**
      * Market open time (assumed for all data, in 24hr format).
      * <p>
      * Filters out pre-market and after-hours bars.
      */
     private static final LocalTime MARKET_OPEN = LocalTime.of(4, 0);
+
     /**
      * Market close time (assumed for all data, in 24hr format).
      * <p>
      * Used to identify valid in-session bars.
      */
     private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
+
     // Map of different markets to scan select market to get list
     public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
         put("allSymbols", new String[]{
                 "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
                 , "AMAT", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
-                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BABA", "BAC", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
+                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BABA", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
                 , "BN", "BNS", "BNTX", "BP", "BSX", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-                , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "COF", "COHR", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRWD", "CRWV"
-                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU", "DUK"
+                , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "COF", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRWD"
+                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU"
                 , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
-                , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL", "GS"
+                , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL"
                 , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
                 , "INSP", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK"
-                , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LVS", "LX", "MA", "MAR", "MARA", "MBLY"
+                , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LX", "MA", "MAR", "MARA", "MBLY"
                 , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MRK", "MRNA", "MRVL", "MS", "MSFT"
                 , "MSI", "MSTR", "MU", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
-                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGHL", "PGR"
+                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGR"
                 , "PLTR", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
                 , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
-                , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SWKS", "SYK", "SYM"
+                , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SYK", "SYM"
                 , "SYY", "TCOM", "TD", "TDG", "TEM", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
                 , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
                 , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
@@ -318,8 +330,8 @@ public class mainDataHandler {
         });
         put("bigCaps", new String[]{
                 "AAPL", "ABBV", "ABT", "AMGN", "AMZN", "AMD", "AVGO", "AXP",
-                "BAC", "BMY", "CAT", "CSCO", "COST", "CVX",
-                "DE", "DIS", "DUK", "GE", "GOOGL", "HD", "HON", "IBM",
+                "BMY", "CAT", "CSCO", "COST", "CVX",
+                "DE", "DIS", "GE", "GOOGL", "HD", "HON", "IBM",
                 "JNJ", "JPM", "LLY", "LOW", "LMT", "MA",
                 "MCD", "MDT", "META", "MMM", "MRK", "MSFT", "NFLX", "NVDA",
                 "ORCL", "PEP", "PFE", "PG", "QCOM", "SBUX",
@@ -336,7 +348,7 @@ public class mainDataHandler {
                 "BP", "COP", "CVX", "ENB", "EOG", "ET", "OKE", "SLB", "VLO", "XOM"
         });
         put("financials", new String[]{
-                "AFL", "AXP", "BAC", "BLK", "BMO", "BNS", "C", "CB", "COF", "GS", "JPM",
+                "AFL", "AXP", "BLK", "BMO", "BNS", "C", "CB", "COF", "JPM",
                 "MET", "MMC", "MS", "PNC", "RY", "SCHW", "TD", "UBS", "USB", "WFC"
         });
         put("foodBeverage", new String[]{
@@ -353,7 +365,7 @@ public class mainDataHandler {
                 "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
                 "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
                 "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
-                "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "SWKS", "TMDX",
+                "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "TMDX",
                 "TRU", "TTD", "UPST", "VKTX", "WOLF", "XPEV", "GME"
         });
         put("industrials", new String[]{
@@ -361,12 +373,12 @@ public class mainDataHandler {
         });
         put("midCaps", new String[]{
                 "AAOI", "ACGL", "AER", "AFRM", "ALAB", "APLD", "APP", "ARWR",
-                "ASPI", "BMRN", "BN", "BNTX", "BUD", "CELH", "COHR", "CRWV",
+                "ASPI", "BMRN", "BN", "BNTX", "BUD", "CELH",
                 "CVNA", "DOCU", "DUOL", "ENPH", "FIVE", "FOUR", "FTAI", "FUTU",
                 "GMAB", "HIMS", "HOOD", "HSY", "IEP", "INFY", "INSP",
                 "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MTRN",
                 "NFE", "NIO", "NOVA", "ODFL", "OKLO", "OPEN", "PTON", "RIVN",
-                "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL", "SWKS",
+                "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL",
                 "TCOM", "TEM", "TRU", "TTD", "UPST", "VKTX", "XPO", "ZETA", "ZIM"
         });
         put("pharma", new String[]{
@@ -384,9 +396,9 @@ public class mainDataHandler {
                 "ACHR", "ISRG", "KODK", "MBLY", "RKLB"
         });
         put("semiconductors", new String[]{
-                "ADI", "AMAT", "AMD", "ARM", "ASML", "AVGO", "CDNS", "COHR",
-                "CRDO", "INNTC", "KLAC", "LRCX", "MCHP", "MRVL",
-                "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "SWKS", "TSLA", "TXN", "WOLF"
+                "ADI", "AMAT", "AMD", "ARM", "ASML", "AVGO", "CDNS",
+                "CRDO", "KLAC", "LRCX", "MCHP", "MRVL",
+                "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "TSLA", "TXN", "WOLF"
         });
         put("smallCaps", new String[]{
                 "ACHR", "ASTS", "BE", "CAVA",
@@ -771,9 +783,60 @@ public class mainDataHandler {
 
         // ==================== FILTER THRESHOLDS ====================
         // (These values can be tuned for stricter or looser liquidity requirements)
-        final double MARKET_CAP_PERCENTAGE = 0.05;         // Max trade = 5% of market cap
-        final double AVG_VOLUME_PERCENTAGE = 0.20;         // Max shares = 20% of avg 30-day volume
+        final double MARKET_CAP_PERCENTAGE = 0.001;         // Max trade = 5% of market cap
+        final double AVG_VOLUME_PERCENTAGE = 0.01;         // Max shares = 20% of avg 30-day volume
         final double SHARES_OUTSTANDING_PERCENTAGE = 0.01; // Max shares = 1% of shares outstanding
+
+        // ==================== PROGRESS DIALOG SETUP ====================
+
+        // Create a single-element array to hold the ProgressDialog instance, so it can be modified inside inner classes/lambdas
+        final ProgressDialog[] progressDialog = new ProgressDialog[1];
+
+        // If the logTextArea (used to determine the parent frame for dialogs) is present
+        if (logTextArea != null) {
+            // Ensure UI code runs on the Event Dispatch Thread (EDT) for thread safety
+            SwingUtilities.invokeLater(() -> {
+                // Get the parent frame of the logTextArea component
+                Frame parentFrame = (Frame) SwingUtilities.getWindowAncestor(logTextArea);
+                // Create the progress dialog and attach it to the parent frame
+                progressDialog[0] = new ProgressDialog(parentFrame);
+                // Set the dialog title to describe the current task
+                progressDialog[0].setTitle("Filtering Symbols for tradability");
+                // Make the dialog visible to the user
+                progressDialog[0].setVisible(true);
+            });
+        }
+
+        // ==================== MODIFIED COMPLETION HANDLER ====================
+
+        // Define a runnable to handle the completion of symbol processing tasks
+        Runnable completionHandler = () -> {
+            // Calculate how many symbols have been processed so far, decrementing the remaining counter
+            int processed = possibleSymbols.length - remaining.decrementAndGet();
+
+            // Update the progress dialog on the Event Dispatch Thread (EDT)
+            SwingUtilities.invokeLater(() -> {
+                // If the progress dialog exists, update its progress bar
+                if (progressDialog[0] != null) {
+                    progressDialog[0].updateProgress(processed, possibleSymbols.length);
+                }
+            });
+
+            // If all symbols have been processed (remaining count reaches zero)
+            if (remaining.get() == 0) {
+                // Shut down the scheduler to stop any further scheduled tasks
+                scheduler.shutdown();
+                // Notify the callback that the actualSymbols are available/ready
+                callback.onSymbolsAvailable(actualSymbols);
+
+                // Dispose of (close) the progress dialog on the EDT
+                SwingUtilities.invokeLater(() -> {
+                    if (progressDialog[0] != null) {
+                        progressDialog[0].dispose();
+                    }
+                });
+            }
+        };
 
         // ==================== MAIN FILTER LOOP ====================
         for (String symbol : possibleSymbols) {
@@ -781,13 +844,13 @@ public class mainDataHandler {
             final ScheduledFuture<?>[] timeoutFuture = new ScheduledFuture<?>[1];
 
             Runnable timeoutTask = () -> {
-                System.out.println("Timeout for symbol: " + symbol + " (no response in 45)");
+                System.out.println("Timeout for symbol: " + symbol + " (no response in 60)");
                 // No need to add the symbol to the results, just proceed as if it failed
-                checkCompletion(remaining, actualSymbols, callback);
+                completionHandler.run();
             };
 
-            // Schedule the timeout (45 seconds)
-            timeoutFuture[0] = scheduler.schedule(timeoutTask, 45, TimeUnit.SECONDS);
+            // Schedule the timeout (60 seconds)
+            timeoutFuture[0] = scheduler.schedule(timeoutTask, 60, TimeUnit.SECONDS);
 
             // --------- [1] Fetch company fundamentals (market cap, shares out) ---------
             AlphaVantage.api()
@@ -804,7 +867,7 @@ public class mainDataHandler {
                                 overview.getSharesOutstanding() == null) {
                             // Log and skip this symbol
                             System.out.println("Null data for symbol: " + symbol + " (likely delisted or incomplete fundamentals)");
-                            checkCompletion(remaining, actualSymbols, callback);
+                            completionHandler.run();
                             return;
                         }
 
@@ -823,16 +886,12 @@ public class mainDataHandler {
                                     TimeSeriesResponse ts = (TimeSeriesResponse) tsResponse;
                                     List<StockUnit> stockUnits = ts.getStockUnits();
 
-                                    // If there is no price data, skip this symbol.
-                                    if (stockUnits.isEmpty()) {
-                                        checkCompletion(remaining, actualSymbols, callback);
-                                        return;
-                                    }
-
                                     // Use the latest close price for shares-to-buy calculation.
                                     double close = stockUnits.get(0).getClose();
-                                    if (close <= 0) {
-                                        checkCompletion(remaining, actualSymbols, callback);
+
+                                    // If there is no price data, skip this symbol.
+                                    if (stockUnits.isEmpty() || close <= 0) {
+                                        completionHandler.run();
                                         return;
                                     }
 
@@ -845,7 +904,8 @@ public class mainDataHandler {
                                     for (int i = 0; i < daysToConsider; i++) {
                                         totalVolume += stockUnits.get(i).getVolume();
                                     }
-                                    double averageVolume = daysToConsider > 0 ? totalVolume / daysToConsider : 0;
+
+                                    double averageVolume = totalVolume / daysToConsider;
 
                                     // ========== LIQUIDITY FILTERS ==========
                                     // [A] Is trade small enough relative to market cap?
@@ -880,14 +940,13 @@ public class mainDataHandler {
                                         actualSymbols.add(symbol);
                                     }
 
-                                    // Check if this was the last pending symbol
-                                    checkCompletion(remaining, actualSymbols, callback);
+                                    completionHandler.run();
                                 })
                                 .onFailure(error -> {
                                     timeoutFuture[0].cancel(false);
                                     // If daily bar fetch fails, log and continue
                                     mainDataHandler.handleFailure(error);
-                                    checkCompletion(remaining, actualSymbols, callback);
+                                    completionHandler.run();
                                 })
                                 .fetch();
                     })
@@ -895,26 +954,9 @@ public class mainDataHandler {
                         timeoutFuture[0].cancel(false);
                         // If fundamental data fetch fails, log and continue
                         mainDataHandler.handleFailure(error);
-                        checkCompletion(remaining, actualSymbols, callback);
+                        completionHandler.run();
                     })
                     .fetch();
-        }
-    }
-
-    /**
-     * Helper method to check if all asynchronous symbol checks are complete.
-     * <p>
-     * Uses an AtomicInteger countdown. When zero, calls the provided callback with the filtered list.
-     * Called after every async fetch completes, passes, or fails.
-     *
-     * @param remaining     Atomic counter (decremented once per completion)
-     * @param actualSymbols Thread-safe list of passing symbols so far
-     * @param callback      The original callback to fire when done
-     */
-    private static void checkCompletion(AtomicInteger remaining, List<String> actualSymbols, SymbolCallback callback) {
-        // Decrement counter; if zero, all async operations are finished, so fire callback.
-        if (remaining.decrementAndGet() == 0) {
-            callback.onSymbolsAvailable(actualSymbols);
         }
     }
 
@@ -1348,7 +1390,7 @@ public class mainDataHandler {
         // Announce to the user that the download/fetch sequence is starting.
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        // symbols.add("CRWV"); // Add CoreWeave since its insane
+        symbols.add("CRWV"); // Add CoreWeave since its unsupported
 
         // Countdown latch is used to know when ALL symbol data (from file or API) has loaded.
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
@@ -1782,13 +1824,20 @@ public class mainDataHandler {
      * @param realFrame     If true, only the most recent window is checked per symbol (live mode). If false, all possible windows are checked (historical analysis).
      */
     public static void calculateSpikesInRally(int minutesPeriod, boolean realFrame) {
+        // Process each symbol's timeline concurrently to improve performance
         symbolTimelines.keySet()
-                .parallelStream() // Multithreaded: processes each symbol in its own thread for speed
-                .forEach(symbol -> {
-                    List<StockUnit> timeline = getSymbolTimeline(symbol);
+                .parallelStream() // Use parallelStream for multithreaded processing
+                .forEach(symbol -> { // For each symbol in the set
+                    // Retrieve the timeline (list of StockUnit) for this symbol
+                    List<StockUnit> timeline = new ArrayList<>(getSymbolTimeline(symbol));
 
+                    // Proceed only if the timeline is not empty
                     if (!timeline.isEmpty()) {
-                        // For each symbol, analyze its full or most recent window
+                        // If not in real-time mode (e.g., backtesting), reverse the timeline order
+                        if (!realFrame) {
+                            Collections.reverse(timeline); // Reverse timeline for backtest/non-realtime
+                        }
+                        // Analyze the symbol's timeline over sliding time windows
                         processTimeWindows(symbol, timeline, minutesPeriod, realFrame);
                     }
                 });
