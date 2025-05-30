@@ -99,7 +99,7 @@ public class pLTester {
     /**
      * Array of stock symbols currently under analysis/trading.
      */
-    public final static String[] SYMBOLS = {"CRWV"};
+    public final static String[] SYMBOLS = {"QBTS"};
 
     /**
      * Whether to display candlestick charts (true) or time series line charts (false).
@@ -109,7 +109,7 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 900; // analyse the day
+    private final static int cut = 8000; // analyse the day
 
     /**
      * Program entry point.
@@ -122,6 +122,7 @@ public class pLTester {
         realTimeDataCollector("MARA");
         realTimeDataCollector("QBTS");
         realTimeDataCollector("QUBT");
+
     }
 
     /**

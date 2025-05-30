@@ -2482,7 +2482,7 @@ public class mainUI extends JFrame {
                     }
                 });
             }
-        }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+        }, 0, 5, TimeUnit.SECONDS); // Start immediately, repeat every 5 second
     }
 
     /**
@@ -2633,7 +2633,7 @@ public class mainUI extends JFrame {
     /**
      * <b>Updates all active notification panels with live, real-time price data.</b>
      * <p>
-     * This method launches a scheduled background task that periodically (every second):
+     * This method launches a scheduled background task that periodically (every 5 seconds):
      * <ul>
      *     <li>Iterates through all currently active notifications.</li>
      *     <li>For each notification, fetches the latest tick (price data) for its associated stock symbol.</li>
@@ -2673,7 +2673,7 @@ public class mainUI extends JFrame {
         // The background polling task only starts if no other notification polling task is running.
         if (notificationTask == null || notificationTask.isCancelled() || notificationTask.isDone()) {
 
-            // Start a new scheduled task that runs every second (in its own executor thread)
+            // Start a new scheduled task that runs every 5 seconds (in its own executor thread)
             notificationTask = executorNotificationService.scheduleAtFixedRate(() -> {
                 try {
                     // Only update notifications if there are any currently active
@@ -2860,7 +2860,7 @@ public class mainUI extends JFrame {
                     // If something unexpected goes wrong, log it for debugging
                     ex.printStackTrace();
                 }
-            }, 0, 1, TimeUnit.SECONDS); // Start immediately, repeat every 1 second
+            }, 0, 5, TimeUnit.SECONDS); // Start immediately, repeat every 5 second
         }
     }
 
