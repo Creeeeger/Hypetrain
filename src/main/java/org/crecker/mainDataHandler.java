@@ -422,6 +422,20 @@ public class mainDataHandler {
         });
     }};
 
+    /* Mega-caps: typically the largest, most liquid names. */
+    private static final List<String> MEGA_CAPS = List.of("AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "AVGO", "TSLA");
+
+    /* Large-caps: still very liquid but a notch below the giants. */
+    private static final List<String> LARGE_CAPS = List.of("BABA", "AMD", "PLTR", "UBER", "CMCSA", "DIS", "SBUX", "XOM", "BP", "CSCO");
+
+    /* Mid-caps: moderate liquidity and volatility. */
+    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "TTD", "FCX", "MARA", "RIVN");
+
+    /* Small/micro-caps: prone to sharp one-minute swings. */
+    private static final List<String> SMALL_CAPS = List.of("ACHR", "AES", "APLD", "COIN", "CORZ", "ET", "GME", "HIMS", "HOOD", "IONQ", "LUMN",
+            "LUV", "MSTR", "MU", "NIO", "NVO", "OKLO", "OPEN", "PCG", "QBTS", "QUBT", "RGTI", "RKLB",
+            "RUN", "RXRX", "SLB", "SMR", "SHOP", "SMCI", "SOUN", "TEM");
+
     /**
      * Number of bars in each analysis window (frame) for main technical signal generation.
      * <ul>
@@ -1318,18 +1332,6 @@ public class mainDataHandler {
      * </ul>
      */
     private static double getThreshold(String symbol) {
-        /* Mega-caps: typically the largest, most liquid names. */
-        final List<String> MEGA_CAPS = List.of("AAPL", "MSFT", "AMZN", "GOOGL", "META", "NVDA", "AVGO", "TSLA");
-
-        /* Large-caps: still very liquid but a notch below the giants. */
-        final List<String> LARGE_CAPS = List.of("BABA", "AMD", "PLTR", "UBER", "CMCSA", "DIS", "SBUX", "XOM", "BP", "CSCO");
-
-        /* Mid-caps: moderate liquidity and volatility. */
-        final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "TTD", "FCX", "MARA", "RIVN");
-
-        /* Small/micro-caps: prone to sharp one-minute swings. */
-        final List<String> SMALL_CAPS = List.of("ACHR", "AES", "APLD", "COIN", "CORZ", "ET", "GME", "HIMS", "HOOD", "IONQ", "LUMN", "LUV", "MSTR", "MU", "NIO", "NVO", "OKLO", "OPEN", "PCG", "QBTS", "QUBT", "RGTI", "RKLB", "RUN", "RXRX", "SLB", "SMR", "SHOP", "SMCI", "SOUN", "TEM");
-
         double threshold;
         if (MEGA_CAPS.contains(symbol)) threshold = 0.3;
         else if (LARGE_CAPS.contains(symbol)) threshold = 0.4;
@@ -3089,29 +3091,52 @@ public class mainDataHandler {
             }
         }
 
+        // check for PL Tester
         if (market == null) {
             market = "ultraVolatile";
         }
 
-        // Uptrend line detector with advanced conditions - chosen for the correct market
-        boolean uptrend = switch (market) {
-            // Low aggressiveness config
-            case "bigCaps", "semiconductors", "techGiants", "aiStocks", "financials", "energy", "industrials", "pharma",
-                 "foodBeverage", "retail" -> shouldTrigger(stocks, 5, 0.3, 0.8,
-                    0.08, 0.39, 3, 0.05, 0.06, true);
+        // Determine if a stock symbol should trigger an uptrend signal, using dynamic parameters
+        // based on the market cap group or market sector.
+        // The config is tailored for risk and volatility appropriate to each category.
 
-            // Mid aggressiveness config
-            case "midCaps", "chineseTech", "autoEV", "healthcareProviders", "robotics" ->
-                    shouldTrigger(stocks, 5, 0.6, 0.8,
-                            0.09, 0.40, 3, 0.12, 0.15, true);
-
-            // High aggressiveness config
-            case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum", "allSymbols",
-                 "favourites" -> shouldTrigger(stocks, 5, 1.5, 0.8,
+        boolean uptrend;
+        if (MEGA_CAPS.contains(symbol)) {
+            // Mega caps (largest companies): use lowest risk/least aggressive config
+            uptrend = shouldTrigger(stocks, 5, 0.3, 0.8,
+                    0.08, 0.39, 3, 0.05, 0.06, false);
+        } else if (LARGE_CAPS.contains(symbol)) {
+            // Large caps: slightly more aggressive config than mega caps
+            uptrend = shouldTrigger(stocks, 5, 0.6, 0.8,
+                    0.09, 0.40, 3, 0.12, 0.15, false);
+        } else if (MID_CAPS.contains(symbol) || SMALL_CAPS.contains(symbol)) {
+            // Mid & small caps: highest volatility/aggressiveness config among cap sizes
+            uptrend = shouldTrigger(stocks, 5, 1.5, 0.8,
                     0.08, 0.39, 3, 0.15, 0.5, false);
+        } else {
+            // Not a known cap group: select config based on sector (market) label
+            // Sectors are grouped by typical volatility appetite
 
-            default -> throw new RuntimeException("Need to specify a market: " + market);
-        };
+            uptrend = switch (market) {
+                // Low aggressiveness: stable, less-volatile sectors
+                case "bigCaps", "semiconductors", "techGiants", "aiStocks", "financials", "energy",
+                     "industrials", "pharma", "foodBeverage", "retail" -> shouldTrigger(stocks, 5, 0.3, 0.8,
+                        0.08, 0.39, 3, 0.05, 0.06, false);
+
+                // Mid-aggressiveness: moderate volatility sectors
+                case "midCaps", "chineseTech", "autoEV", "healthcareProviders", "robotics", "allSymbols" ->
+                        shouldTrigger(stocks, 5, 0.6, 0.8,
+                                0.09, 0.40, 3, 0.12, 0.15, false);
+
+                // High aggressiveness: high-risk, high-volatility sectors
+                case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum",
+                     "favourites" -> shouldTrigger(stocks, 5, 1.5, 0.8,
+                        0.08, 0.39, 3, 0.15, 0.5, false);
+
+                // If market not recognized, fail fast and force a fix
+                default -> throw new RuntimeException("Need to specify a market: " + market);
+            };
+        }
 
         // === 7. Strict "all conditions met" trigger for classic spike event alert ===
         //   (a) features[4] == 1   : Binary "spike" anomaly active

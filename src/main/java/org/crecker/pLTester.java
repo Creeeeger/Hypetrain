@@ -122,7 +122,7 @@ public class pLTester {
         realTimeDataCollector("MARA");
         realTimeDataCollector("QBTS");
         realTimeDataCollector("QUBT");
-
+        realTimeDataCollector("IONQ");
     }
 
     /**
