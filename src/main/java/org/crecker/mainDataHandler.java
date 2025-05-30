@@ -1654,6 +1654,9 @@ public class mainDataHandler {
                         // Compute how many milliseconds to sleep to reach the next full minute
                         long sleepTime = nextMinuteMillis - currentMillis;
 
+                        // clean up the map to save memory
+                        trimSymbolTimelines(300);
+
                         // Only sleep if we're not already exactly at a full minute
                         if (sleepTime > 0) {
                             try {
@@ -1690,6 +1693,30 @@ public class mainDataHandler {
                 Thread.currentThread().interrupt();
             }
         }).start(); // All of the above runs in a dedicated background worker thread.
+    }
+
+    /**
+     * Trims each symbol's timeline in the symbolTimelines map so that only the
+     * most recent {@code keepLast} StockUnit entries are retained.
+     * <p>
+     * For each entry, removes all elements from the start of the list up to the last
+     * {@code keepLast} elements.
+     *
+     * @param keepLast The number of most recent StockUnit entries to keep for each symbol.
+     */
+    public static void trimSymbolTimelines(int keepLast) {
+        // Iterate over all entries in the ConcurrentHashMap.
+        synchronized (symbolTimelines) {
+            symbolTimelines.forEach((symbol, timeline) -> {
+                int size = timeline.size(); // Get current size of the list.
+                // If the list has more than keepLast elements, remove the oldest ones.
+                if (size > keepLast) {
+                    // Remove from index 0 (inclusive) to (size - keepLast) (exclusive).
+                    // This keeps only the last 'keepLast' elements.
+                    timeline.subList(0, size - keepLast).clear();
+                }
+            });
+        }
     }
 
     /**
@@ -1857,10 +1884,6 @@ public class mainDataHandler {
 
                     // Proceed only if the timeline is not empty
                     if (!timeline.isEmpty()) {
-                        // If not in real-time mode (e.g., backtesting), reverse the timeline order
-                        if (!realFrame) {
-                            Collections.reverse(timeline); // Reverse timeline for backtest/non-realtime
-                        }
                         // Analyze the symbol's timeline over sliding time windows
                         processTimeWindows(symbol, timeline, minutesPeriod, realFrame);
                     }

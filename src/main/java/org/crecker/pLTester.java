@@ -109,7 +109,7 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 8000; // analyse the day
+    private final static int cut = 1000; // analyse the day
 
     /**
      * Program entry point.
@@ -117,12 +117,12 @@ public class pLTester {
      */
     public static void main(String[] args) {
         // updateStocks(); // Optionally refresh/download all stocks (uncomment if needed)
-        //PLAnalysis();
-        realTimeDataCollector("RGTI");
-        realTimeDataCollector("MARA");
-        realTimeDataCollector("QBTS");
-        realTimeDataCollector("QUBT");
-        realTimeDataCollector("IONQ");
+        PLAnalysis();
+//        realTimeDataCollector("RGTI");
+//        realTimeDataCollector("MARA");
+//        realTimeDataCollector("QBTS");
+//        realTimeDataCollector("QUBT");
+//        realTimeDataCollector("IONQ");
     }
 
     /**
@@ -614,11 +614,6 @@ public class pLTester {
                 StockUnit unit = parseStockUnit(entry);
 
                 lastUnits.add(unit); // Add parsed StockUnit to our list
-
-                // If we're only keeping a limited number of entries, remove the oldest as needed
-                if (retainLast > 0 && lastUnits.size() > retainLast) {
-                    lastUnits.remove(0);
-                }
             } catch (Exception e) {
                 // Log error, but continue processing remaining entries
                 errorCount++;
@@ -632,8 +627,17 @@ public class pLTester {
             System.err.println("Encountered " + errorCount + " errors while parsing StockUnit file.");
         }
 
-        // Return a copy as ArrayList to decouple from internal LinkedList
-        return new ArrayList<>(lastUnits);
+        // Reverse order to maintain most recent data at the end of the list
+        Collections.reverse(lastUnits);
+
+        // Only keep the last 'retainLast' entries
+        int keepFrom;
+        try {
+            keepFrom = Math.max(0, lastUnits.size() - retainLast);
+        } catch (Exception e) {
+            keepFrom = 0;
+        }
+        return new ArrayList<>(lastUnits.subList(keepFrom, lastUnits.size()));
     }
 
     /**
