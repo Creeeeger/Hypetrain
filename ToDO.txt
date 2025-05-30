@@ -1,7 +1,4 @@
 TODO
-Version 1.5:
-- evaluate big rises within short time - improve it
-
 Version 2.0:
 - Add Institutional purchase Hunter
 - implement the insider trader hunter
