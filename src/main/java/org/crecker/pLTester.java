@@ -128,7 +128,7 @@ public class pLTester {
      */
     private static void updateStocks() {
         // Specify which stocks to update in batch
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "PLTR", "MSTR", "ARM", "QUBT", "GME", "RCAT")) {
+        for (String stock : Arrays.asList("APLD", "GME", "HIMS", "IONQ", "MARA", "OKLO", "PLTR", "QBTS", "QUBT", "RGTI", "RKLB", "RUN", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
     }

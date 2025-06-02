@@ -320,8 +320,13 @@ public class Notification {
                     unit.getLow(),
                     unit.getClose()
             ));
-            // Add (or update) in time series (for line chart)
-            timeSeries.addOrUpdate(period, unit.getClose());
+            try {
+                // Add (or update) in time series (for line chart)
+                timeSeries.addOrUpdate(period, unit.getClose());
+            } catch (Exception e) {
+                timeSeries.addOrUpdate(new Second(unit.getDateDate()), unit.getClose());
+            }
+
             // Refresh chart UI after data update
             updateUI();
         }
