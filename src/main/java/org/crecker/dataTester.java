@@ -135,36 +135,4 @@ public class dataTester {
                 .time(dateTime)
                 .build();
     }
-
-    /**
-     * Calculates and updates the percentage price change between consecutive stock points
-     * for each stock symbol's timeline.
-     * <p>
-     * If the calculated percentage change is too large (>=14%), it reuses the previous value.
-     * <p>
-     * Updates each StockUnit in-place with the calculated change.
-     */
-    public static void calculateStockPercentageChange() {
-        // Iterate over all timelines (per symbol)
-        symbolTimelines.forEach((symbol, timeline) -> {
-            // Ignore symbols with too little data to compare (less than 2 points)
-            if (timeline.size() < 2) {
-                return;
-            }
-
-            // Calculate percentage change for each consecutive pair of StockUnits
-            for (int i = 1; i < timeline.size(); i++) {
-                StockUnit current = timeline.get(i);   // Current time step
-                StockUnit previous = timeline.get(i - 1); // Previous time step
-
-                // Avoid division by zero and nonsensical changes
-                if (previous.getClose() > 0) {
-                    double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
-                    // If the computed change is an outlier (>= 14%), fallback to previous change (e.g., for bad ticks)
-                    change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
-                    current.setPercentageChange(change); // Save calculated value to the object
-                }
-            }
-        });
-    }
 }
