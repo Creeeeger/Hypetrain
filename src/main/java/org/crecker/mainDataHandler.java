@@ -417,8 +417,10 @@ public class mainDataHandler {
                 "LUMN", "LUNR", "MARA", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
                 "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
         });
+
         put("favourites", new String[]{
-                "QBTS", "QUBT", "RGTI", "IONQ", "RCAT", "DJT", "GME", "WOLF", "SMCI", "MARA", "U"
+                "APLD", "GME", "HIMS", "IONQ", "MARA", "OKLO", "PLTR", "QBTS", "QUBT",
+                "RGTI", "RKLB", "RUN", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF"
         });
     }};
 
@@ -429,7 +431,7 @@ public class mainDataHandler {
     private static final List<String> LARGE_CAPS = List.of("BABA", "AMD", "PLTR", "UBER", "CMCSA", "DIS", "SBUX", "XOM", "BP", "CSCO");
 
     /* Mid-caps: moderate liquidity and volatility. */
-    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "TTD", "MARA", "RIVN");
+    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "MARA", "RIVN");
 
     /* Small/micro-caps: prone to sharp one-minute swings. */
     private static final List<String> SMALL_CAPS = List.of("ACHR", "AES", "APLD", "COIN", "CORZ", "ET", "GME", "HIMS", "HOOD", "IONQ", "LUMN",
@@ -739,9 +741,9 @@ public class mainDataHandler {
                 // Log finish and proceed to main analysis (with regime info)
                 logTextArea.append("Finished getting possible symbols for regime: " + marketRegime + "\n");
                 logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-            });
 
-            hypeModeFinder(possibleSymbols); // Continue with filtered set
+                hypeModeFinder(possibleSymbols); // Continue with filtered set
+            });
         }
     }
 
@@ -2117,8 +2119,10 @@ public class mainDataHandler {
 
                 symbolRanges.put(indicator, Map.of("min", min, "max", max));
             }
-            // Save the computed range map for this symbol
-            SYMBOL_INDICATOR_RANGES.put(symbol, symbolRanges);
+            synchronized (SYMBOL_INDICATOR_RANGES) {
+                // Save the computed range map for this symbol
+                SYMBOL_INDICATOR_RANGES.put(symbol, symbolRanges);
+            }
         }
     }
 
