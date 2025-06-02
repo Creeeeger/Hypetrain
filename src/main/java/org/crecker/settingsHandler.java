@@ -24,12 +24,12 @@ public class settingsHandler extends JDialog {
     static JLabel volume, infos, sortLabel, keyLabel, realtimeLabel, algoLabel, candleLabel, T212Label, pushCutLabel;
     static JTextField volumeText, keyText, T212textField, pushCutTextField;
     static JSlider algoAggressivenessSlider;
-    static JCheckBox sortCheckBox, realtimeBox, candleBox, greedCheckBox, useSecondFrameworkBox;
+    static JCheckBox sortCheckBox, realtimeBox, candleBox, useSecondFrameworkBox;
     // Internal variables to hold settings values
     int vol;
     float aggressiveness;
     String sym, key, T212, push, market;
-    boolean sort, realtime, useCandles, greed, useSecondFramework;
+    boolean sort, realtime, useCandles, useSecondFramework;
     static JComboBox<String> marketRegimeComboBox;
 
     /**
@@ -45,12 +45,11 @@ public class settingsHandler extends JDialog {
      * @param useCandles         Use candle charts.
      * @param T212               Trading212 Api Key
      * @param push               PushCut URL endpoint
-     * @param greed              Whether Greed Mode is turned on
      * @param market             Market to hype in.
      * @param useSecondFramework Boolean for activating second based scanning
      */
     public settingsHandler(int vol, String sym, boolean sort, String key, boolean realtime, float aggressiveness,
-                           boolean useCandles, String T212, String push, boolean greed, String market, Boolean useSecondFramework) {
+                           boolean useCandles, String T212, String push, String market, Boolean useSecondFramework) {
         // Set layout manager for this JFrame: BorderLayout allows a central content area
         setLayout(new BorderLayout(10, 10));
 
@@ -64,7 +63,6 @@ public class settingsHandler extends JDialog {
         this.useCandles = useCandles;
         this.T212 = T212;
         this.push = push;
-        this.greed = greed;
         this.market = market;
         this.useSecondFramework = useSecondFramework;
 
@@ -149,21 +147,6 @@ public class settingsHandler extends JDialog {
         labelTable.put(20, new JLabel("2.0"));   // Maximum aggressiveness
         algoAggressivenessSlider.setLabelTable(labelTable); // Assign the label map to the slider
 
-        // --- Group the aggressiveness slider and Greed Mode checkbox in a single horizontal panel ---
-        JPanel algoControlPanel = new JPanel();
-        algoControlPanel.setLayout(new BoxLayout(algoControlPanel, BoxLayout.X_AXIS)); // Horizontal layout
-        algoControlPanel.setAlignmentX(Component.LEFT_ALIGNMENT); // Align the group to the left of parent panel
-
-        // Add the aggressiveness slider to the control panel
-        algoControlPanel.add(algoAggressivenessSlider);
-        algoControlPanel.add(Box.createRigidArea(new Dimension(10, 0))); // Add horizontal spacing between slider and checkbox
-
-        // Create the "Greed Mode" checkbox next to the slider
-        greedCheckBox = new JCheckBox("Greed Mode");
-        greedCheckBox.setSelected(greed);                     // Set its initial state based on passed config value
-        greedCheckBox.setAlignmentY(Component.CENTER_ALIGNMENT); // Vertically center it relative to the slider
-        algoControlPanel.add(greedCheckBox);                  // Add the checkbox to the control panel
-
         // Candle chart option label and checkbox
         candleLabel = new JLabel("Use candles instead of a line chart:");
         candleLabel.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -231,7 +214,7 @@ public class settingsHandler extends JDialog {
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(algoLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
-        settingsPanel.add(algoControlPanel);
+        settingsPanel.add(algoAggressivenessSlider);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
         settingsPanel.add(candleLabel);
         settingsPanel.add(Box.createRigidArea(new Dimension(0, 5)));
@@ -280,7 +263,6 @@ public class settingsHandler extends JDialog {
                         {"candle", String.valueOf(candleBox.isSelected())},
                         {"T212", T212textField.getText()},
                         {"push", pushCutTextField.getText()},
-                        {"greed", String.valueOf(greedCheckBox.isSelected())},
                         {"market", Objects.requireNonNull(marketRegimeComboBox.getSelectedItem()).toString()},
                         {"secondFrameWork", String.valueOf(useSecondFrameworkBox.isSelected())}
                 };

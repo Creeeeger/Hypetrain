@@ -306,7 +306,7 @@ public class mainDataHandler {
                 , "BN", "BNS", "BNTX", "BP", "BSX", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
                 , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "COF", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRWD"
                 , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU"
-                , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FCX", "FDX", "FERG", "FI"
+                , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FDX", "FERG", "FI"
                 , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL"
                 , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
                 , "INSP", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK"
@@ -429,7 +429,7 @@ public class mainDataHandler {
     private static final List<String> LARGE_CAPS = List.of("BABA", "AMD", "PLTR", "UBER", "CMCSA", "DIS", "SBUX", "XOM", "BP", "CSCO");
 
     /* Mid-caps: moderate liquidity and volatility. */
-    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "TTD", "FCX", "MARA", "RIVN");
+    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "TTD", "MARA", "RIVN");
 
     /* Small/micro-caps: prone to sharp one-minute swings. */
     private static final List<String> SMALL_CAPS = List.of("ACHR", "AES", "APLD", "COIN", "CORZ", "ET", "GME", "HIMS", "HOOD", "IONQ", "LUMN",
@@ -1336,7 +1336,7 @@ public class mainDataHandler {
         if (MEGA_CAPS.contains(symbol)) threshold = 0.3;
         else if (LARGE_CAPS.contains(symbol)) threshold = 0.4;
         else if (MID_CAPS.contains(symbol)) threshold = 0.8;
-        else if (SMALL_CAPS.contains(symbol)) threshold = 1.4;
+        else if (SMALL_CAPS.contains(symbol)) threshold = 1.5;
         else threshold = 1.0;
         return threshold;
     }
@@ -1414,7 +1414,6 @@ public class mainDataHandler {
         // Announce to the user that the download/fetch sequence is starting.
         logTextArea.append("Started pulling data from server\n");
         logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
-        symbols.add("CRWV"); // Add CoreWeave since its unsupported
 
         // Countdown latch is used to know when ALL symbol data (from file or API) has loaded.
         CountDownLatch countDownLatch = new CountDownLatch(symbols.size());
@@ -1517,36 +1516,10 @@ public class mainDataHandler {
                 });
 
                 // --- Post-load: Prepare all in-memory timelines for ML/alerting ---
-                synchronized (symbolTimelines) {
-                    symbolTimelines.keySet().parallelStream().forEach(symbol -> {
-                        // Get the list of StockUnit objects (the timeline) for this symbol.
-                        List<StockUnit> timeline = symbolTimelines.get(symbol);
-                        // If too little data, alert user and skip further analysis for this symbol.
-                        if (timeline.size() < 2) {
-                            logTextArea.append("Not enough data for " + symbol + "\n");
-                            return;
-                        }
-                        // Compute % price change between each pair of bars.
-                        for (int i = 1; i < timeline.size(); i++) {
-                            StockUnit current = timeline.get(i);
-                            StockUnit previous = timeline.get(i - 1);
-
-                            // Avoid division by zero or negative close values.
-                            if (previous.getClose() > 0) {
-                                double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
-                                // Handle splits/gaps: ignore giant % jumps (>14%) unless propagated.
-                                change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
-                                current.setPercentageChange(change);
-                            }
-                        }
-                    });
-                }
+                calculateStockPercentageChange(false);
 
                 // Precompute min/max/percentile ranges for each indicator, per symbol.
                 precomputeIndicatorRanges(true);
-
-                // Perform another % change scan and prepare notifications (triggers the ML/alert pipeline).
-                calculateStockPercentageChange(false);
 
                 // use second based support Framework
                 fetchRealTimeBulk(symbols);
@@ -1936,8 +1909,12 @@ public class mainDataHandler {
                         // Push notifications to UI, dashboard, etc.
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
+                                String name = Optional.ofNullable(nameToData.get(symbol))
+                                        .map(obj -> String.valueOf(obj.maxOpenQuantity()))
+                                        .orElse("N/A");
+
                                 addNotification(
-                                        notification.getTitle() + " Amt: " + nameToData.get(symbol).maxOpenQuantity(),
+                                        notification.getTitle() + " Amt: " + name,
                                         notification.getContent(),
                                         notification.getStockUnitList(),
                                         notification.getLocalDateTime(),
@@ -3032,7 +3009,6 @@ public class mainDataHandler {
      *     <li>Fires notifications only when strict technical and statistical criteria are met.</li>
      *     <li>Adapts sensitivity dynamically based on a user-defined "aggressiveness" parameter.</li>
      *     <li>Filters for high-confidence breakouts, minimizing noise and false positives.</li>
-     *     <li>When "Greed Mode" is active, a secondary scoring system can trigger additional FOMO-style alerts.</li>
      * </ul>
      *
      * @param prediction           ML model prediction confidence, from 0.0 to 1.0
@@ -3051,8 +3027,8 @@ public class mainDataHandler {
     ) {
         // === 0. Liquidity Check: Only proceed if there is enough trading volume/capital to exit a position ===
         // Define how much you want to be able to sell
-        double requiredNotional = volume;
-        int liquidityLookBack = 10;        // How many bars/minutes to look back for average liquidity (e.g., 10 minutes)
+        double requiredNotional = volume;   // Volume
+        int liquidityLookBack = 10;         // How many bars/minutes to look back for average liquidity (e.g., 10 minutes)
 
         // Check if current and recent liquidity are sufficient to execute your trade without major slippage or waiting
         if (!isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
@@ -3073,46 +3049,11 @@ public class mainDataHandler {
         double changeUp2 = calculateWindowChange(stocks, 2);
         double changeUp3 = calculateWindowChange(stocks, 3);
 
-        // === 4. Define weighted scores for each feature category (used in "Greed Mode" scoring) ===
-        final Map<String, Double> WEIGHTS = Map.of(
-                "spikeFeature", 0.3,
-                "keltner", 0.3,
-                "prediction", 0.3,
-                "dynamicAggro", 0.3,
-                "cumulativeGain", 0.2,
-                "momentum2", 0.10,
-                "momentum3", 0.10
-        );
-
-        // === 5. Compute adaptive activation thresholds for dynamicAggro using percentile mapping ===
+        // === 4. Compute adaptive activation thresholds for dynamicAggro using percentile mapping ===
         // - The threshold adapts to the user's aggressiveness setting.
         double pMin = 0.65;
         double pMax = 0.95;
-        double dynamicPercentile = computeDynamicPercentile(manualAggressiveness, pMin, pMax);
-        double threshold = computeDynamicThreshold(manualAggressiveness, dynamicPercentile);
-
-        double score = 0.0; // Will hold the total weighted confidence score (for Greed Mode)
-
-        if (greed) {
-            // === 6. Compute weighted confidence score when Greed Mode is active ===
-            // Each condition contributes to the overall score if active or sufficiently strong.
-
-            double spikeScore = (features[4] == 1) ? WEIGHTS.get("spikeFeature") : 0; // Spike anomaly
-            double keltnerScore = (features[6] == 1) ? WEIGHTS.get("keltner") : 0; // Keltner channel breakout
-            double predictionScore = WEIGHTS.get("prediction") * softScore(prediction, 0.9, 0.1); // ML model confidence
-            double dynamicAggroScore = WEIGHTS.get("dynamicAggro") * softScore(dynamicAggro, threshold, 0.5); // Composite aggressiveness score
-            double cumulativeGainScore = WEIGHTS.get("cumulativeGain") * softScore(features[5], cumulativeThreshold, 0.6 * dynamicAggro); // Cumulative gain
-            double momentum2Score = WEIGHTS.get("momentum2") * softScore(changeUp2, 1.5 * manualAggressiveness, 0.5); // 2-bar momentum
-            double momentum3Score = WEIGHTS.get("momentum3") * softScore(changeUp3, 1.5 * manualAggressiveness, 0.5); // 3-bar momentum
-
-            // Total confidence score (sum of all weighted components)
-            score = spikeScore + cumulativeGainScore + dynamicAggroScore + predictionScore + keltnerScore + momentum2Score + momentum3Score;
-
-            // If momentum is basically absent, prevent noise/FOMO on no actual move
-            if (changeUp2 < 0.1 || changeUp3 < 0.1) {
-                score = 0.0;
-            }
-        }
+        double threshold = computeDynamicThreshold(manualAggressiveness, computeDynamicPercentile(manualAggressiveness, pMin, pMax));
 
         // check for PL Tester
         if (market == null) {
@@ -3122,8 +3063,8 @@ public class mainDataHandler {
         // Determine if a stock symbol should trigger an uptrend signal, using dynamic parameters
         // based on the market cap group or market sector.
         // The config is tailored for risk and volatility appropriate to each category.
-
         boolean uptrend;
+
         if (MEGA_CAPS.contains(symbol)) {
             // Mega caps (largest companies): use lowest risk/least aggressive config
             uptrend = shouldTrigger(stocks, 5, 0.3, 0.8,
@@ -3161,39 +3102,33 @@ public class mainDataHandler {
             };
         }
 
-        // === 7. Strict "all conditions met" trigger for classic spike event alert ===
+        // === 5. Strict "all conditions met" trigger for classic spike event alert ===
         //   (a) features[4] == 1   : Binary "spike" anomaly active
-        //   (b) features[5] >= cumulativeThreshold : Large enough cumulative percentage gain
+        //   (b) (features[5] >= cumulativeThreshold || normalizedFeatures[5] >= 0.85) : Large enough cumulative percentage gain
         //   (c) dynamicAggro >= threshold : Strong overall feature activation (robustness)
         //   (d) prediction >= 0.9   : ML model must be highly confident (>90%)
         //   (e) features[6] == 1   : Keltner channel breakout detected
         //   (f) changeUp2 and changeUp3 >= 1.5 * manualAggressiveness : Last 2-3 bars have strong % gains
         boolean isTriggered =
                 features[4] == 1 &&                                   // Spike anomaly detected
-                        features[5] >= cumulativeThreshold &&                 // Sufficient cumulative gain
+                        (features[5] >= cumulativeThreshold || normalizedFeatures[5] >= 0.85) && // Sufficient cumulative gain
                         dynamicAggro >= threshold &&                          // Strong feature activation
                         prediction >= 0.9 &&                                  // ML prediction is highly confident
                         features[6] == 1 &&                                   // Keltner channel breakout
-                        changeUp2 >= 1.5 * manualAggressiveness &&            // 2-bar momentum strong enough
-                        changeUp3 >= 1.5 * manualAggressiveness;              // 3-bar momentum strong enough
+                        changeUp2 >= getThreshold(symbol) * manualAggressiveness &&  // 2-bar momentum strong enough
+                        changeUp3 >= getThreshold(symbol) * manualAggressiveness; // 3-bar momentum strong enough
 
         int notificationCode = -1; // -1 means no notification
 
-        // === 8. Only if all strict spike conditions are satisfied, trigger a classic alert notification ===
+        // === 6. Only if all strict spike conditions are satisfied, trigger a classic alert notification ===
         // - Config code: 3 ("spike" alert) if not near resistance; 2 ("R-Line" alert) if near resistance.
         if (isTriggered) {
             notificationCode = (nearRes == 0) ? 3 : 2; // 3 = Spike, 2 = R-Line near resistance
         }
 
-        // === 9. Upwards movements which are not categorized as spikes but still steady upwards ===
+        // === 7. Upwards movements which are not categorized as spikes but still steady upwards ===
         else if (uptrend) {
             notificationCode = 4;
-        }
-
-        // === 10. If Greed Mode is active, allow high-confidence FOMO/greed alerts (less strict) ===
-        // - If score exceeds 1.4 but strict trigger not met, fire a FOMO-style notification (config=0).
-        else if (greed && score > 1.4) {
-            notificationCode = 0;
         }
 
         // If a notification is to be sent, send it once:
@@ -3342,25 +3277,6 @@ public class mainDataHandler {
     }
 
     /**
-     * Smoothly scores a value against a threshold with a soft margin.
-     * Returns 1.0 if value >= threshold, 0.0 if below (threshold - margin),
-     * and linearly interpolates in between.
-     *
-     * @param value     The feature or metric value to score.
-     * @param threshold The primary threshold for a "full score".
-     * @param margin    The range below the threshold where the score interpolates from 0 to 1.
-     * @return A score between 0.0 and 1.0 reflecting closeness to threshold.
-     */
-    private static double softScore(double value, double threshold, double margin) {
-        // Full score if value meets or exceeds the threshold
-        if (value >= threshold) return 1.0;
-        // Zero score if value is less than the minimum cutoff (threshold - margin)
-        if (value < (threshold - margin)) return 0.0;
-        // Otherwise, return a linearly interpolated score within the margin range
-        return (value - (threshold - margin)) / margin;
-    }
-
-    /**
      * Detects and triggers notifications for "gap fill" events—statistically significant, rapid downward price movements
      * that are highly likely to be followed by a rebound ("filling the gap").
      * <p>
@@ -3467,8 +3383,13 @@ public class mainDataHandler {
                     sharpDrop && sustainedMove &&
                     (oversold || momentumDivergence);
 
+            // Define how much you want to be able to sell
+            double requiredNotional = volume;
+            int liquidityLookBack = 10;        // How many bars/minutes to look back for average liquidity (e.g., 10 minutes)
+
+            // Check if current and recent liquidity are sufficient to execute your trade without major slippage or waiting
             // === Final: If so, add a "gap fill" notification to output ===
-            if (baseCondition) {
+            if (baseCondition && isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
                 createNotification(symbol, deviation, alertsList, stocks,
                         stocks.get(endIndex - 1).getLocalDateTimeDate(),
                         prediction, 1); // config=1 means "gap fill"
@@ -4416,7 +4337,6 @@ public class mainDataHandler {
      * @param date          The date/time of the event (LocalDateTime).
      * @param prediction    Model prediction value (if available).
      * @param config        Type of event:
-     *                      0 = greed,
      *                      1 = gap filler,
      *                      2 = R-line spike,
      *                      3 = spike.
@@ -4427,13 +4347,7 @@ public class mainDataHandler {
                                            List<StockUnit> stockUnitList, LocalDateTime date,
                                            double prediction, int config) {
         // Depending on config, use different message formats for type of event
-        if (config == 0) {
-            // Greed Alert 🔥
-            alertsList.add(new Notification(
-                    String.format("🔥PURE GREED Alert %s %.2f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("Pure greed at the %s, direction unknown", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 0));
-        } else if (config == 1) {
+        if (config == 1) {
             // Gap fill (move filling a previous price gap)
             alertsList.add(new Notification(
                     String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),

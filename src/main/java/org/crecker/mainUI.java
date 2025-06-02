@@ -156,11 +156,6 @@ public class mainUI extends JFrame {
     public static boolean useCandles;
 
     /**
-     * Flag indicating whether the greed Mode is enabled.
-     */
-    public static boolean greed;
-
-    /**
      * Current volume parameter for algorithms (user-configurable).
      */
     static int volume;
@@ -359,9 +354,8 @@ public class mainUI extends JFrame {
             useCandles = Boolean.parseBoolean(settingData[6][1]);
             t212ApiToken = settingData[7][1];
             pushCutUrlEndpoint = settingData[8][1];
-            greed = Boolean.parseBoolean(settingData[9][1]);
-            market = settingData[10][1];
-            useSecondFramework = Boolean.parseBoolean(settingData[11][1]);
+            market = settingData[9][1];
+            useSecondFramework = Boolean.parseBoolean(settingData[10][1]);
         } catch (Exception e) {
             System.out.println("Config error - Create new config " + e.getMessage());
             createConfig();
@@ -416,6 +410,10 @@ public class mainUI extends JFrame {
             // If no config exists, create one and show the settings window immediately
             createConfig();
             setValues();
+            try {
+                Thread.sleep(200); // 200ms
+            } catch (InterruptedException ignored) {
+            }
 
             gui = new mainUI();
             gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -431,7 +429,7 @@ public class mainUI extends JFrame {
 
             // Immediately open settings so user can edit config before using the app
             settingsHandler guiSetting = new settingsHandler(volume, symbols = createSymArray(), shouldSort, apiKey, useRealtime, aggressiveness,
-                    useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market, useSecondFramework);
+                    useCandles, t212ApiToken, pushCutUrlEndpoint, market, useSecondFramework);
             guiSetting.setSize(500, 700);
             guiSetting.setAlwaysOnTop(true);
             guiSetting.setModalityType(Dialog.ModalityType.APPLICATION_MODAL); // makes it blocking
@@ -451,6 +449,10 @@ public class mainUI extends JFrame {
         } else {
             // If config exists, load it and initialize the main UI as normal
             setValues();
+            try {
+                Thread.sleep(200); // 200ms
+            } catch (InterruptedException ignored) {
+            }
 
             gui = new mainUI();
             gui.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
@@ -690,7 +692,6 @@ public class mainUI extends JFrame {
                 {"candle", String.valueOf(useCandles)},
                 {"T212", t212ApiToken},
                 {"push", pushCutUrlEndpoint},
-                {"greed", String.valueOf(greed)},
                 {"market", market},
                 {"secondFrameWork", String.valueOf(useSecondFramework)}
         };
@@ -3708,7 +3709,7 @@ public class mainUI extends JFrame {
         public void actionPerformed(ActionEvent e) {
             // Create settings GUI dialog using current config values
             settingsHandler gui = new settingsHandler(volume, symbols, shouldSort, apiKey, useRealtime,
-                    aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, greed, market, useSecondFramework);
+                    aggressiveness, useCandles, t212ApiToken, pushCutUrlEndpoint, market, useSecondFramework);
             gui.setSize(500, 700);            // Fixed dialog size
             gui.setAlwaysOnTop(true);         // Ensures settings stays above main window
             gui.setTitle("Config handler ");  // Dialog window title

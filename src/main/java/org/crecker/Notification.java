@@ -72,7 +72,6 @@ public class Notification {
      * @param change        Percentage change for the notification (e.g. dip/spike).
      * @param config        Event type code, which determines the visual highlight color:
      *                      <ul>
-     *                          <li>0 - GREED (bright red)</li>
      *                          <li>1 - Gap filler (deep orange)</li>
      *                          <li>2 - R-line spike (blue)</li>
      *                          <li>3 - Spike (green)</li>
@@ -93,7 +92,6 @@ public class Notification {
         this.config = config;
 
         /*
-          config 0 GREED        - bright red
           config 1 gap filler   - deep orange
           config 2 R-line spike - blue
           config 3 spike        - green
@@ -103,9 +101,7 @@ public class Notification {
           -- use brighter colors in order to see text better and more clear --
          */
 
-        if (config == 0) {
-            this.color = new Color(255, 73, 73, 182);         // Bright Red
-        } else if (config == 1) {
+        if (config == 1) {
             this.color = new Color(255, 171, 70);       // Deep Orange
         } else if (config == 2) {
             this.color = new Color(48, 149, 255);       // Sky Blue

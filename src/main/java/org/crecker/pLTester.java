@@ -41,7 +41,6 @@ import java.util.regex.Pattern;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
-import static org.crecker.mainUI.logTextArea;
 import static org.crecker.mainUI.setDarkMode;
 
 /**
@@ -64,8 +63,6 @@ import static org.crecker.mainUI.setDarkMode;
  *     <li>For each notification, allows the user to decide whether to enter a simulated trade</li>
  *     <li>Supports minute-by-minute trade management, capital update, and summary output</li>
  * </ul>
- *
- * @author (your name)
  */
 public class pLTester {
 
@@ -116,13 +113,13 @@ public class pLTester {
      * Calls the main analysis routine.
      */
     public static void main(String[] args) {
-        // updateStocks(); // Optionally refresh/download all stocks (uncomment if needed)
+        updateStocks(); // Optionally refresh/download all stocks (uncomment if needed)
         PLAnalysis();
-//        realTimeDataCollector("RGTI");
-//        realTimeDataCollector("MARA");
-//        realTimeDataCollector("QBTS");
-//        realTimeDataCollector("QUBT");
-//        realTimeDataCollector("IONQ");
+        realTimeDataCollector("RGTI");
+        realTimeDataCollector("MARA");
+        realTimeDataCollector("QBTS");
+        realTimeDataCollector("QUBT");
+        realTimeDataCollector("IONQ");
     }
 
     /**
@@ -131,7 +128,7 @@ public class pLTester {
      */
     private static void updateStocks() {
         // Specify which stocks to update in batch
-        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "PLTR", "MSTR", "ARM", "QUBT", "CRWV", "GME", "RCAT")) {
+        for (String stock : Arrays.asList("SMCI", "IONQ", "WOLF", "MARA", "NVDA", "QBTS", "PLTR", "MSTR", "ARM", "QUBT", "GME", "RCAT")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
     }
@@ -430,35 +427,11 @@ public class pLTester {
 
         // --- PERCENTAGE CHANGE CALCULATION ---
         // For every loaded timeline...
-        synchronized (symbolTimelines) {
-            symbolTimelines.forEach((symbol, timeline) -> {
-                // Skip if not enough data (needs at least 2 bars for % change calc)
-                if (timeline.size() < 2) {
-                    logTextArea.append("Not enough data for " + symbol + "\n");
-                    return;
-                }
-
-                // Calculate percentage change (close-to-close) for each bar (relative to previous bar)
-                for (int i = 1; i < timeline.size(); i++) {
-                    StockUnit current = timeline.get(i);
-                    StockUnit previous = timeline.get(i - 1);
-
-                    if (previous.getClose() > 0) {
-                        double change = ((current.getClose() - previous.getClose()) / previous.getClose()) * 100;
-                        // Abnormal outliers (>= 14%) are set to the previous % change (keeps continuity for flash spikes)
-                        change = Math.abs(change) >= 14 ? previous.getPercentageChange() : change;
-                        current.setPercentageChange(change);
-                    }
-                }
-            });
-        }
+        calculateStockPercentageChange(false);
 
         // --- INDICATOR AND LABELING PIPELINE ---
         // Precompute all indicator min/max ranges for normalization (not using live data)
         precomputeIndicatorRanges(false);
-
-        // Recalculate percentage change labels and spike detection (for training, backtest, etc.)
-        dataTester.calculateStockPercentageChange();
 
         // Compute and label "spikes" (large moves) in all timelines for later analysis
         calculateSpikesInRally(frameSize, false);
@@ -722,6 +695,12 @@ public class pLTester {
                 TimeSeries highSeries = new TimeSeries(processedSymbol + " High");
                 TimeSeries lowSeries = new TimeSeries(processedSymbol + " Low");
 
+                // Suspend event notifications to speed up bulk insert
+                closeSeries.setNotify(false);
+                openSeries.setNotify(false);
+                highSeries.setNotify(false);
+                lowSeries.setNotify(false);
+
                 // Add each StockUnit to all four series with its corresponding price and timestamp
                 for (StockUnit unit : timeline) {
                     closeSeries.add(new Second(unit.getDateDate()), unit.getClose());
@@ -729,6 +708,12 @@ public class pLTester {
                     lowSeries.add(new Second(unit.getDateDate()), unit.getLow());
                     highSeries.add(new Second(unit.getDateDate()), unit.getHigh());
                 }
+
+                // Reactivate notifications (one repaint at the end)
+                closeSeries.setNotify(true);
+                openSeries.setNotify(true);
+                highSeries.setNotify(true);
+                lowSeries.setNotify(true);
 
                 // Combine the four series into a dataset for JFreeChart
                 TimeSeriesCollection priceDataset = new TimeSeriesCollection();
