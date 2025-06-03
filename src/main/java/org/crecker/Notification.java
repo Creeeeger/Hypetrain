@@ -46,9 +46,10 @@ public class Notification {
     private static IntervalMarker shadedRegion = null;
 
     // Main notification data and charting fields
-    private final String title;                 // The notification's display title
+    private String title;                       // The notification's display title
     private final String content;               // Main textual content for this notification
     private final List<StockUnit> stockUnitList;// Stock data (price/time) relevant to this event
+    private List<StockUnit> validationWindow;   // relevant for ML training
     private final LocalDateTime localDateTime;  // Date/time for the notification event
     private final String symbol;                // Stock ticker symbol
     private final double change;                // Percent change in price that triggered this event
@@ -64,25 +65,31 @@ public class Notification {
     /**
      * Create a Notification instance for a specific event, including relevant stock data and type.
      *
-     * @param title         Title of the notification window.
-     * @param content       Description or explanation of the event.
-     * @param stockUnitList List of StockUnit objects (price/time).
-     * @param localDateTime Time of the event.
-     * @param symbol        Stock symbol this notification refers to.
-     * @param change        Percentage change for the notification (e.g. dip/spike).
-     * @param config        Event type code, which determines the visual highlight color:
-     *                      <ul>
-     *                          <li>1 - Gap filler (deep orange)</li>
-     *                          <li>2 - R-line spike (blue)</li>
-     *                          <li>3 - Spike (green)</li>
-     *                          <li>4 - Uptrend (royal purple)</li>
-     *                          <li>5 - Second-based alarm (alarm red)</li>
-     *                          <li>Other - Gray</li>
-     *                      </ul>
-     *                      <p>Use bright colors to enhance text visibility.</p>
+     * @param title            Title of the notification window.
+     * @param content          Description or explanation of the event.
+     * @param stockUnitList    List of StockUnit objects (price/time).
+     * @param localDateTime    Time of the event.
+     * @param symbol           Stock symbol this notification refers to.
+     * @param change           Percentage change for the notification (e.g., dip/spike).
+     * @param config           Event type code, which determines the visual highlight color:
+     *                         <ul>
+     *                           <li>1 – Gap filler (deep orange)</li>
+     *                           <li>2 – R-line spike (blue)</li>
+     *                           <li>3 – Spike (green)</li>
+     *                           <li>4 – Uptrend (royal purple)</li>
+     *                           <li>5 – Second-based alarm (alarm red)</li>
+     *                           <li>Other – Gray</li>
+     *                         </ul>
+     *                         <p>Use bright colors to enhance text visibility.</p>
+     * @param validationWindow A list of subsequent bars immediately following this event,
+     *                         used as the ML training/labeling window. It must contain at least
+     *                         {@code frameSize} entries. The first {@code frameSize} bars of this
+     *                         list are examined to determine whether the initial signal was
+     *                         “good” (e.g., price moved above a threshold) or “bad” (e.g., price
+     *                         failed to follow through). If fewer than {@code frameSize} bars are
+     *                         available, the notification is skipped or labeled as invalid.
      */
-
-    public Notification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
+    public Notification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config, List<StockUnit> validationWindow) {
         this.title = title;
         this.content = content;
         this.stockUnitList = stockUnitList;
@@ -90,6 +97,7 @@ public class Notification {
         this.symbol = symbol;
         this.change = change;
         this.config = config;
+        this.validationWindow = validationWindow;
 
         /*
           config 1 gap filler   - deep orange
@@ -121,6 +129,39 @@ public class Notification {
 
         this.timeSeries = new TimeSeries(symbol + " Price");
         processTimeSeriesData(stockUnitList); // Populate for line chart
+    }
+
+    /**
+     * Updates the title text of this notification.
+     *
+     * @param title New title string to assign.
+     */
+    public void setTitle(String title) {
+        this.title = title;
+    }
+
+    /**
+     * Sets the validation window for this stock to the specified list of {@link StockUnit} objects.
+     * <p>
+     * This replaces any existing data in the validation window. The provided list should contain
+     * all StockUnit entries relevant to the desired validation period.
+     *
+     * @param validationWindow the list of {@link StockUnit} objects to set as the validation window; must not be null
+     */
+    public void setValidationWindow(List<StockUnit> validationWindow) {
+        this.validationWindow = validationWindow;
+    }
+
+    /**
+     * Returns the list of {@link StockUnit} objects representing the validation window for this stock.
+     * <p>
+     * The validation window contains all StockUnit entries within the relevant validation period,
+     * typically used for model validation, performance checks, or backtesting.
+     *
+     * @return a list of {@link StockUnit} objects in the validation window
+     */
+    public List<StockUnit> getValidationWindow() {
+        return validationWindow;
     }
 
     /**

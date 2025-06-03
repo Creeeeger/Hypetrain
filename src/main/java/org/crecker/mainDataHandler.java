@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
 import static org.crecker.RallyPredictor.predict;
+import static org.crecker.RallyPredictor.predictNotificationEntry;
 import static org.crecker.dataTester.handleSuccess;
 import static org.crecker.mainUI.*;
 import static org.crecker.pLTester.SYMBOLS;
@@ -362,7 +363,7 @@ public class mainDataHandler {
                 "COIN", "CORZ", "CVNA", "DJT", "DUOL",
                 "ENPH", "FIVE", "FOUR", "FUTU", "GME", "GMAB",
                 "HOOD", "INSP", "LPLA", "LMND",
-                "LUMN", "LUNR", "MBLY", "MARA", "MDGL", "MSTR", "NIO", "NOVA",
+                "LUMN", "LUNR", "MBLY", "MDGL", "MSTR", "NIO", "NOVA",
                 "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
                 "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
                 "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "TMDX",
@@ -404,7 +405,7 @@ public class mainDataHandler {
                 "ACHR", "ASTS", "BE", "CAVA",
                 "CORZ", "CRDO", "DJT", "HUT", "IESC",
                 "IONQ", "KODK", "LMND", "LUMN", "LUNR", "LX",
-                "MARA", "MBLY", "MDGL", "POWL", "QBTS", "QUBT", "RCAT",
+                "MBLY", "MDGL", "POWL", "QBTS", "QUBT", "RCAT",
                 "RDDT", "RKLB", "RXRX", "SMR", "SOUN",
                 "STRL", "TMDX", "UPST", "VIR", "VKTX", "XPEV"
         });
@@ -414,13 +415,13 @@ public class mainDataHandler {
         put("ultraVolatile", new String[]{
                 "ACHR", "ASTS", "CORZ", "DJT",
                 "ENPH", "GME", "IONQ", "LMND",
-                "LUMN", "LUNR", "MARA", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
+                "LUMN", "LUNR", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
                 "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
         });
 
-        put("favourites", new String[]{
-                "APLD", "GME", "HIMS", "IONQ", "MARA", "OKLO", "PLTR", "QBTS", "QUBT",
-                "RGTI", "RKLB", "RUN", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF"
+        put("favourites", new String[]{ // These are my favourites and the ones working the best with the algorithm
+                "APLD", "GME", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
+                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF"
         });
     }};
 
@@ -431,7 +432,7 @@ public class mainDataHandler {
     private static final List<String> LARGE_CAPS = List.of("BABA", "AMD", "PLTR", "UBER", "CMCSA", "DIS", "SBUX", "XOM", "BP", "CSCO");
 
     /* Mid-caps: moderate liquidity and volatility. */
-    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "MARA", "RIVN");
+    private static final List<String> MID_CAPS = List.of("CMG", "CSX", "LRCX", "MCHP", "MRVL", "NKE", "SOFI", "TTD", "PTON", "RIVN");
 
     /* Small/micro-caps: prone to sharp one-minute swings. */
     private static final List<String> SMALL_CAPS = List.of("ACHR", "AES", "APLD", "COIN", "CORZ", "ET", "GME", "HIMS", "HOOD", "IONQ", "LUMN",
@@ -1372,14 +1373,33 @@ public class mainDataHandler {
             // Step 2: If any notifications were generated, push them to the UI/dashboard
             if (!notifications.isEmpty()) {
                 for (Notification notification : notifications) {
+                    // Look up the maximum open quantity for this symbol (if available), else default to "N/A"
+                    String name = Optional.ofNullable(nameToData.get(symbol))
+                            .map(obj -> String.valueOf(obj.maxOpenQuantity()))
+                            .orElse("N/A");
+
+                    // Run the “entry” ONNX model on the notification’s 30-bar window to get a probability score
+                    float prediction = predictNotificationEntry(notification.getStockUnitList());
+
+                    // Build and dispatch a new Notification:
+                    //   Title includes:
+                    //     - "Sec, ℙ: " prefix (indicating second-based spike + probability),
+                    //     - the formatted prediction (two decimals),
+                    //     - the original notification’s title,
+                    //     - " Amt: " followed by the max open quantity for context.
+                    //   Content is carried forward unchanged.
+                    //   stockUnitList, localDateTime, symbol, and change are passed straight through.
+                    //   Config = 5 (denotes “Second-based alarm” styling).
+                    //   Validation window is provided as an empty list here (filled later if needed).
                     addNotification(
-                            "Second Alert: " + notification.getTitle(),
+                            "Sec, ℙ: " + String.format("%.2f ", prediction) + notification.getTitle() + " Amt: " + name,
                             notification.getContent(),
                             notification.getStockUnitList(),
                             notification.getLocalDateTime(),
                             notification.getSymbol(),
                             notification.getChange(),
-                            5
+                            5,
+                            new ArrayList<>()
                     );
                 }
             }
@@ -1591,7 +1611,7 @@ public class mainDataHandler {
                                     })
                                     .onFailure(e -> {
                                         // On API failure, log which symbol failed (and still signal completion)
-                                        logTextArea.append("Failed for symbol: " + symbol + "\n");
+                                        logTextArea.append("Failed for symbol: " + symbol + " " + e.getMessage() + " \n");
                                         pendingSymbols.remove(symbol);
                                         latch.countDown();
                                     })
@@ -1911,18 +1931,36 @@ public class mainDataHandler {
                         // Push notifications to UI, dashboard, etc.
                         if (!notifications.isEmpty()) {
                             for (Notification notification : notifications) {
+                                // Retrieve the max open quantity for this symbol, if available; otherwise use "N/A"
                                 String name = Optional.ofNullable(nameToData.get(symbol))
                                         .map(obj -> String.valueOf(obj.maxOpenQuantity()))
                                         .orElse("N/A");
 
+                                // Run the entry‐prediction ONNX model on this notification’s 30‐bar window
+                                float prediction = predictNotificationEntry(notification.getStockUnitList());
+
+                                // Construct and dispatch a new Notification with:
+                                //   Title:
+                                //     • “ℙ: ” prefix indicating probability,
+                                //     • formatted prediction (two decimal places),
+                                //     • original notification title,
+                                //     • “ Amt: ” followed by the max open quantity for context.
+                                //   Content: original notification’s content
+                                //   stockUnitList: same list of StockUnit bars
+                                //   localDateTime: same timestamp
+                                //   symbol: same stock ticker
+                                //   change: same percentage change
+                                //   config: reuse the original notification’s config code
+                                //   validationWindow: carry forward the already‐computed validation window
                                 addNotification(
-                                        notification.getTitle() + " Amt: " + name,
+                                        "ℙ: " + String.format("%.2f ", prediction) + notification.getTitle() + " Amt: " + name,
                                         notification.getContent(),
                                         notification.getStockUnitList(),
                                         notification.getLocalDateTime(),
                                         notification.getSymbol(),
                                         notification.getChange(),
-                                        notification.getConfig()
+                                        notification.getConfig(),
+                                        notification.getValidationWindow()
                                 );
                             }
                         }
@@ -3131,7 +3169,7 @@ public class mainDataHandler {
         }
 
         // === 7. Upwards movements which are not categorized as spikes but still steady upwards ===
-        else if (uptrend) {
+        else if (uptrend && !MEGA_CAPS.contains(symbol)) {
             notificationCode = 4;
         }
 
@@ -3140,7 +3178,7 @@ public class mainDataHandler {
             createNotification(
                     symbol, changeUp3, alertsList,
                     stocks, stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                    prediction, notificationCode
+                    prediction, notificationCode, new ArrayList<>()
             );
         }
     }
@@ -3396,7 +3434,7 @@ public class mainDataHandler {
             if (baseCondition && isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
                 createNotification(symbol, deviation, alertsList, stocks,
                         stocks.get(endIndex - 1).getLocalDateTimeDate(),
-                        prediction, 1); // config=1 means "gap fill"
+                        prediction, 1, new ArrayList<>()); // config=1 means "gap fill"
             }
         }
     }
@@ -4334,53 +4372,58 @@ public class mainDataHandler {
      * Helper to create and add a Notification for a specific stock event.
      * Adds a formatted notification message to alertsList depending on config.
      *
-     * @param symbol        The stock symbol for the event.
-     * @param totalChange   The triggering percent change (spike or dip, etc).
-     * @param alertsList    The shared list to store created notifications.
-     * @param stockUnitList The time series (bars) associated with the event.
-     * @param date          The date/time of the event (LocalDateTime).
-     * @param prediction    Model prediction value (if available).
-     * @param config        Type of event:
-     *                      1 = gap filler,
-     *                      2 = R-line spike,
-     *                      3 = spike.
-     *                      4 = uptrend movement
-     *                      5 = Second based spike
+     * @param symbol           The stock symbol for the event.
+     * @param totalChange      The triggering percent change (spike or dip, etc).
+     * @param alertsList       The shared list to store created notifications.
+     * @param stockUnitList    The time series (bars) associated with the event.
+     * @param date             The date/time of the event (LocalDateTime).
+     * @param prediction       Model prediction value (if available).
+     * @param config           Type of event:
+     *                         1 = gap filler,
+     *                         2 = R-line spike,
+     *                         3 = spike.
+     *                         4 = uptrend movement
+     *                         5 = Second based spike
+     * @param validationWindow A list of subsequent bars immediately following the event,
+     *                         used to label or train the ML model. Must contain at least
+     *                         VALIDATE_SIZE bars. The first VALIDATE_SIZE entries are used
+     *                         to decide if the initial signal was “good” (e.g., price moved
+     *                         above a threshold) or “bad” (e.g., price failed to move).
      */
     private static void createNotification(String symbol, double totalChange, List<Notification> alertsList,
                                            List<StockUnit> stockUnitList, LocalDateTime date,
-                                           double prediction, int config) {
+                                           double prediction, int config, List<StockUnit> validationWindow) {
         // Depending on config, use different message formats for type of event
         if (config == 1) {
             // Gap fill (move filling a previous price gap)
             alertsList.add(new Notification(
-                    String.format("Gap fill %s ↓↑ %.3f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Gap %s ↓↑ %.2f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 1));
+                    stockUnitList, date, symbol, totalChange, 1, validationWindow));
         } else if (config == 2) {
             // R-line spike (upward price movement with caution warning since close to previous bar hence might be the top and reverse point)
             alertsList.add(new Notification(
-                    String.format("%.3f%% %s R-Line %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("R-Line Spike Proceed with caution by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 2));
+                    String.format("%.2f%% %s R-Line %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("R-Line Spike Proceed with caution by %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    stockUnitList, date, symbol, totalChange, 2, validationWindow));
         } else if (config == 3) {
             // Upward spike (sharp increase)
             alertsList.add(new Notification(
-                    String.format("%.3f%% %s ↑ %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("Increased by %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 3));
+                    String.format("%.2f%% %s ↑ %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Increased by %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    stockUnitList, date, symbol, totalChange, 3, validationWindow));
         } else if (config == 4) {
             // Uptrend movement which is not categorized as a hardcore spike
             alertsList.add(new Notification(
-                    String.format("%.3f%% %s Uptrend %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("Uptrend slope: %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 4));
+                    String.format("%.2f%% %s Uptrend %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Uptrend slope: %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    stockUnitList, date, symbol, totalChange, 4, validationWindow));
         } else if (config == 5) {
             // Second based pre predicted spike
             alertsList.add(new Notification(
-                    String.format("%.3f%% %s Second Spike %.3f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
-                    String.format("Second based spike: %.3f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 5));
+                    String.format("%.2f%% %s Second Spike %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
+                    String.format("Second based spike: %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
+                    stockUnitList, date, symbol, totalChange, 5, validationWindow));
         }
     }
 
