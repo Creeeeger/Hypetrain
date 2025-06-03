@@ -708,15 +708,23 @@ public class mainUI extends JFrame {
      *   <li>A system-level notification is sent using terminal-notifier (macOS), SystemTray (Windows), or logs otherwise.</li>
      * </ul>
      *
-     * @param title         The notification title (displayed in UI and system notification).
-     * @param content       The message body of the notification.
-     * @param stockUnitList The related stock units for this notification (can be empty).
-     * @param localDateTime The timestamp of the event.
-     * @param symbol        The ticker symbol relevant to this notification.
-     * @param change        The % change (used for sorting/visual cues).
-     * @param config        Additional configuration parameter for Notification object.
+     * @param title            The notification title (displayed in UI and system notification).
+     * @param content          The message body of the notification.
+     * @param stockUnitList    The related stock units for this notification (can be empty).
+     * @param localDateTime    The timestamp of the event.
+     * @param symbol           The ticker symbol relevant to this notification.
+     * @param change           The percentage change (used for sorting/visual cues).
+     * @param config           Additional configuration parameter for Notification object.
+     * @param validationWindow A list of subsequent StockUnit bars immediately following the event,
+     *                         used for machine learning labeling or backtesting. This window should
+     *                         contain at least {@code frameSize} entries. The first {@code frameSize}
+     *                         bars are examined to determine whether the original signal was
+     *                         “good” (e.g., price moved above a threshold) or “bad” (e.g., price failed
+     *                         to follow through). If fewer than {@code frameSize} bars are present,
+     *                         the notification may be skipped or marked invalid.
      */
-    public static void addNotification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
+    public static void addNotification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime,
+                                       String symbol, double change, int config, List<StockUnit> validationWindow) {
         // Ensure all notification updates happen on the Swing Event Dispatch Thread for UI safety
         SwingUtilities.invokeLater(() -> {
             // Loop backwards to safely remove notifications while iterating
@@ -743,7 +751,7 @@ public class mainUI extends JFrame {
 
             // Add the new notification to the model/list (appears in the hype panel)
             notificationListModel.addElement(
-                    new Notification(title, content, stockUnitList, localDateTime, symbol, change, config)
+                    new Notification(title, content, stockUnitList, localDateTime, symbol, change, config, validationWindow)
             );
         });
 

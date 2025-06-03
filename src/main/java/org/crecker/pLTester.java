@@ -35,13 +35,16 @@ import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
+import static org.crecker.RallyPredictor.predictNotificationEntry;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
 import static org.crecker.mainUI.setDarkMode;
+import static org.crecker.mainUI.volume;
 
 /**
  * pLTester is the primary entry point and main orchestrator for
@@ -82,6 +85,14 @@ public class pLTester {
      */
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
 
+    /**
+     * Toggle to enable or disable dumping of all generated notifications to disk.
+     * When set to true, the system will call {@link #dumpNotifications(List)} with
+     * the full notification list (notificationsForPLAnalysis). This is useful for
+     * persisting notification data for offline ML training or auditing.
+     */
+    static boolean dump = false;
+
     // Mouse-selected chart coordinates for manual measurement and shading
     private static double point1X = Double.NaN; // Domain value (e.g., timestamp) for first marker
     private static double point1Y = Double.NaN; // Price at first marker
@@ -96,7 +107,7 @@ public class pLTester {
     /**
      * Array of stock symbols currently under analysis/trading.
      */
-    public final static String[] SYMBOLS = {"QBTS"};
+    public final static String[] SYMBOLS = {"OKLO"};
 
     /**
      * Whether to display candlestick charts (true) or time series line charts (false).
@@ -106,20 +117,153 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 1000; // analyse the day
+    private final static int cut = 3000; // analyse the day
 
     /**
-     * Program entry point.
-     * Calls the main analysis routine.
+     * Application entry point.
+     * <p>
+     * Initializes any global settings (e.g., default volume) and then invokes the main
+     * Profit/Loss analysis routine. Uncomment the <code>updateStocks()</code> call if you need
+     * to refresh or download stock data before analysis. You can also uncomment one of the
+     * <code>realTimeDataCollector</code> calls to begin livestreaming quotes for a specific symbol.
+     * </p>
+     *
+     * @param args Command-line arguments (unused).
      */
     public static void main(String[] args) {
-        updateStocks(); // Optionally refresh/download all stocks (uncomment if needed)
+        // Set default trade volume for notifications and analyses
+        volume = 100000;
+
+        // Optionally refresh or download all stock data before running analysis
+        // updateStocks();
+
+        // Run the primary Profit/Loss analysis workflow
         PLAnalysis();
-        realTimeDataCollector("RGTI");
-        realTimeDataCollector("MARA");
-        realTimeDataCollector("QBTS");
-        realTimeDataCollector("QUBT");
-        realTimeDataCollector("IONQ");
+
+        // Uncomment any of these to start real-time data collection for a given symbol:
+        // realTimeDataCollector("RGTI");
+        // realTimeDataCollector("QBTS");
+        // realTimeDataCollector("QUBT");
+        // realTimeDataCollector("IONQ");
+    }
+
+    /**
+     * Serialize a list of Notification objects into a single JSON array and write it to disk.
+     * Each Notification is converted into a compact JSON object containing:
+     * - notificationId: a unique incremental identifier ("notif_0", "notif_1", …)
+     * - symbol: the stock symbol or "UNKNOWN" if null
+     * - lookbackWindow: an array of StockUnit fields (date, open, high, low, close, volume, percentageChange)
+     * - validationWindow: an array of subsequent StockUnit fields (date, open, high, low, close, volume, percentageChange)
+     * <p>
+     * The output file is located at: {user.dir}/rallyMLModel/notifications.json.
+     * Throws IOException if any file I/O operation fails.
+     *
+     * @param notifications List of Notification objects to serialize. Each Notification must have:
+     *                      - getStockUnitList() providing the lookback window (all fields populated)
+     *                      - getValidationWindow() providing the subsequent bars (all fields populated)
+     * @throws IOException If unable to create or write to the output JSON file.
+     */
+    public static void dumpNotifications(List<Notification> notifications) throws IOException {
+        // Build the path to the output file: "<working directory>/rallyMLModel/notifications.json"
+        Path filePath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "notifications.json");
+        File file = filePath.toFile();  // Convert Path to File
+
+        // Open a BufferedWriter to write text to the file (overwrites existing content)
+        BufferedWriter writer = new BufferedWriter(new FileWriter(file));
+        // Counter to assign unique notificationId values
+        AtomicInteger counter = new AtomicInteger(0);
+        // Formatter to convert LocalDateTime to "yyyy-MM-dd HH:mm:ss" strings
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        // Begin the JSON array with an opening bracket and newline
+        writer.write("[\n");
+
+        // Iterate over all Notification objects by index
+        for (int idx = 0; idx < notifications.size(); idx++) {
+            Notification notification = notifications.get(idx);
+            // Generate a unique ID like "notif_0", "notif_1", etc.
+            String notificationId = "notif_" + counter.getAndIncrement();
+            // Fetch the symbol or fallback to "UNKNOWN" if null
+            String symbol = Optional.ofNullable(notification.getSymbol()).orElse("UNKNOWN");
+
+            // Build the JSON object for this notification
+            StringBuilder sb = new StringBuilder();
+            sb.append("  {");  // Two spaces indentation before the object
+
+            // Append the "notificationId" field
+            sb.append("\"notificationId\":\"").append(notificationId).append("\",");
+
+            // Append the "symbol" field
+            sb.append("\"symbol\":\"").append(symbol).append("\",");
+
+            // 1) Serialize lookbackWindow array
+            sb.append("\"lookbackWindow\":[");
+            List<StockUnit> lookBacks = notification.getStockUnitList();  // List of historical bars
+            // Loop through each StockUnit in the lookback window
+            for (int i = 0; i < lookBacks.size(); i++) {
+                StockUnit u = lookBacks.get(i);
+                // Build JSON object for a single StockUnit
+                sb.append("{")
+                        .append("\"date\":\"").append(dtf.format(u.getLocalDateTimeDate())).append("\",")
+                        .append("\"open\":").append(u.getOpen()).append(",")
+                        .append("\"high\":").append(u.getHigh()).append(",")
+                        .append("\"low\":").append(u.getLow()).append(",")
+                        .append("\"close\":").append(u.getClose()).append(",")
+                        .append("\"volume\":").append(u.getVolume()).append(",")
+                        .append("\"percentageChange\":").append(u.getPercentageChange())
+                        .append("}");
+                // If not the last entry, append a comma to separate objects
+                if (i < lookBacks.size() - 1) {
+                    sb.append(",");
+                }
+            }
+            sb.append("],");  // Close lookbackWindow array and add comma
+
+            // 2) Serialize validationWindow array
+            sb.append("\"validationWindow\":[");
+            List<StockUnit> valBars = notification.getValidationWindow();  // List of subsequent bars
+            // Loop through each StockUnit in the validation window
+            for (int i = 0; i < valBars.size(); i++) {
+                StockUnit v = valBars.get(i);
+                // Build JSON object for a single validation StockUnit
+                sb.append("{")
+                        .append("\"date\":\"").append(dtf.format(v.getLocalDateTimeDate())).append("\",")
+                        .append("\"open\":").append(v.getOpen()).append(",")
+                        .append("\"high\":").append(v.getHigh()).append(",")
+                        .append("\"low\":").append(v.getLow()).append(",")
+                        .append("\"close\":").append(v.getClose()).append(",")
+                        .append("\"volume\":").append(v.getVolume()).append(",")
+                        .append("\"percentageChange\":").append(v.getPercentageChange())
+                        .append("}");
+                // If not the last entry, append a comma
+                if (i < valBars.size() - 1) {
+                    sb.append(",");
+                }
+            }
+            sb.append("]");  // Close validationWindow array
+
+            sb.append("}");  // Close this notification JSON object
+
+            // If this is not the final notification, append a comma and newline
+            if (idx < notifications.size() - 1) {
+                sb.append(",\n");
+            } else {
+                sb.append("\n");  // Last object: just newline
+            }
+
+            // Write the built JSON string for this notification to the file
+            writer.write(sb.toString());
+        }
+
+        // Close the JSON array with a closing bracket and newline
+        writer.write("]\n");
+
+        // Flush and close the writer to ensure all data is written out
+        writer.flush();
+        writer.close();
+
+        // Log to console how many notifications were dumped
+        System.out.println("Dumped " + counter.get() + " notifications into a JSON array");
     }
 
     /**
@@ -128,7 +272,8 @@ public class pLTester {
      */
     private static void updateStocks() {
         // Specify which stocks to update in batch
-        for (String stock : Arrays.asList("APLD", "GME", "HIMS", "IONQ", "MARA", "OKLO", "PLTR", "QBTS", "QUBT", "RGTI", "RKLB", "RUN", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF")) {
+        for (String stock : Arrays.asList("APLD", "GME", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
+                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
     }
@@ -188,6 +333,54 @@ public class pLTester {
 
         // --- TIMELINE CACHE ---
         Map<String, List<StockUnit>> timelineCache = new HashMap<>(); // Symbol -> List<StockUnit>, speeds up repeated timeline lookups
+
+        // add prediction
+        for (Notification notification : notificationsForPLAnalysis) {
+            // Run the entry‐prediction ONNX model on this notification’s 30‐bar StockUnit window
+            float prediction = predictNotificationEntry(notification.getStockUnitList());
+            // Prepend “ℙ: xx ” (where xx is the probability formatted to two decimals) to the existing title
+            notification.setTitle("ℙ: " + String.format("%.2f ", prediction) + notification.getTitle());
+        }
+
+        // Write notifications to disk
+        if (dump) {
+            for (Notification notification : notificationsForPLAnalysis) {
+                LocalDateTime notifyTime = notification.getLocalDateTime();
+
+                // --- FETCH OR REUSE THE FULL PRICE TIMELINE FOR THIS SYMBOL ---
+                String symbol = notification.getSymbol();
+                // timelineCache maps symbol → full list of StockUnit (chronological bars)
+                // If not already present, mainDataHandler.getSymbolTimeline(symbol) loads it.
+                List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol,
+                        mainDataHandler::getSymbolTimeline);
+
+                // --- FIND THE INDEX OF THE NOTIFICATION TIME IN THAT TIMELINE ---
+                // getIndexForTime(symbol, notifyTime) returns the position in 'timeline'
+                // corresponding exactly to notifyTime (e.g., the bar that triggered this alert).
+                Integer baseIndex = getIndexForTime(symbol, notifyTime);
+
+                // --- BUILD THE VALIDATION WINDOW (NEXT 10 BARS AFTER THE ALERT) ---
+                // We want to grab up to 10 bars immediately after the event for labeling.
+                // endIndex = baseIndex + 11 ensures subList covers (baseIndex+1) through (baseIndex+10).
+                // Use Math.min to avoid going past the end of the list.
+                int endIndex = Math.min(baseIndex + 11, timeline.size());
+
+                // subList(fromIndex, toIndex) returns elements at indices [fromIndex to toIndex-1].
+                // So this gives exactly the 10 bars right after baseIndex, or fewer if near end.
+                List<StockUnit> validationWindow = timeline.subList(baseIndex + 1, endIndex);
+
+                // Attach that list of up-to-10 subsequent bars to the notification.
+                notification.setValidationWindow(validationWindow);
+            }
+
+            try {
+                // Write out all notifications collected during PLAnalysis to the JSON file.
+                dumpNotifications(notificationsForPLAnalysis);
+            } catch (IOException e) {
+                // If dumping fails, escalate as a runtime exception to halt execution and expose the error.
+                throw new RuntimeException("Failed to dump notifications for PLAnalysis", e);
+            }
+        }
 
         // === MAIN SIMULATION LOOP ===
         for (Notification notification : notificationsForPLAnalysis) {
