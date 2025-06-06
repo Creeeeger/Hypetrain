@@ -1,6 +1,8 @@
 package org.crecker;
 
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
@@ -31,11 +33,11 @@ import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.time.LocalDateTime;
+import java.time.LocalTime;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.atomic.AtomicInteger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -85,14 +87,6 @@ public class pLTester {
      */
     static List<TimeInterval> labeledIntervals = new ArrayList<>();
 
-    /**
-     * Toggle to enable or disable dumping of all generated notifications to disk.
-     * When set to true, the system will call {@link #dumpNotifications(List)} with
-     * the full notification list (notificationsForPLAnalysis). This is useful for
-     * persisting notification data for offline ML training or auditing.
-     */
-    static boolean dump = false;
-
     // Mouse-selected chart coordinates for manual measurement and shading
     private static double point1X = Double.NaN; // Domain value (e.g., timestamp) for first marker
     private static double point1Y = Double.NaN; // Price at first marker
@@ -107,7 +101,7 @@ public class pLTester {
     /**
      * Array of stock symbols currently under analysis/trading.
      */
-    public final static String[] SYMBOLS = {"OKLO"};
+    public final static String[] SYMBOLS = {"QBTS"};
 
     /**
      * Whether to display candlestick charts (true) or time series line charts (false).
@@ -117,7 +111,16 @@ public class pLTester {
     /**
      * Maximum number of data rows to use per stock (limits memory, controls recentness of analysis).
      */
-    private final static int cut = 3000; // analyse the day
+    private final static int cut = 5000;
+
+    /**
+     * Toggle to enable or disable dumping of all generated notifications to disk.
+     * When set to true, the system will call {@link #dumpNotifications(List)} with
+     * the full notification list (notificationsForPLAnalysis). This is useful for
+     * persisting notification data for offline ML training or auditing.
+     */
+    static boolean dump = false;
+    static boolean dumpAll = false;
 
     /**
      * Application entry point.
@@ -148,134 +151,189 @@ public class pLTester {
     }
 
     /**
-     * Serialize a list of Notification objects into a single JSON array and write it to disk.
-     * Each Notification is converted into a compact JSON object containing:
-     * - notificationId: a unique incremental identifier ("notif_0", "notif_1", …)
-     * - symbol: the stock symbol or "UNKNOWN" if null
-     * - lookbackWindow: an array of StockUnit fields (date, open, high, low, close, volume, percentageChange)
-     * - validationWindow: an array of subsequent StockUnit fields (date, open, high, low, close, volume, percentageChange)
-     * <p>
-     * The output file is located at: {user.dir}/rallyMLModel/notifications.json.
-     * Throws IOException if any file I/O operation fails.
-     *
-     * @param notifications List of Notification objects to serialize. Each Notification must have:
-     *                      - getStockUnitList() providing the lookback window (all fields populated)
-     *                      - getValidationWindow() providing the subsequent bars (all fields populated)
-     * @throws IOException If unable to create or write to the output JSON file.
-     */
-    public static void dumpNotifications(List<Notification> notifications) throws IOException {
-        // Build the path to the output file: "<working directory>/rallyMLModel/notifications.json"
-        Path filePath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "notifications.json");
-        File file = filePath.toFile();  // Convert Path to File
-
-        // Open a BufferedWriter to write text to the file (overwrites existing content)
-        BufferedWriter writer = new BufferedWriter(new FileWriter(file));
-        // Counter to assign unique notificationId values
-        AtomicInteger counter = new AtomicInteger(0);
-        // Formatter to convert LocalDateTime to "yyyy-MM-dd HH:mm:ss" strings
-        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-
-        // Begin the JSON array with an opening bracket and newline
-        writer.write("[\n");
-
-        // Iterate over all Notification objects by index
-        for (int idx = 0; idx < notifications.size(); idx++) {
-            Notification notification = notifications.get(idx);
-            // Generate a unique ID like "notif_0", "notif_1", etc.
-            String notificationId = "notif_" + counter.getAndIncrement();
-            // Fetch the symbol or fallback to "UNKNOWN" if null
-            String symbol = Optional.ofNullable(notification.getSymbol()).orElse("UNKNOWN");
-
-            // Build the JSON object for this notification
-            StringBuilder sb = new StringBuilder();
-            sb.append("  {");  // Two spaces indentation before the object
-
-            // Append the "notificationId" field
-            sb.append("\"notificationId\":\"").append(notificationId).append("\",");
-
-            // Append the "symbol" field
-            sb.append("\"symbol\":\"").append(symbol).append("\",");
-
-            // 1) Serialize lookbackWindow array
-            sb.append("\"lookbackWindow\":[");
-            List<StockUnit> lookBacks = notification.getStockUnitList();  // List of historical bars
-            // Loop through each StockUnit in the lookback window
-            for (int i = 0; i < lookBacks.size(); i++) {
-                StockUnit u = lookBacks.get(i);
-                // Build JSON object for a single StockUnit
-                sb.append("{")
-                        .append("\"date\":\"").append(dtf.format(u.getLocalDateTimeDate())).append("\",")
-                        .append("\"open\":").append(u.getOpen()).append(",")
-                        .append("\"high\":").append(u.getHigh()).append(",")
-                        .append("\"low\":").append(u.getLow()).append(",")
-                        .append("\"close\":").append(u.getClose()).append(",")
-                        .append("\"volume\":").append(u.getVolume()).append(",")
-                        .append("\"percentageChange\":").append(u.getPercentageChange())
-                        .append("}");
-                // If not the last entry, append a comma to separate objects
-                if (i < lookBacks.size() - 1) {
-                    sb.append(",");
-                }
-            }
-            sb.append("],");  // Close lookbackWindow array and add comma
-
-            // 2) Serialize validationWindow array
-            sb.append("\"validationWindow\":[");
-            List<StockUnit> valBars = notification.getValidationWindow();  // List of subsequent bars
-            // Loop through each StockUnit in the validation window
-            for (int i = 0; i < valBars.size(); i++) {
-                StockUnit v = valBars.get(i);
-                // Build JSON object for a single validation StockUnit
-                sb.append("{")
-                        .append("\"date\":\"").append(dtf.format(v.getLocalDateTimeDate())).append("\",")
-                        .append("\"open\":").append(v.getOpen()).append(",")
-                        .append("\"high\":").append(v.getHigh()).append(",")
-                        .append("\"low\":").append(v.getLow()).append(",")
-                        .append("\"close\":").append(v.getClose()).append(",")
-                        .append("\"volume\":").append(v.getVolume()).append(",")
-                        .append("\"percentageChange\":").append(v.getPercentageChange())
-                        .append("}");
-                // If not the last entry, append a comma
-                if (i < valBars.size() - 1) {
-                    sb.append(",");
-                }
-            }
-            sb.append("]");  // Close validationWindow array
-
-            sb.append("}");  // Close this notification JSON object
-
-            // If this is not the final notification, append a comma and newline
-            if (idx < notifications.size() - 1) {
-                sb.append(",\n");
-            } else {
-                sb.append("\n");  // Last object: just newline
-            }
-
-            // Write the built JSON string for this notification to the file
-            writer.write(sb.toString());
-        }
-
-        // Close the JSON array with a closing bracket and newline
-        writer.write("]\n");
-
-        // Flush and close the writer to ensure all data is written out
-        writer.flush();
-        writer.close();
-
-        // Log to console how many notifications were dumped
-        System.out.println("Dumped " + counter.get() + " notifications into a JSON array");
-    }
-
-    /**
      * Downloads or updates the cached data files for all tracked symbols.
      * This is a batch job, only call when needing fresh raw data.
      */
     private static void updateStocks() {
         // Specify which stocks to update in batch
-        for (String stock : Arrays.asList("APLD", "GME", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
-                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF")) {
+        for (String stock : Arrays.asList("APLD", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
+                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "CRWV")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
+    }
+
+    /**
+     * Appends a list of Notification objects to the "notifications.json" file,
+     * writing each notification as a single-line JSON object (newline-delimited),
+     * rather than as a pretty-printed JSON array.
+     * <p>
+     * Each JSON object will contain the following keys:
+     * <ul>
+     *     <li><b>notificationId</b>: a unique incremental identifier in the form "notif_0", "notif_1", etc.</li>
+     *     <li><b>symbol</b>: the stock symbol associated with this notification; if the Notification.getSymbol()
+     *         returns null, the JSON will contain null (no fallback string).</li>
+     *     <li><b>target</b>: the integer ML label (e.g., 0 or 1) assigned to this notification.</li>
+     *     <li><b>lookbackWindow</b>: an array of historical StockUnit data points. Each element in this array
+     *         is an object with keys "date", "open", "high", "low", "close", "volume", "percentageChange".</li>
+     *     <li><b>validationWindow</b>: an array of subsequent StockUnit data points immediately following the
+     *         lookback window, with the same fields as lookbackWindow.</li>
+     * </ul>
+     *
+     * @param newNotifications the list of Notification objects to append. Each Notification must provide:
+     *                         <ul>
+     *                             <li>{@link Notification#getStockUnitList()} for lookback data</li>
+     *                             <li>{@link Notification#getValidationWindow()} for validation data</li>
+     *                             <li>{@link Notification#getSymbol()} for the stock symbol (maybe null)</li>
+     *                             <li>{@link Notification#getTarget()} for the integer label</li>
+     *                         </ul>
+     * @throws IOException if an I/O error occurs while reading from or writing to the file. This includes:
+     *                     <ul>
+     *                         <li>Failure to open or read the existing file</li>
+     *                         <li>Failure to create directories or write the new content</li>
+     *                         <li>Failure to close streams properly</li>
+     *                     </ul>
+     */
+    public static void dumpNotifications(List<Notification> newNotifications) throws IOException {
+        // -------------------------------------------------------------
+        // 1. Build file path and File object
+        // -------------------------------------------------------------
+        // Use System.getProperty("user.dir") to get the current working directory.
+        // Then append "rallyMLModel/notifications.json" to form the full path.
+        Path filePath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "notifications.json");
+        File file = filePath.toFile();
+
+        // -------------------------------------------------------------
+        // 2. Initialize JSON mapper and prepare to read existing data
+        // -------------------------------------------------------------
+        // We use Jackson's ObjectMapper for JSON serialization/deserialization.
+        // By default, ObjectMapper writes compact JSON (no pretty-printing), which we want
+        // so that each JSON object is exactly one line in the output file.
+        ObjectMapper mapper = new ObjectMapper();
+
+        // allNotifications will hold the merged list: existing + new.
+        List<Map<String, Object>> allNotifications = new ArrayList<>();
+
+        // maxId tracks the highest numeric suffix seen in existing "notificationId" values.
+        // If no existing file or no valid IDs found, it remains -1, so the first new ID will be 0.
+        int maxId = -1;
+
+        // -------------------------------------------------------------
+        // 3. Read existing notifications from file (if present and non-empty)
+        // -------------------------------------------------------------
+        if (file.exists() && file.length() > 0) {
+            // Use BufferedReader to read the file line by line. Each line should be a JSON object.
+            try (BufferedReader reader = new BufferedReader(new FileReader(file))) {
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    // Skip empty or whitespace-only lines
+                    if (line.trim().isEmpty()) {
+                        continue;
+                    }
+
+                    // Attempt to parse the line into a Map<String, Object>
+                    Map<String, Object> existingMap = mapper.readValue(line, new TypeReference<>() {
+                    });
+                    allNotifications.add(existingMap);
+
+                    // Extract the "notificationId" field to update maxId.
+                    // We expect IDs in the format "notif_<number>".
+                    Object idObj = existingMap.get("notificationId");
+                    if (idObj instanceof String id) {
+                        if (id.startsWith("notif_")) {
+                            try {
+                                // Parse the substring after "notif_" into an integer.
+                                int idNum = Integer.parseInt(id.substring(6));
+                                if (idNum > maxId) {
+                                    maxId = idNum;
+                                }
+                            } catch (NumberFormatException ignored) {
+                                // If parsing fails (e.g., malformed ID), we ignore and continue.
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 4. Prepare new notifications: convert each Notification to a Map
+        // -------------------------------------------------------------
+        // DateTimeFormatter to convert LocalDateTime to strings like "2025-05-30 09:05:00"
+        DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        for (Notification n : newNotifications) {
+            // Increment maxId so that each new Notification gets a fresh unique ID.
+            maxId++;
+            Map<String, Object> notificationMap = new LinkedHashMap<>();
+
+            // 4a. Add "notificationId" -> "notif_<maxId>"
+            notificationMap.put("notificationId", "notif_" + maxId);
+
+            // 4b. Add "symbol" -> the stock symbol (maybe null if Notification.getSymbol() returns null)
+            notificationMap.put("symbol", n.getSymbol());
+
+            // 4c. Add "target" -> the integer label from the ML model (e.g., 0 or 1)
+            notificationMap.put("target", n.getTarget());
+
+            // -------------------------------------------------------------
+            // 4d. Serialize lookbackWindow: List<StockUnit> -> List<Map<String, Object>>
+            // -------------------------------------------------------------
+            List<Map<String, Object>> lookbackList = new ArrayList<>();
+            for (StockUnit u : n.getStockUnitList()) {
+                // For each StockUnit, build a Map of its fields:
+                // "date" formatted as a string, "open", "high", "low", "close", "volume", "percentageChange"
+                Map<String, Object> barMap = new LinkedHashMap<>();
+                barMap.put("date", dtf.format(u.getLocalDateTimeDate()));
+                barMap.put("open", u.getOpen());
+                barMap.put("high", u.getHigh());
+                barMap.put("low", u.getLow());
+                barMap.put("close", u.getClose());
+                barMap.put("volume", u.getVolume());
+                barMap.put("percentageChange", u.getPercentageChange());
+                lookbackList.add(barMap);
+            }
+            notificationMap.put("lookbackWindow", lookbackList);
+
+            // -------------------------------------------------------------
+            // 4e. Serialize validationWindow: List<StockUnit> -> List<Map<String, Object>>
+            // -------------------------------------------------------------
+            List<Map<String, Object>> validationList = new ArrayList<>();
+            for (StockUnit u : n.getValidationWindow()) {
+                // Same structure as lookbackWindow for each StockUnit
+                Map<String, Object> barMap = new LinkedHashMap<>();
+                barMap.put("date", dtf.format(u.getLocalDateTimeDate()));
+                barMap.put("open", u.getOpen());
+                barMap.put("high", u.getHigh());
+                barMap.put("low", u.getLow());
+                barMap.put("close", u.getClose());
+                barMap.put("volume", u.getVolume());
+                barMap.put("percentageChange", u.getPercentageChange());
+                validationList.add(barMap);
+            }
+            notificationMap.put("validationWindow", validationList);
+
+            // Add the fully built notificationMap to the cumulative list
+            allNotifications.add(notificationMap);
+        }
+
+        // -------------------------------------------------------------
+        // 5. Write all notifications (existing + new) back to the file
+        // -------------------------------------------------------------
+        // We open the file in overwrite mode (false parameter), so that we replace old contents.
+        // Each notification map is serialized to a compact (single-line) JSON string.
+        try (BufferedWriter writer = new BufferedWriter(new FileWriter(file, false))) {
+            for (Map<String, Object> notifMap : allNotifications) {
+                // Convert the Map to a JSON string without any extra whitespace or indentation.
+                String jsonLine = mapper.writeValueAsString(notifMap);
+                writer.write(jsonLine);
+                writer.newLine();  // Ensure each JSON object is on its own line
+            }
+        }
+
+        // -------------------------------------------------------------
+        // 6. Log how many notifications were written
+        // -------------------------------------------------------------
+        System.out.println("Dumped " + allNotifications.size() + " notifications (one JSON object per line)");
     }
 
     /**
@@ -373,12 +431,27 @@ public class pLTester {
                 notification.setValidationWindow(validationWindow);
             }
 
-            try {
-                // Write out all notifications collected during PLAnalysis to the JSON file.
-                dumpNotifications(notificationsForPLAnalysis);
-            } catch (IOException e) {
-                // If dumping fails, escalate as a runtime exception to halt execution and expose the error.
-                throw new RuntimeException("Failed to dump notifications for PLAnalysis", e);
+            LocalTime cutoffStart = LocalTime.of(4, 0);
+            LocalTime cutoffEnd = LocalTime.of(4, 30);
+
+            // Remove any notification whose localDateTime is ≥ 04:00 and ≤ 04:30
+            notificationsForPLAnalysis.removeIf(n -> {
+                LocalTime t = n.getLocalDateTime().toLocalTime();
+                return !t.isBefore(cutoffStart) && !t.isAfter(cutoffEnd);
+            });
+
+            SwingUtilities.invokeLater(() ->
+                    new NotificationLabelingUI(notificationsForPLAnalysis).setVisible(true)
+            );
+
+            if (dumpAll) {
+                try {
+                    // dump all for validation
+                    dumpNotifications(notificationsForPLAnalysis);
+                } catch (IOException e) {
+                    // If dumping fails, escalate as a runtime exception to halt execution and expose the error.
+                    throw new RuntimeException("Failed to dump notifications for PLAnalysis", e);
+                }
             }
         }
 

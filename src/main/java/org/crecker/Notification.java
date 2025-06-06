@@ -44,6 +44,7 @@ public class Notification {
     private static ValueMarker marker1 = null;
     private static ValueMarker marker2 = null;
     private static IntervalMarker shadedRegion = null;
+    private String notificationId;
 
     // Main notification data and charting fields
     private String title;                       // The notification's display title
@@ -57,6 +58,7 @@ public class Notification {
     private final Color color;                  // Notification highlight color (from config)
     private final TimeSeries timeSeries;        // For line charts
     private final OHLCSeries ohlcSeries;        // For candlestick charts
+    private int target = 0;                     // ML label
 
     JLabel percentageChange;                    // Label for showing percentage difference between two points
     private JFrame notificationFrame;           // Frame/window displaying this notification
@@ -129,6 +131,42 @@ public class Notification {
 
         this.timeSeries = new TimeSeries(symbol + " Price");
         processTimeSeriesData(stockUnitList); // Populate for line chart
+    }
+
+    /**
+     * Returns the notification ID.
+     *
+     * @return the notification ID as a String
+     */
+    public String getNotificationId() {
+        return notificationId;
+    }
+
+    /**
+     * Sets the notification ID.
+     *
+     * @param id the notification ID to set
+     */
+    public void setNotificationId(String id) {
+        this.notificationId = id;
+    }
+
+    /**
+     * Sets the ML label (target).
+     *
+     * @param target the integer class label to assign (e.g., 0 for negative, 1 for positive)
+     */
+    public void setTarget(int target) {
+        this.target = target;
+    }
+
+    /**
+     * Returns the ML label (target).
+     *
+     * @return the integer class label currently stored in this instance
+     */
+    public int getTarget() {
+        return target;
     }
 
     /**

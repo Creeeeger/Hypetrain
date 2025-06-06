@@ -16,8 +16,6 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import static org.crecker.mainDataHandler.frameSize;
-
 /**
  * <h1>RallyPredictor</h1>
  * <p>
@@ -38,7 +36,7 @@ import static org.crecker.mainDataHandler.frameSize;
  *   // For a streaming (rolling‐buffer) prediction:
  *   float score = RallyPredictor.predict(featuresArray, symbol);
  *
- *   // For a single‐window entry prediction from exactly `frameSize` bars:
+ *   // For a single‐window entry prediction from exactly `size` bars:
  *   float entryScore = RallyPredictor.predictNotificationEntry(stockUnitList);
  * </pre>
  * The first method uses the “spike_predictor.onnx” model by default; the second uses “entryPrediction.onnx”.
@@ -46,8 +44,66 @@ import static org.crecker.mainDataHandler.frameSize;
  * </p>
  */
 public class RallyPredictor implements AutoCloseable {
+    /**
+     * Number of time‐steps the ONNX model expects as input.
+     * This should match the window length (frameSize) you trained the model with.
+     */
+    private int size = 20;
 
-    // --- Registry of predictors and ONNX runtime management ---
+    /**
+     * Total number of features per time‐step. Must match the model’s input “feature” dimension.
+     * In our case, we have exactly six features:
+     * 0 → open price
+     * 1 → high price
+     * 2 → low price
+     * 3 → close price
+     * 4 → volume
+     * 5 → percentageChange
+     */
+    private static final int N_FEATURES = 6;
+
+    /**
+     * Mean values computed by the Python StandardScaler on the training data.
+     * The ordering here must exactly match FEATURE_COLS = [open, high, low, close, volume, percentageChange].
+     * Each entry was obtained from scaler.mean_ in Python:
+     * FEATURE_MEANS[0] = mean of “open”
+     * FEATURE_MEANS[1] = mean of “high”
+     * FEATURE_MEANS[2] = mean of “low”
+     * FEATURE_MEANS[3] = mean of “close”
+     * FEATURE_MEANS[4] = mean of “volume”
+     * FEATURE_MEANS[5] = mean of “percentageChange”
+     * <p>
+     * These floats are used to center each raw feature before dividing by its scale.
+     */
+    private static final float[] FEATURE_MEANS = new float[]{
+            4.18877424e+01f,
+            4.20415464e+01f,
+            4.17932113e+01f,
+            4.19515795e+01f,
+            2.42354397e+05f,
+            2.10162414e-01f,
+    };
+
+    /**
+     * Scale (standard deviation) values computed by the Python StandardScaler on the training data.
+     * The ordering here must match FEATURE_MEANS above. Each entry was obtained from scaler.scale_ in Python:
+     * FEATURE_SCALES[0] = std of “open”
+     * FEATURE_SCALES[1] = std of “high”
+     * FEATURE_SCALES[2] = std of “low”
+     * FEATURE_SCALES[3] = std of “close”
+     * FEATURE_SCALES[4] = std of “volume”
+     * FEATURE_SCALES[5] = std of “percentageChange”
+     * <p>
+     * These floats are used to divide (after subtracting the mean) so each feature has unit variance.
+     */
+    private static final float[] FEATURE_SCALES = new float[]{
+            3.81914738e+01f,
+            3.82674599e+01f,
+            3.81453129e+01f,
+            3.82160052e+01f,
+            4.71319662e+05f,
+            7.79173064e-01f,
+    };
 
     /**
      * Maps each ONNX model file path to its own RallyPredictor singleton.
@@ -156,7 +212,6 @@ public class RallyPredictor implements AutoCloseable {
      * @param symbol   Stock symbol used as the key for its rolling buffer.
      * @param features Feature vector for the current time step (length == featureLength).
      * @return Model’s float prediction if buffer size ≥ dynamicBufferSize; otherwise 0F.
-     * @throws OrtException if ONNX inference fails (e.g. shape mismatch).
      */
     public Float updateAndPredict(String symbol, float[] features) {
         // Get or create the buffer for this symbol
@@ -283,58 +338,71 @@ public class RallyPredictor implements AutoCloseable {
     }
 
     /**
-     * Immediately predicts from a fixed, non‐streaming window of exactly {@code frameSize} bars.
-     * Builds a [1 × frameSize × 6] tensor from the List of StockUnit, calls ONNX, and returns
-     * the scalar output. This is typically used for “entry” predictions after a notification.
+     * Immediately predicts from a fixed, non‐streaming window of exactly {@code size} bars.
+     * Builds a [1 × size × 6] tensor from the List of StockUnit, normalizes each feature,
+     * calls ONNX, and returns the scalar output. This is typically used for “entry” predictions
+     * after a notification has fired.
      *
-     * @param stockUnits List of StockUnit length ≥ frameSize. Each StockUnit must provide:
+     * @param stockUnits List of StockUnit length ≥ size. Each StockUnit must provide:
      *                   getOpen(), getHigh(), getLow(), getClose(), getVolume(), getPercentageChange().
      * @return ONNX model’s float output (batch[0][0]), or 0F if insufficient data or on error.
      */
     public float predictFromWindow(List<StockUnit> stockUnits) {
-        // If the list is null or shorter than the required frameSize, we cannot run inference.
-        // Return 0F as a safe fallback.
-        if (stockUnits == null || stockUnits.size() < frameSize) {
+        // If the list is null or shorter than the required number of time‐steps, we cannot form a valid input.
+        if (stockUnits == null || stockUnits.size() < size) {
+            // Return 0F as a safe fallback probability when data is insufficient.
             return 0F;
         }
 
-        // Create a 3D float array with dimensions [batch=1][time_steps=frameSize][features=6].
-        // This will hold the converted StockUnit values for ONNX.
-        float[][][] inputArray = new float[1][frameSize][6];
+        // Create a 3D float array with dimensions [batch=1][time_steps=size][features=N_FEATURES].
+        // This array will hold the normalized feature vectors for all 'size' timesteps.
+        float[][][] inputArray = new float[1][size][N_FEATURES];
 
-        // Iterate over each of the first frameSize StockUnit entries.
-        for (int i = 0; i < frameSize; i++) {
+        // Iterate over each of the first 'size' StockUnit entries to fill and normalize.
+        for (int i = 0; i < size; i++) {
             StockUnit u = stockUnits.get(i);
 
-            // Map each StockUnit field to the corresponding index in the features dimension:
-            //   [0] = open price
-            inputArray[0][i][0] = (float) u.getOpen();
-            //   [1] = high price
-            inputArray[0][i][1] = (float) u.getHigh();
-            //   [2] = low price
-            inputArray[0][i][2] = (float) u.getLow();
-            //   [3] = close price
-            inputArray[0][i][3] = (float) u.getClose();
-            //   [4] = volume
-            inputArray[0][i][4] = (float) u.getVolume();
-            //   [5] = percentageChange
-            inputArray[0][i][5] = (float) u.getPercentageChange();
+            // 1) Extract raw feature values from StockUnit:
+            float rawOpen = (float) u.getOpen();             // open price
+            float rawHigh = (float) u.getHigh();             // high price
+            float rawLow = (float) u.getLow();              // low price
+            float rawClose = (float) u.getClose();            // close price
+            float rawVol = (float) u.getVolume();           // traded volume
+            float rawPct = (float) u.getPercentageChange(); // percentage change
+
+            // 2) Normalize each feature: (raw value – precomputed mean) / precomputed scale
+            //    The order of indices must match FEATURE_MEANS and FEATURE_SCALES arrays:
+            //      index 0 → 'open', index 1 → 'high', index 2 → 'low',
+            //      index 3 → 'close', index 4 → 'volume', index 5 → 'percentageChange'.
+            inputArray[0][i][0] = (rawOpen - FEATURE_MEANS[0]) / FEATURE_SCALES[0];
+            inputArray[0][i][1] = (rawHigh - FEATURE_MEANS[1]) / FEATURE_SCALES[1];
+            inputArray[0][i][2] = (rawLow - FEATURE_MEANS[2]) / FEATURE_SCALES[2];
+            inputArray[0][i][3] = (rawClose - FEATURE_MEANS[3]) / FEATURE_SCALES[3];
+            inputArray[0][i][4] = (rawVol - FEATURE_MEANS[4]) / FEATURE_SCALES[4];
+            inputArray[0][i][5] = (rawPct - FEATURE_MEANS[5]) / FEATURE_SCALES[5];
+            // At this point, inputArray[0][i] is a length-6 vector of z-scored features for timestep i.
         }
 
-        // Try-with-resources: create an OnnxTensor from the inputArray and automatically close it.
+        // Run ONNX inference inside a try-with-resources to ensure the OnnxTensor closes automatically.
         try (OnnxTensor tensor = OnnxTensor.createTensor(env, inputArray)) {
-            // Run inference on the model, using "input" as the ONNX graph’s input name.
-            // The result is a list of OrtValues; we expect the first to contain our float output.
+            // session.run() takes a map of input names to OnnxTensor.
+            // We assume the ONNX graph’s input node is named "input".
             OrtSession.Result result = session.run(Collections.singletonMap("input", tensor));
 
-            // Extract the float[][] from the first output OrtValue. This is typically shape [1][1].
-            float[][] out = (float[][]) result.get(0).getValue();
+            // The ONNX model’s first output is expected to be a float[][] of shape [1][1].
+            float[][] out = (float[][]) result.get(1).getValue();
 
-            // Return the single scalar at out[0][0], which is the model’s predicted value.
+            // Return the single scalar at out[0][0], which is the model’s predicted float.
             return out[0][0];
         } catch (OrtException e) {
-            // If ONNX Runtime throws an exception (e.g., tensor creation or session run failure),
-            // print the stack trace for debugging, then return 0F as a fallback.
+            // If ONNX Runtime throws an exception (e.g., incorrect tensor shape),
+            // parse the error message to see if the model expects a different 'size'.
+            Integer expectedSize = parseExpectedSizeFromError(e.getMessage());
+            if (expectedSize != null) {
+                // Update our 'size' so future calls use the new required window length.
+                size = expectedSize;
+            }
+            // Print stack trace for debugging, and return 0F as a safe fallback.
             e.printStackTrace();
             return 0F;
         }
@@ -344,7 +412,7 @@ public class RallyPredictor implements AutoCloseable {
      * Static helper for “entry” predictions using entryPrediction.onnx.
      * Calls {@link #predictFromWindow(List)} on the singleton for that file.
      *
-     * @param stockUnits Exactly frameSize StockUnit objects (the 30-bar lookback).
+     * @param stockUnits Exactly size StockUnit objects (the 30-bar lookback).
      * @return ONNX entry model’s float output, or 0F on error.
      */
     public static float predictNotificationEntry(List<StockUnit> stockUnits) {
