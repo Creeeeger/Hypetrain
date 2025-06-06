@@ -88,6 +88,17 @@ public class mainDataHandler {
     );
 
     /**
+     * The dedicated thread for the “second framework” real-time data loop.
+     * <p>
+     * When {@code useSecondFramework} transitions to {@code true}, this thread is
+     * spawned to continuously poll and process data. As soon as
+     * {@code useSecondFramework} becomes {@code false}, this thread is interrupted
+     * and allowed to terminate. Only one instance of this thread should be active at a time.
+     * </p>
+     */
+    private static Thread secondFrameworkThread = null;
+
+    /**
      * Directory path for disk cache of stock data (e.g., "cache/" in current working directory).
      * <p>
      * Used for storing and retrieving locally cached minute-bar or indicator data to minimize API calls.
@@ -300,35 +311,39 @@ public class mainDataHandler {
 
     // Map of different markets to scan select market to get list
     public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
+        // Add a new entry “allSymbols” with the full list of symbols
         put("allSymbols", new String[]{
-                "AAOI", "AAPL", "ABBV", "ABNB", "ABT", "ACGL", "ACHR", "ADBE", "ADI", "ADP", "ADSK", "AEM", "AER", "AES", "AFL", "AFRM", "AJG", "AKAM", "ALAB"
-                , "AMAT", "AMD", "AME", "AMGN", "AMT", "AMZN", "ANET", "AON", "APD", "APH", "APLD", "APO", "APP", "APTV", "ARE", "ARM", "ARWR", "AS"
-                , "ASML", "ASPI", "ASTS", "AVGO", "AXP", "AZN", "AZO", "BABA", "BBY", "BDX", "BE", "BKNG", "BKR", "BLK", "BMO", "BMRN", "BMY"
-                , "BN", "BNS", "BNTX", "BP", "BSX", "BTI", "BUD", "BX", "C", "CARR", "CAT", "CAVA", "CB", "CBRE", "CDNS", "CEG", "CELH", "CF"
-                , "CI", "CLX", "CMCSA", "CME", "CMG", "CNI", "COF", "COIN", "COP", "CORZ", "COST", "CP", "CRDO", "CRWD"
-                , "CSCO", "CSX", "CTAS", "CTVA", "CVNA", "CVS", "DDOG", "DE", "DEO", "DFS", "DGX", "DHI", "DHR", "DIS", "DJT", "DKNG", "DOCU"
-                , "DUOL", "EA", "ECL", "ELV", "ENB", "ENPH", "EOG", "EPD", "EQIX", "EQNR", "ET", "EW", "EXAS", "EXPE", "FDX", "FERG", "FI"
-                , "FIVE", "FMX", "FN", "FSLR", "FTAI", "FTNT", "FUTU", "GD", "GE", "GEV", "GGG", "GILD", "GIS", "GLW", "GM", "GMAB", "GME", "GOOGL"
-                , "GSK", "GWW", "HCA", "HD", "HDB", "HES", "HIMS", "HON", "HOOD", "HSAI", "HSBC", "HSY", "IBM", "IBN", "ICE", "IDXX", "IESC", "INFY"
-                , "INSP", "INTU", "IONQ", "IRM", "ISRG", "IT", "ITW", "JD", "JPM", "KHC", "KKR", "KLAC", "KODK"
-                , "LLY", "LMND", "LMT", "LNG", "LNTH", "LOW", "LPLA", "LRCX", "LULU", "LUMN", "LUNR", "LUV", "LX", "MA", "MAR", "MARA", "MBLY"
-                , "MCHP", "MCK", "MCO", "MDB", "MDGL", "MDLZ", "MDT", "MET", "META", "MGM", "MKC", "MMC", "MMM", "MO", "MRK", "MRNA", "MRVL", "MS", "MSFT"
-                , "MSI", "MSTR", "MU", "NFE", "NFLX", "NGG", "NIO", "NKE", "NNE", "NOC", "NOVA", "NOW", "NSC", "NVDA", "NVO", "NVS", "NXPI"
-                , "O", "ODFL", "OKE", "OKLO", "OMC", "OPEN", "ORCL", "ORLY", "PANW", "PBR", "PCG", "PDD", "PFG", "PGR"
-                , "PLTR", "PM", "PNC", "POOL", "POWL", "PSA", "PSX", "PTON", "PYPL", "QBTS", "QCOM", "QUBT", "RACE", "RCAT", "RDDT", "REG", "REGN", "RELX", "RGTI"
-                , "RIO", "RIVN", "RKLB", "ROP", "RSG", "RUN", "RXRX", "RY", "SAP", "SBUX", "SCCO", "SCHW", "SE", "SEDG", "SG", "SHOP", "SHW"
-                , "SLB", "SMCI", "SMFG", "SMR", "SMTC", "SNOW", "SNPS", "SNY", "SOFI", "SONY", "SOUN", "SPGI", "SPOT", "STRL", "SWK", "SYK", "SYM"
-                , "SYY", "TCOM", "TD", "TDG", "TEM", "TGT", "TJX", "TM", "TMDX", "TMO", "TMUS", "TRI", "TRU", "TRV", "TSLA", "TSN", "TT"
-                , "TTD", "TTE", "TTEK", "TXN", "TXRH", "U", "UBER", "UBS", "UL", "UNP", "UPS", "UPST", "URI", "USB", "USFD", "UTHR", "V", "VKTX"
-                , "VLO", "VRSK", "VRSN", "VRT", "VRTX", "VST", "W", "WDAY", "WELL", "WFC", "WM", "WOLF", "XOM", "XPEV", "XPO", "YUM", "ZETA"
-                , "ZIM", "ZTO", "ZTS"
+                "ACHR", "ABBV", "AAPL", "ABT", "AAOI", "ABNB", "ADBE", "AEM", "ADI", "AFRM",
+                "AES", "AKAM", "AMAT", "ALAB", "AMD", "AMT", "AMGN", "AMZN", "APH", "ANET",
+                "APLD", "APO", "APP", "ARM", "APTV", "AS", "ASTS", "AVGO", "BABA", "ASPI",
+                "AXP", "AZN", "BDX", "BBY", "BE", "BMY", "BKR", "BSX", "BP", "BTI", "BX",
+                "C", "CARR", "CAT", "CAVA", "CDNS", "CF", "CEG", "CELH", "CMCSA", "CMG",
+                "CME", "COF", "COIN", "CORZ", "CTVA", "COP", "CRDO", "CP", "CSX", "CRWD",
+                "CSCO", "CVNA", "DDOG", "CVS", "DHI", "DFS", "DHR", "DIS", "DKNG", "DJT",
+                "EA", "ENB", "ENPH", "EPD", "EOG", "ET", "EQNR", "EXAS", "EW", "EXPE", "FI",
+                "FIVE", "FSLR", "FTNT", "FUTU", "GE", "GIS", "GEV", "GILD", "GLW", "GME",
+                "GM", "GOOGL", "GSK", "HD", "HDB", "HIMS", "HSAI", "HOOD", "HON", "IBM",
+                "IBN", "ICE", "IONQ", "INFY", "JD", "JPM", "KHC", "KKR", "LLY", "LRCX",
+                "LOW", "LUMN", "LUNR", "LX", "MA", "MARA", "LUV", "MBLY", "MCHP", "MDB",
+                "MDLZ", "MDT", "META", "MET", "MGM", "MKC", "MMM", "MO", "MRK", "MRNA",
+                "MRVL", "MS", "MU", "MSFT", "MSTR", "NIO", "NFLX", "NKE", "NNE", "NOVA",
+                "NVDA", "NVO", "NXPI", "OMC", "OPEN", "O", "OKLO", "ORCL", "OKE", "PBR",
+                "PANW", "PCG", "PDD", "PM", "PLTR", "PGR", "PSX", "QBTS", "PYPL", "PTON",
+                "QUBT", "QCOM", "RCAT", "RDDT", "RGTI", "RIO", "RIVN", "RKLB", "RXRX", "RUN",
+                "SBUX", "SE", "SCHW", "SHOP", "SEDG", "SMCI", "SG", "SLB", "SNOW", "SMR",
+                "SMTC", "SNY", "SONY", "SOUN", "SWK", "SOFI", "SPOT", "TCOM", "SYY", "TEM",
+                "TJX", "TGT", "TMO", "TSN", "TMUS", "TSLA", "TTD", "TTEK", "UBER", "TXN",
+                "UBS", "U", "UL", "UNP", "USB", "UPST", "UPS", "V", "VLO", "VKTX", "VST",
+                "VRT", "WELL", "W", "WDAY", "WFC", "XOM", "XPEV", "ZIM", "ZTO", "ZETA", "ZTS"
         });
         put("aiStocks", new String[]{
                 "AMD", "DDOG", "GOOGL", "META", "MSFT", "NVDA", "PLTR", "SMCI", "SNOW"
         });
+
         put("autoEV", new String[]{
-                "F", "GM", "NIO", "RIVN", "TSLA", "XPEV"
+                "GM", "NIO", "RIVN", "TSLA", "XPEV"
         });
+
         put("bigCaps", new String[]{
                 "AAPL", "ABBV", "ABT", "AMGN", "AMZN", "AMD", "AVGO", "AXP",
                 "BMY", "CAT", "CSCO", "COST", "CVX",
@@ -338,90 +353,92 @@ public class mainDataHandler {
                 "ORCL", "PEP", "PFE", "PG", "QCOM", "SBUX",
                 "SBUX", "TGT", "TMO", "TMUS", "TXN", "UPS", "V", "WFC", "XOM"
         });
+
         put("chineseTech", new String[]{
-                "BABA", "BNS", "CNI", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
+                "BABA", "HDB", "INFY", "JD", "NIO", "PDD", "XPEV"
         });
+
         put("cryptoBlockchain", new String[]{
-                "COIN", "CORZ", "HSAI",
-                "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "SOUN"
+                "COIN", "CORZ", "HSAI", "MARA", "MSTR", "QBTS", "QUBT", "RGTI", "SOUN"
         });
+
         put("energy", new String[]{
-                "BP", "COP", "CVX", "ENB", "EOG", "ET", "OKE", "SLB", "VLO", "XOM"
+                "BP", "COP", "ENB", "EOG", "ET", "OKE", "SLB", "VLO", "XOM"
         });
+
         put("financials", new String[]{
-                "AFL", "AXP", "BLK", "BMO", "BNS", "C", "CB", "COF", "JPM",
-                "MET", "MMC", "MS", "PNC", "RY", "SCHW", "TD", "UBS", "USB", "WFC"
+                "AXP", "BNS", "C", "COF", "JPM", "MET", "MS", "SCHW", "UBS", "USB", "WFC"
         });
+
         put("foodBeverage", new String[]{
-                "CELH", "COST", "DPZ", "GIS", "KHC", "MDLZ", "PEP", "SBUX", "TGT", "WMT", "YUM"
+                "CELH", "GIS", "KHC", "MDLZ", "SBUX", "TGT"
         });
+
         put("healthcareProviders", new String[]{
                 "ANTM", "CI", "CNC", "CVS", "ELV", "HCA", "HUM", "UHS"
         });
+
         put("highVolatile", new String[]{
-                "ACHR", "AFRM", "AER", "ASPI", "ASTS", "BNTX", "CELH",
-                "COIN", "CORZ", "CVNA", "DJT", "DUOL",
-                "ENPH", "FIVE", "FOUR", "FUTU", "GME", "GMAB",
-                "HOOD", "INSP", "LPLA", "LMND",
-                "LUMN", "LUNR", "MBLY", "MDGL", "MSTR", "NIO", "NOVA",
-                "PLTR", "POWL", "PTON", "QBTS", "QUBT", "RCAT", "RDDT",
-                "RKLB", "RIVN", "RUN", "RXRX", "SHOP", "SMCI",
-                "SMR", "SMTC", "SOUN", "SOFI", "SNOW", "STRL", "TMDX",
-                "TRU", "TTD", "UPST", "VKTX", "WOLF", "XPEV", "GME"
+                "ACHR", "AFRM", "ASPI", "ASTS", "CELH", "COIN", "CORZ", "CVNA", "DJT",
+                "ENPH", "FIVE", "FUTU", "HOOD", "LMND", "LUMN", "LUNR", "MBLY", "MSTR",
+                "NIO", "NOVA", "PLTR", "PTON", "QBTS", "QUBT", "RCAT", "RDDT", "RKLB",
+                "RIVN", "RUN", "RXRX", "SHOP", "SMCI", "SMR", "SMTC", "SOUN", "SOFI",
+                "SNOW", "TTD", "UPST", "VKTX", "XPEV"
         });
+
         put("industrials", new String[]{
-                "CAT", "DE", "GE", "HON", "LMT", "MMM", "NOC", "UNP", "WM"
+                "CAT", "GE", "HON", "MMM", "UNP"
         });
+
         put("midCaps", new String[]{
-                "AAOI", "ACGL", "AER", "AFRM", "ALAB", "APLD", "APP", "ARWR",
-                "ASPI", "BMRN", "BN", "BNTX", "BUD", "CELH",
-                "CVNA", "DOCU", "DUOL", "ENPH", "FIVE", "FOUR", "FTAI", "FUTU",
-                "GMAB", "HIMS", "HOOD", "HSY", "IEP", "INFY", "INSP",
-                "LMND", "LPLA", "LULU", "MDB", "MDGL", "MSTR", "MTRN",
-                "NFE", "NIO", "NOVA", "ODFL", "OKLO", "OPEN", "PTON", "RIVN",
-                "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "STRL",
-                "TCOM", "TEM", "TRU", "TTD", "UPST", "VKTX", "XPO", "ZETA", "ZIM"
+                "AAOI", "AFRM", "ALAB", "APLD", "APP", "ASPI", "CELH", "CVNA",
+                "ENPH", "FIVE", "FUTU", "HIMS", "HOOD", "INFY", "LMND", "LPLA", "LULU",
+                "MDB", "MBLY", "MSTR", "NIO", "NOVA", "OKLO", "OPEN", "PTON", "RIVN",
+                "RUN", "SHOP", "SMTC", "SNOW", "SOUN", "SPOT", "TCOM", "TEM", "TTD",
+                "UPST", "VKTX", "ZETA", "ZIM"
         });
+
         put("pharma", new String[]{
-                "ABBV", "AMGN", "AZN", "BMRN", "BMY", "BNTX", "CELH", "GILD",
-                "JNJ", "LLY", "MDGL", "MDT", "MRNA", "PFE", "REGN", "SNY", "VRTX", "ZTS"
+                "ABBV", "AMGN", "AZN", "BMY", "CELH", "GILD", "JNJ", "LLY", "MDT", "MRNA",
+                "SNY", "ZTS"
         });
+
         put("quantum", new String[]{
                 "IONQ", "QCOM", "QBTS", "QUBT", "RGTI"
         });
+
         put("retail", new String[]{
-                "AMZN", "BBY", "COST", "HD", "LOW", "LULU", "MGM", "SONY",
-                "TGT", "TJX", "WMT", "YUM"
+                "AMZN", "BBY", "HD", "LOW", "LULU", "MGM", "SONY",
+                "TGT", "TJX"
         });
+
         put("robotics", new String[]{
-                "ACHR", "ISRG", "KODK", "MBLY", "RKLB"
+                "ACHR", "MBLY", "RKLB"
         });
+
         put("semiconductors", new String[]{
-                "ADI", "AMAT", "AMD", "ARM", "ASML", "AVGO", "CDNS",
-                "CRDO", "KLAC", "LRCX", "MCHP", "MRVL",
-                "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SNPS", "TSLA", "TXN", "WOLF"
+                "ADI", "AMAT", "AMD", "ARM", "AVGO", "CDNS", "CRDO", "LRCX", "MCHP",
+                "MRVL", "MU", "NVDA", "NXPI", "QCOM", "SMCI", "SMTC", "TSLA", "TXN"
         });
+
         put("smallCaps", new String[]{
-                "ACHR", "ASTS", "BE", "CAVA",
-                "CORZ", "CRDO", "DJT", "HUT", "IESC",
-                "IONQ", "KODK", "LMND", "LUMN", "LUNR", "LX",
-                "MBLY", "MDGL", "POWL", "QBTS", "QUBT", "RCAT",
-                "RDDT", "RKLB", "RXRX", "SMR", "SOUN",
-                "STRL", "TMDX", "UPST", "VIR", "VKTX", "XPEV"
+                "ACHR", "ASTS", "BE", "CAVA", "CORZ", "CRDO", "DJT",
+                "IONQ", "LMND", "LUMN", "LUNR", "LX", "MBLY", "QBTS", "QUBT", "RCAT",
+                "RDDT", "RKLB", "RXRX", "SMR", "SOUN", "TMDX", "UPST", "VKTX", "XPEV", "ZIM"
         });
+
         put("techGiants", new String[]{
                 "AAPL", "ADBE", "AMZN", "CSCO", "GOOGL", "META", "MSFT", "NVDA", "ORCL"
         });
-        put("ultraVolatile", new String[]{
-                "ACHR", "ASTS", "CORZ", "DJT",
-                "ENPH", "GME", "IONQ", "LMND",
-                "LUMN", "LUNR", "POWL", "QUBT", "QBTS", "RCAT", "RDDT",
-                "RKLB", "RXRX", "SMR", "SOUN", "UPST", "VKTX", "WOLF"
-        });
 
+        put("ultraVolatile", new String[]{
+                "ACHR", "ASTS", "CORZ", "DJT", "ENPH", "IONQ", "LMND",
+                "LUMN", "LUNR", "QUBT", "QBTS", "RCAT", "RDDT", "RKLB", "RXRX", "SMR", "SOUN",
+                "UPST", "VKTX"
+        });
         put("favourites", new String[]{ // These are my favourites and the ones working the best with the algorithm
-                "APLD", "GME", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
-                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "WOLF"
+                "APLD", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
+                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U"
         });
     }};
 
@@ -960,95 +977,6 @@ public class mainDataHandler {
     }
 
     /**
-     * Periodically fetches real-time market data in bulk for a list of stock symbols using the AlphaVantage API.
-     * <p>
-     * This method runs asynchronously in a background thread when {@code useSecondFramework} is enabled.
-     * It splits the input symbol list into batches of up to 100 (API limitation), fetches real-time data for each batch concurrently,
-     * and processes the aggregated results. It includes timeout handling, robust error logging, and rate limiting
-     * to avoid overwhelming the API or the UI.
-     *
-     * <p>
-     * <b>Key Features:</b>
-     * <ul>
-     *   <li>Batched fetching to respect AlphaVantage's per-request limit (100 symbols).</li>
-     *   <li>Concurrent batch requests with completion coordination via {@link CountDownLatch}.</li>
-     *   <li>Aggregated results processed into the application after each polling cycle.</li>
-     *   <li>Timeout and error handling to maintain responsiveness and robustness.</li>
-     *   <li>Rate limiting to 5 seconds per polling cycle.</li>
-     * </ul>
-     *
-     * @param symbols List of stock symbols to fetch real-time data for.
-     */
-    public static void fetchRealTimeBulk(List<String> symbols) {
-        if (useSecondFramework) {
-            new Thread(() -> {
-                // Outer loop keeps thread alive as long as framework is enabled
-                while (useSecondFramework) {
-                    // Inner loop allows for clean interruption handling
-                    while (!Thread.currentThread().isInterrupted()) {
-                        // Thread-safe list for accumulating all matches this polling round
-                        List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
-                        try {
-                            // Split symbols into batches of max 100, per AlphaVantage API restrictions
-                            List<String> symbolsSnapshot = new ArrayList<>(symbols);
-                            int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
-                            CountDownLatch latch = new CountDownLatch(totalBatches);
-
-                            for (int i = 0; i < totalBatches; i++) {
-                                List<String> batchSymbols = symbolsSnapshot.subList(
-                                        i * 100,
-                                        Math.min((i + 1) * 100, symbolsSnapshot.size())
-                                );
-                                String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
-
-                                // Asynchronous API call for this batch
-                                AlphaVantage.api()
-                                        .Realtime()
-                                        .setSymbols(symbolsBatch)
-                                        .entitlement("realtime")
-                                        .onSuccess(response -> {
-                                            // On success: collect all symbol results from this batch
-                                            matches.addAll(response.getMatches());
-                                            latch.countDown();
-                                        })
-                                        .onFailure(e -> {
-                                            // On failure: log the error, count down latch, but do not stop the loop
-                                            handleFailure(e);
-                                            latch.countDown();
-                                        })
-                                        .fetch();
-                            }
-
-                            // Wait for all batch requests to finish (max 5 seconds to avoid hangs)
-                            if (!latch.await(5, TimeUnit.SECONDS)) {
-                                logTextArea.append("Warning: Timed out waiting for data\n");
-                            }
-
-                            // At this point, all successful matches have been aggregated in 'matches'
-                            // Process results: update data structures, trigger analytics/ML, alert user as needed
-                            processStockData(matches);
-
-                            // ================= Rate Limiting: Pause 5s before next poll =================
-                            Thread.sleep(5000);
-
-                        } catch (InterruptedException e) {
-                            // Thread was interrupted (likely shutdown request): log and exit gracefully
-                            e.printStackTrace();
-                            Thread.currentThread().interrupt();
-                            logTextArea.append("Data pull interrupted\n");
-                            break;
-                        } catch (Exception e) {
-                            // Any other exception: log and continue to next polling cycle
-                            e.printStackTrace();
-                            logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
-                        }
-                    }
-                }
-            }).start();
-        }
-    }
-
-    /**
      * Orchestrates the end-to-end processing pipeline for a batch of real-time stock data matches.
      * <p>
      * This method performs three major steps, in order:
@@ -1122,10 +1050,12 @@ public class mainDataHandler {
                     .build();
 
             // Add the StockUnit to the thread-safe timeline for this symbol (initialize list if necessary)
-            realTimeTimelines
-                    .computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>()))
-                    .add(unit);
+            synchronized (realTimeTimelines) {
+                realTimeTimelines
+                        .computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>()))
+                        .add(unit);
 
+            }
             // Track this unit in the local batch map (for UI, summary, or further per-batch logic)
             currentBatch.put(symbol, unit);
         }
@@ -1198,128 +1128,132 @@ public class mainDataHandler {
     private static void evaluateSeconds() {
         // Step 1: For each symbol, remove any StockUnit older than the most recent 55 seconds.
         // This keeps memory and processing focused on the most relevant, recent market activity.
-        realTimeTimelines.forEach((symbol, timeline) ->
-                timeline.removeIf(unit ->
-                        unit.getLocalDateTimeDate().isBefore(
-                                timeline.get(timeline.size() - 1) // Reference: most recent bar's time
-                                        .getLocalDateTimeDate()
-                                        .minusSeconds(55)            // Define "too old" as >55 seconds ago
-                        )
-                )
-        );
+        synchronized (realTimeTimelines) {
+            realTimeTimelines.forEach((symbol, timeline) ->
+                    timeline.removeIf(unit ->
+                            unit.getLocalDateTimeDate().isBefore(
+                                    timeline.get(timeline.size() - 1) // Reference: most recent bar's time
+                                            .getLocalDateTimeDate()
+                                            .minusSeconds(55)            // Define "too old" as >55 seconds ago
+                            )
+                    )
+            );
+        }
 
-        // Step 2: For every symbol, analyze its timeline in parallel for real-time event detection.
-        realTimeTimelines.keySet()
-                .parallelStream() // Multithreaded: handles each symbol concurrently for speed/scalability.
-                .forEach(symbol -> {
-                    // Create a working copy of this symbol's recent StockUnit objects for processing.
-                    // Avoids mutating the global list during parallel analysis.
-                    List<StockUnit> realTimeWindow = new ArrayList<>(realTimeTimelines.getOrDefault(symbol.toUpperCase(), new ArrayList<>()));
+        synchronized (realTimeTimelines) {
+            // Step 2: For every symbol, analyze its timeline in parallel for real-time event detection.
+            realTimeTimelines.keySet()
+                    .parallelStream() // Multithreaded: handles each symbol concurrently for speed/scalability.
+                    .forEach(symbol -> {
+                        // Create a working copy of this symbol's recent StockUnit objects for processing.
+                        // Avoids mutating the global list during parallel analysis.
+                        List<StockUnit> realTimeWindow = new ArrayList<>(realTimeTimelines.getOrDefault(symbol.toUpperCase(), new ArrayList<>()));
 
-                    // Proceed only if we have data points to analyze.
-                    if (!realTimeWindow.isEmpty()) {
-                        // Step 3: Remove duplicate StockUnits that share the same timestamp (by LocalDateTime).
-                        // This ensures no duplicate events/reads affect calculations.
-                        Set<LocalDateTime> seenTimes = new HashSet<>();
-                        Iterator<StockUnit> it = realTimeWindow.iterator();
-                        while (it.hasNext()) {
-                            StockUnit unit = it.next();
-                            LocalDateTime t = unit.getLocalDateTimeDate();
-                            if (!seenTimes.add(t)) {
-                                it.remove(); // Remove duplicate bar.
+                        // Proceed only if we have data points to analyze.
+                        if (!realTimeWindow.isEmpty()) {
+                            // Step 3: Remove duplicate StockUnits that share the same timestamp (by LocalDateTime).
+                            // This ensures no duplicate events/reads affect calculations.
+                            Set<LocalDateTime> seenTimes = new HashSet<>();
+                            Iterator<StockUnit> it = realTimeWindow.iterator();
+                            while (it.hasNext()) {
+                                StockUnit unit = it.next();
+                                LocalDateTime t = unit.getLocalDateTimeDate();
+                                if (!seenTimes.add(t)) {
+                                    it.remove(); // Remove duplicate bar.
+                                }
                             }
-                        }
 
-                        // Step 4: Calculate the total percentage price change in this time window
-                        // and count the number of "green bars" (bars with a positive price move).
-                        double pctChange = realTimeWindow.stream()
-                                .skip(1) // Skip first (no prior to compare against)
-                                .mapToDouble(StockUnit::getPercentageChange)
-                                .sum();
+                            // Step 4: Calculate the total percentage price change in this time window
+                            // and count the number of "green bars" (bars with a positive price move).
+                            double pctChange = realTimeWindow.stream()
+                                    .skip(1) // Skip first (no prior to compare against)
+                                    .mapToDouble(StockUnit::getPercentageChange)
+                                    .sum();
 
-                        long greenBars = realTimeWindow.stream()
-                                .skip(1)
-                                .filter(bar -> bar.getPercentageChange() > 0)
-                                .count();
+                            long greenBars = realTimeWindow.stream()
+                                    .skip(1)
+                                    .filter(bar -> bar.getPercentageChange() > 0)
+                                    .count();
 
-                        // get dynamically the threshold
-                        double threshold = getThreshold(symbol);
+                            // get dynamically the threshold
+                            double threshold = getThreshold(symbol);
 
-                        // Step 5: Event detection logic (uptrend spike detection)
-                        // - pctChange: checks if the sum of price changes is above a threshold
-                        // - greenBars: ensures at least 60% of the bars in this window are positive.
-                        boolean strongUptrend =
-                                pctChange > threshold &&
-                                        greenBars >= realTimeWindow.size() * 0.7;
+                            // Step 5: Event detection logic (uptrend spike detection)
+                            // - pctChange: checks if the sum of price changes is above a threshold
+                            // - greenBars: ensures at least 60% of the bars in this window are positive.
+                            boolean strongUptrend =
+                                    pctChange > threshold &&
+                                            greenBars >= realTimeWindow.size() * 0.7;
 
-                        // If an uptrend spike is detected, continue to aggregate and process the bar.
-                        if (strongUptrend) {
-                            // Step 6: Aggregate all second bars in this window into a single 1-minute StockUnit bar.
-                            StockUnit first = realTimeWindow.get(0); // Oldest in window (start of aggregation)
-                            StockUnit last = realTimeWindow.get(realTimeWindow.size() - 1); // Most recent in window
+                            // If an uptrend spike is detected, continue to aggregate and process the bar.
+                            if (strongUptrend) {
+                                // Step 6: Aggregate all second bars in this window into a single 1-minute StockUnit bar.
+                                StockUnit first = realTimeWindow.get(0); // Oldest in window (start of aggregation)
+                                StockUnit last = realTimeWindow.get(realTimeWindow.size() - 1); // Most recent in window
 
-                            // High: max close in window, Low: min close, Volume: sum of all, Time: end of window
-                            double high = realTimeWindow.stream().mapToDouble(StockUnit::getClose).max().orElse(first.getClose());
-                            double low = realTimeWindow.stream().mapToDouble(StockUnit::getClose).min().orElse(first.getClose());
-                            double volume = realTimeWindow.stream().mapToDouble(StockUnit::getVolume).sum();
-                            LocalDateTime barTime = last.getLocalDateTimeDate(); // Use the most recent bar's timestamp for aggregation
-                            String formattedTime = barTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")); // Consistent with rest of pipeline
+                                // High: max close in window, Low: min close, Volume: sum of all, Time: end of window
+                                double high = realTimeWindow.stream().mapToDouble(StockUnit::getClose).max().orElse(first.getClose());
+                                double low = realTimeWindow.stream().mapToDouble(StockUnit::getClose).min().orElse(first.getClose());
+                                double volume = realTimeWindow.stream().mapToDouble(StockUnit::getVolume).sum();
+                                LocalDateTime barTime = last.getLocalDateTimeDate(); // Use the most recent bar's timestamp for aggregation
+                                String formattedTime = barTime.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")); // Consistent with rest of pipeline
 
-                            // Build the new 1-minute aggregated bar for rolling analytics.
-                            StockUnit aggregatedRealTimeBar = new StockUnit.Builder()
-                                    .symbol(symbol)
-                                    .open(first.getClose())   // Set "open" to the oldest close in window
-                                    .high(high)
-                                    .low(low)
-                                    .close(last.getClose())   // Set "close" to the newest close in window
-                                    .time(formattedTime)
-                                    .volume(volume)
-                                    .build();
+                                // Build the new 1-minute aggregated bar for rolling analytics.
+                                StockUnit aggregatedRealTimeBar = new StockUnit.Builder()
+                                        .symbol(symbol)
+                                        .open(first.getClose())   // Set "open" to the oldest close in window
+                                        .high(high)
+                                        .low(low)
+                                        .close(last.getClose())   // Set "close" to the newest close in window
+                                        .time(formattedTime)
+                                        .volume(volume)
+                                        .build();
 
-                            // Step 7: Get a rolling window of the most recent 29 bars from the main symbol timeline.
-                            // This supports robust moving calculations and avoids excess memory growth.
-                            List<StockUnit> symbolTimeLineUnits; // Declare the list to hold the 29 most recent StockUnit entries for the current symbol
+                                // Step 7: Get a rolling window of the most recent 29 bars from the main symbol timeline.
+                                // This supports robust moving calculations and avoids excess memory growth.
+                                List<StockUnit> symbolTimeLineUnits; // Declare the list to hold the 29 most recent StockUnit entries for the current symbol
 
-                            synchronized (symbolTimelines) { // Synchronize access to the shared symbolTimelines map to prevent race conditions in multithreaded environments
-                                List<StockUnit> timeline = symbolTimelines.get(symbol); // Retrieve the list of historical StockUnit entries for the given symbol
+                                synchronized (symbolTimelines) { // Synchronize access to the shared symbolTimelines map to prevent race conditions in multithreaded environments
+                                    List<StockUnit> timeline = symbolTimelines.get(symbol); // Retrieve the list of historical StockUnit entries for the given symbol
 
-                                if (timeline == null || timeline.isEmpty()) { // Defensive check: handle the case where no data exists yet for the symbol
-                                    symbolTimeLineUnits = new ArrayList<>(); // Initialize as an empty list to avoid NullPointerException
+                                    if (timeline == null || timeline.isEmpty()) { // Defensive check: handle the case where no data exists yet for the symbol
+                                        symbolTimeLineUnits = new ArrayList<>(); // Initialize as an empty list to avoid NullPointerException
+                                    } else {
+                                        int window = 29; // Define the window size — how many of the most recent entries to keep
+                                        int from = Math.max(0, timeline.size() - window); // Calculate the starting index to ensure we don't go below 0 (in case there are fewer than 29 entries)
+
+                                        // Create a new list containing only the most recent `window` number of StockUnit entries
+                                        // This is done by copying a sublist from the original timeline
+                                        symbolTimeLineUnits = new ArrayList<>(timeline.subList(from, timeline.size()));
+                                    }
+                                }
+
+                                LocalDateTime minuteBarTime = aggregatedRealTimeBar.getLocalDateTimeDate();
+
+                                // Step 7b: Add new minute bar if this is a new bar (time strictly after last bar in window).
+                                // This ensures we don't double-add or duplicate bars if polling overlaps or is too frequent.
+                                if (symbolTimeLineUnits.isEmpty()) {
+                                    symbolTimeLineUnits.add(aggregatedRealTimeBar);
                                 } else {
-                                    int window = 29; // Define the window size — how many of the most recent entries to keep
-                                    int from = Math.max(0, timeline.size() - window); // Calculate the starting index to ensure we don't go below 0 (in case there are fewer than 29 entries)
+                                    StockUnit lastBar = symbolTimeLineUnits.get(symbolTimeLineUnits.size() - 1);
+                                    LocalDateTime lastBarTime = lastBar.getLocalDateTimeDate();
 
-                                    // Create a new list containing only the most recent `window` number of StockUnit entries
-                                    // This is done by copying a sublist from the original timeline
-                                    symbolTimeLineUnits = new ArrayList<>(timeline.subList(from, timeline.size()));
+                                    if (minuteBarTime.isAfter(lastBarTime)) {
+                                        symbolTimeLineUnits.add(aggregatedRealTimeBar); // Append only if newer.
+                                    }
                                 }
-                            }
 
-                            LocalDateTime minuteBarTime = aggregatedRealTimeBar.getLocalDateTimeDate();
-
-                            // Step 7b: Add new minute bar if this is a new bar (time strictly after last bar in window).
-                            // This ensures we don't double-add or duplicate bars if polling overlaps or is too frequent.
-                            if (symbolTimeLineUnits.isEmpty()) {
-                                symbolTimeLineUnits.add(aggregatedRealTimeBar);
-                            } else {
-                                StockUnit lastBar = symbolTimeLineUnits.get(symbolTimeLineUnits.size() - 1);
-                                LocalDateTime lastBarTime = lastBar.getLocalDateTimeDate();
-
-                                if (minuteBarTime.isAfter(lastBarTime)) {
-                                    symbolTimeLineUnits.add(aggregatedRealTimeBar); // Append only if newer.
+                                // Step 8: Run post-aggregation analytics in a dedicated high-priority thread.
+                                // Passes the updated rolling window for further event detection, ML, or alerting.
+                                if (SYMBOL_INDICATOR_RANGES.get(symbol) != null) {
+                                    Thread highPriorityThread = new Thread(() -> advancedProcessing(symbolTimeLineUnits, symbol));
+                                    highPriorityThread.setPriority(Thread.MAX_PRIORITY); // Ensures quick ML/alert reaction.
+                                    highPriorityThread.start();
                                 }
-                            }
-
-                            // Step 8: Run post-aggregation analytics in a dedicated high-priority thread.
-                            // Passes the updated rolling window for further event detection, ML, or alerting.
-                            if (SYMBOL_INDICATOR_RANGES.get(symbol) != null) {
-                                Thread highPriorityThread = new Thread(() -> advancedProcessing(symbolTimeLineUnits, symbol));
-                                highPriorityThread.setPriority(Thread.MAX_PRIORITY); // Ensures quick ML/alert reaction.
-                                highPriorityThread.start();
                             }
                         }
-                    }
-                });
+                    });
+        }
     }
 
     /**
@@ -1463,7 +1397,6 @@ public class mainDataHandler {
                 try {
                     processStockDataFromFile(cachePath.toString(), symbolUpper, 10000); // Parse cached bars and update global timeline
                     countDownLatch.countDown(); // Mark one task done
-                    logTextArea.append("Loaded cached data for " + symbolUpper + "\n");
                     SwingUtilities.invokeLater(updateProgress); // Update the progress bar
                 } catch (IOException e) {
                     // Any file read issue: tell user and move on so the app doesn't hang.
@@ -1504,11 +1437,10 @@ public class mainDataHandler {
                                 }
 
                                 countDownLatch.countDown();
-                                logTextArea.append("Downloaded and cached data for " + symbolUpper + "\n");
                                 SwingUtilities.invokeLater(updateProgress);
                             } catch (Exception ex) {
                                 // Any parsing or logic error, log and proceed so the pipeline keeps running.
-                                logTextArea.append("Failed to process data for " + symbolUpper + ": " + ex.getMessage() + "\n");
+                                logTextArea.append("Failed to process data in PreFetch for " + symbolUpper + ": " + ex.getMessage() + "\n");
                                 ex.printStackTrace();
                                 countDownLatch.countDown();
                                 SwingUtilities.invokeLater(updateProgress);
@@ -1517,7 +1449,7 @@ public class mainDataHandler {
                         .onFailure(error -> {
                             // API fetch failed; report but don't let this symbol hold up the batch.
                             mainDataHandler.handleFailure(error);
-                            logTextArea.append("Failed to download data for " + symbolUpper + "\n");
+                            logTextArea.append("Failed to download data in PreFetch for " + symbolUpper + "\n");
                             countDownLatch.countDown();
                             SwingUtilities.invokeLater(updateProgress);
                         })
@@ -1543,13 +1475,117 @@ public class mainDataHandler {
                 // Precompute min/max/percentile ranges for each indicator, per symbol.
                 precomputeIndicatorRanges(true);
 
-                // use second based support Framework
-                fetchRealTimeBulk(symbols);
-
                 // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
                 while (!Thread.currentThread().isInterrupted()) {
-                    // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
+                    // ======= (A) START OR STOP the second–framework thread exactly once =======
+                    if (useSecondFramework) {
+                        // If the flag is true, we want to ensure the second framework thread is running.
+                        // Only start it if it isn't already created or if the previous one has died.
+                        if (secondFrameworkThread == null || !secondFrameworkThread.isAlive()) {
+                            // Create a new Thread assigned to run the second-framework loop.
+                            secondFrameworkThread = new Thread(() -> {
+                                // The thread’s name can help with debugging/logging.
+                            }, "SecondFrameworkThread");
 
+                            // Inside the thread’s Runnable, we perform continuous polling as long as:
+                            //  1) useSecondFramework remains true, and
+                            //  2) this thread has not been interrupted.
+                            secondFrameworkThread = new Thread(() -> {
+                                // Loop condition: keep running until the flag flips off or we’re interrupted.
+                                while (useSecondFramework && !Thread.currentThread().isInterrupted()) {
+                                    try {
+                                        // Create a thread-safe collection to accumulate all matches for this polling round.
+                                        List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
+
+                                        // Take a snapshot of the symbols set at this moment to avoid concurrent modification.
+                                        List<String> symbolsSnapshot = new ArrayList<>(symbols);
+
+                                        // Compute how many batches of up to 100 symbols we need (100 is the API limit).
+                                        int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
+
+                                        // A CountDownLatch lets us wait until every asynchronous batch request has completed.
+                                        CountDownLatch latch = new CountDownLatch(totalBatches);
+
+                                        // Split symbols into sublists (batches) of size ≤ 100.
+                                        for (int i = 0; i < totalBatches; i++) {
+                                            // Determine start index for this batch.
+                                            int start = i * 100;
+                                            // Determine end index, ensuring we don’t exceed list size.
+                                            int end = Math.min((i + 1) * 100, symbolsSnapshot.size());
+
+                                            // Extract the sublist of symbols for this batch.
+                                            List<String> batchSymbols = symbolsSnapshot.subList(start, end);
+
+                                            // Join the symbols into a comma-separated string and uppercase them (per API requirements).
+                                            String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
+                                            // Fire off an asynchronous AlphaVantage request for this batch.
+                                            AlphaVantage.api()
+                                                    .Realtime()                  // Real-time data endpoint
+                                                    .setSymbols(symbolsBatch)    // Set the batch of symbols
+                                                    .entitlement("realtime")     // Specify entitlement token/flag
+                                                    .onSuccess(response -> {
+                                                        // On successful response: collect all matches into our list.
+                                                        matches.addAll(response.getMatches());
+                                                        // Signal that this batch is done by counting down the latch.
+                                                        latch.countDown();
+                                                    })
+                                                    .onFailure(e -> {
+                                                        // If an error occurs, handle/log it but still count down so latch can proceed.
+                                                        handleFailure(e);
+                                                        latch.countDown();
+                                                    })
+                                                    .fetch();  // Actually send the HTTP request asynchronously
+                                        }
+
+                                        // Wait up to 5 seconds for all batch requests to complete.
+                                        // If not every batch finishes within 5 seconds, we log a warning and move on.
+                                        if (!latch.await(5, TimeUnit.SECONDS)) {
+                                            logTextArea.append("Warning: Timed out waiting for data in second framework\n");
+                                        }
+
+                                        // At this point, 'matches' contains all successful responses for this round.
+                                        // Process them (e.g., update internal data structures, trigger analytics, etc.).
+                                        processStockData(matches);
+
+                                        // After processing, pause 5 seconds to enforce rate-limiting before next poll.
+                                        Thread.sleep(5000);
+
+                                    } catch (InterruptedException ex) {
+                                        // If we’re interrupted (either because useSecondFramework became false or someone called interrupt()):
+                                        // 1) Re-set the interrupt flag so higher-level code knows we were interrupted.
+                                        Thread.currentThread().interrupt();
+                                        // 2) Log that we’re exiting cleanly.
+                                        logTextArea.append("Second framework thread interrupted, exiting\n");
+                                        // 3) Break out of the while-loop so the thread can terminate.
+                                        break;
+
+                                    } catch (Exception ex) {
+                                        // Catch any other exception to prevent the thread from dying silently.
+                                        ex.printStackTrace();
+                                        logTextArea.append("Error in second framework: " + ex.getMessage() + "\n");
+                                        // Loop condition still holds (unless useSecondFramework is flipped), so we continue.
+                                    }
+                                }
+                                // Once we exit the loop, perform any final cleanup if necessary.
+                                logTextArea.append("Second framework thread has stopped.\n");
+                            }, "SecondFrameworkThread");
+
+                            // Start the newly created thread so it begins executing its run() method.
+                            secondFrameworkThread.start();
+                        }
+
+                    } else {
+                        // If useSecondFramework is false, we must ensure the background thread stops immediately.
+                        if (secondFrameworkThread != null && secondFrameworkThread.isAlive()) {
+                            // Interrupt the thread; this triggers InterruptedException or causes the loop condition to fail.
+                            secondFrameworkThread.interrupt();
+                            // Clear our reference so a new thread could be spawned later if the flag is turned on again.
+                            secondFrameworkThread = null;
+                        }
+                    }
+
+                    // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
                     // --- Create a CountDownLatch with a count equal to the number of symbols we want to fetch ---
                     // Each symbol's asynchronous API call will decrement this latch when finished (success or failure).
                     CountDownLatch latch = new CountDownLatch(symbols.size());
@@ -1589,18 +1625,60 @@ public class mainDataHandler {
                                                     symbolTimelines.put(symbol, timeline);
                                                 }
 
-                                                // Find the most recent bar already in our timeline (or null if none exist)
-                                                LocalDateTime newestTimelineDate = timeline.isEmpty()
-                                                        ? null
-                                                        : timeline.get(timeline.size() - 1).getLocalDateTimeDate();
+                                                // === Compute the “last fully closed minute” in US/Eastern time zone ===
+                                                // We ignore the local clock entirely and base everything on US/Eastern.
+                                                ZoneId eastern = ZoneId.of("US/Eastern");
 
-                                                // Only add API bars that are strictly newer than our latest cached/timeline bar
-                                                // If timeline is empty, keep all bars (for full reload)
+                                                // 1. Get the current moment in US/Eastern.
+                                                ZonedDateTime nowEastern = ZonedDateTime.now(eastern);
+
+                                                // 2. Truncate to the start of the current minute, then subtract one minute
+                                                //    to land exactly on the previous full minute boundary.
+                                                //    Example: If it’s 11:01:05 US/Eastern now, then
+                                                //      nowEastern.truncatedTo(MINUTES) → 11:01:00
+                                                //      minusMinutes(1)               → 11:00:00
+                                                ZonedDateTime lastFullEastern = nowEastern
+                                                        .truncatedTo(ChronoUnit.MINUTES)
+                                                        .minusMinutes(1);
+
+                                                // 3. Convert that ZonedDateTime back to a LocalDateTime.
+                                                //    This `cutoffEasternLdt` represents the latest timestamp we consider “complete.”
+                                                //    Any bar stamped after this (e.g. 11:01:00 when i  t’s 11:01:05) is still in-progress and must be skipped.
+                                                LocalDateTime cutoffEasternLdt = lastFullEastern.toLocalDateTime();
+
+                                                // === Filter the reversedUnits list so we only take bars that are both:
+                                                //       A) Newer than whatever we already have stored for this symbol.
+                                                //       B) At or before the last fully closed Eastern-minute cutoff ===
+                                                // We’ll collect these into newBars and then append them to our existing timeline.
+                                                List<StockUnit> finalTimeline = timeline; // alias for clarity
+
                                                 List<StockUnit> newBars = reversedUnits.stream()
-                                                        .filter(unit -> newestTimelineDate == null || unit.getLocalDateTimeDate().isAfter(newestTimelineDate))
+                                                        .filter(unit -> {
+                                                            // 1) Interpret the bar’s timestamp as a LocalDateTime in US/Eastern.
+                                                            LocalDateTime barTime = unit.getLocalDateTimeDate(); // assumed parsed in US/Eastern
+
+                                                            // --- A) Don’t re-add any bar that’s not strictly newer than our stored data ---
+                                                            // If our current timeline is empty, newestStored == null → allow any bar.
+                                                            // Otherwise, compare: only accept future bars (barTime > newestStored).
+                                                            LocalDateTime newestStored = finalTimeline.isEmpty()
+                                                                    ? null
+                                                                    : finalTimeline.get(finalTimeline.size() - 1).getLocalDateTimeDate();
+
+                                                            boolean isAfterNewest = (newestStored == null)
+                                                                    || barTime.isAfter(newestStored);
+
+                                                            // --- B) Only accept bars at or before the last fully closed US/Eastern minute ---
+                                                            // If barTime is “after” cutoffEasternLdt, that means it’s still in-progress.
+                                                            // For example, if cutoffEasternLdt = 11:00:00, any bar with barTime = 11:01:00 will be rejected.
+                                                            boolean isAtOrBeforeFull = !barTime.isAfter(cutoffEasternLdt);
+
+                                                            // Return true only if BOTH conditions are satisfied:
+                                                            return isAfterNewest && isAtOrBeforeFull;
+                                                        })
                                                         .toList();
 
-                                                // Add the filtered new bars to our timeline
+                                                // After filtering, newBars contains only completed bars up through the last full Eastern minute.
+                                                // You can now add them to the timeline:
                                                 timeline.addAll(newBars);
                                             }
                                         }
@@ -1611,7 +1689,7 @@ public class mainDataHandler {
                                     })
                                     .onFailure(e -> {
                                         // On API failure, log which symbol failed (and still signal completion)
-                                        logTextArea.append("Failed for symbol: " + symbol + " " + e.getMessage() + " \n");
+                                        logTextArea.append("Failed for symbol in Main Loop: " + symbol + " " + e.getMessage() + " \n");
                                         pendingSymbols.remove(symbol);
                                         latch.countDown();
                                     })
@@ -1620,9 +1698,9 @@ public class mainDataHandler {
 
                         // --- Wait for all fetches to complete (or timeout after 50 seconds) ---
                         // The main thread blocks here until all symbol requests finish or timeout is reached.
-                        if (!latch.await(58, TimeUnit.SECONDS)) {
+                        if (!latch.await(50, TimeUnit.SECONDS)) {
                             // If not all latches counted down, warn the user (could be slow API or network)
-                            logTextArea.append("Warning: Timed out waiting for some data\n");
+                            logTextArea.append("Warning: Timed out waiting for some data in Main Loop\n");
 
                             // Log timed out symbols
                             logTextArea.append("Timed out symbols: " + pendingSymbols + "\n");
@@ -1634,6 +1712,7 @@ public class mainDataHandler {
 
                         // After all updates, recalculate the percentage change for each symbol,
                         // so UI indicators and trading logic reflect the latest market conditions.
+                        // ===== After all symbol fetches complete, before recalculating percentage changes =====
                         calculateStockPercentageChange(true);
 
                         // ====== Rate limiting: Sleep for 60 seconds before polling again ======
@@ -1644,7 +1723,7 @@ public class mainDataHandler {
 
                         // Calculate the timestamp (in millis) of the next full minute boundary
                         // E.g., if now is 12:34:45.789, nextMinuteMillis will be 12:35:00.000
-                        long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000 + 5000;
+                        long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000 + 2000;
 
                         // Compute how many milliseconds to sleep to reach the next full minute
                         long sleepTime = nextMinuteMillis - currentMillis;
@@ -1673,12 +1752,12 @@ public class mainDataHandler {
                         // If thread is interrupted (shutdown requested), exit loop cleanly.
                         e.printStackTrace();
                         Thread.currentThread().interrupt();
-                        logTextArea.append("Data pull interrupted\n");
+                        logTextArea.append("Data pull interrupted in main loop\n");
                         break;
                     } catch (Exception e) {
                         // Any error: print/log and keep the background thread running.
                         e.printStackTrace();
-                        logTextArea.append("Error during data pull: " + e.getMessage() + "\n");
+                        logTextArea.append("Error during data pull in main loop: " + e.getMessage() + "\n");
                     }
                     // Always scroll UI log to show the latest event.
                     logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
@@ -1823,7 +1902,7 @@ public class mainDataHandler {
                 // If there aren't at least two data points, skip calculation and log a warning.
                 if (timeline.size() < 2) {
                     // Log a message indicating not enough data for this symbol.
-                    logTextArea.append("Not enough data for " + symbol + "\n");
+                    logTextArea.append("Not enough data for for percentage processing" + symbol + "\n");
                     return;
                 }
 
@@ -1914,6 +1993,11 @@ public class mainDataHandler {
                 LinkedList<StockUnit> timeWindow = new LinkedList<>(getTimeWindow(timeline, startTime, endTime));
 
                 int startIndex = findTimeIndex(timeline, startTime);
+
+                if (startIndex < 0) {
+                    // No bar ≥ startTime—force it to the front or back, depending on your semantics.
+                    startIndex = 0; // (or timeline.size(), if you want to backfill from “end”)
+                }
 
                 // Pad window from left if it's too short (backfill with earlier bars)
                 while (timeWindow.size() < frameSize && startIndex > 0) {
