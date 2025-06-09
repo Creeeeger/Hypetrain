@@ -14,6 +14,7 @@ import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import org.jetbrains.annotations.NotNull;
+import org.jfree.data.time.Second;
 
 import javax.swing.*;
 import java.awt.*;
@@ -31,12 +32,10 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.stream.Collectors;
 
-import static org.crecker.RallyPredictor.predict;
-import static org.crecker.RallyPredictor.predictNotificationEntry;
+import static org.crecker.RallyPredictor.*;
 import static org.crecker.dataTester.handleSuccess;
 import static org.crecker.mainUI.*;
-import static org.crecker.pLTester.SYMBOLS;
-import static org.crecker.pLTester.processStockDataFromFile;
+import static org.crecker.pLTester.*;
 
 /**
  * The {@code mainDataHandler} class is responsible for the central logic and data flow in the stock analytics application.
@@ -74,6 +73,60 @@ public class mainDataHandler {
             "KELTNER",                // 6: Keltner channel breakout (binary)
             "ELDER_RAY"               // 7: Elder Ray Index (numeric)
     );
+
+    /**
+     * Feature‐wise scale factors for uptrend normalization.
+     * <p>
+     * Each entry SCALE[i] is the multiplier applied to the raw feature raw[i] before adding the corresponding
+     * MIN_OFFSET[i], mapping the feature into the model’s expected input range.
+     * <p>
+     * Length must match {@code MIN_OFFSET.length} and the dimensionality of the uptrend feature vector.
+     */
+    public static final float[] SCALE = new float[]{
+            0.03709612698921975F,
+            0.03718037481173628F,
+            0.037126334559678315F,
+            0.03711035319058666F,
+            1.1870690197540156e-06F,
+            26.36753478595499F,
+            0.06344392667150953F,
+            1.2762418750533744F,
+            1.228229629811581F,
+            2.1590134317330776F,
+            3.262574589133557F,
+            0.12781457299556007F,
+            0.11427646696766346F,
+            0.06658063098303002F,
+            0.998415021345876F,
+            2.178107557782743e-06F,
+    };
+
+    /**
+     * Feature‐wise minimum offsets for uptrend normalization.
+     * <p>
+     * Each entry MIN_OFFSET[i] is added to raw[i] * SCALE[i], shifting the scaled feature into its final range.
+     * Negative values indicate that the feature’s minimum raw value must be offset downward after scaling.
+     * <p>
+     * Length must match {@code SCALE.length} and the dimensionality of the uptrend feature vector.
+     */
+    public static final float[] MIN_OFFSET = new float[]{
+            -1.0340369869738109F,
+            -1.0407093911370124F,
+            -1.0324910423454468F,
+            -1.0344617811922983F,
+            -1.1870690197540156e-06F,
+            0.5667664582441603F,
+            -2.085401869692518F,
+            0.0F,
+            0.5750325480851886F,
+            0.4939285600947485F,
+            0.4459961241469656F,
+            0.5176808566205282F,
+            0.39627526885008F,
+            0.3261715297271644F,
+            0.0F,
+            -0.0002844608470464262F,
+    };
 
     /**
      * Set of technical indicators that should be interpreted as binary (0 or 1) in the normalization process.
@@ -308,6 +361,14 @@ public class mainDataHandler {
      * Used to identify valid in-session bars.
      */
     private static final LocalTime MARKET_CLOSE = LocalTime.of(20, 0);
+
+    /**
+     * Flag indicating whether the one‐time dry‐run buffer seeding (and any associated benchmarking)
+     * has already been performed.
+     * Defaults to false so that on first entry into the real-time loop the seeding logic will run;
+     * once set to true, the seeding block is skipped on subsequent iterations.
+     */
+    private static boolean firstTimeComputed = false;
 
     // Map of different markets to scan select market to get list
     public static final Map<String, String[]> stockCategoryMap = new HashMap<>() {{
@@ -1696,6 +1757,8 @@ public class mainDataHandler {
                                     .fetch(); // Start the async request
                         }
 
+                        long startTime = System.nanoTime();
+
                         // --- Wait for all fetches to complete (or timeout after 50 seconds) ---
                         // The main thread blocks here until all symbol requests finish or timeout is reached.
                         if (!latch.await(50, TimeUnit.SECONDS)) {
@@ -1709,6 +1772,46 @@ public class mainDataHandler {
 
                         // Log the number of processed stock entries for debugging/feedback.
                         logTextArea.append("Processed " + symbols.size() + " valid stock entries\n");
+                        long endTime = System.nanoTime();
+                        long durationMs = (endTime - startTime) / 1_000_000; // convert nanoseconds to milliseconds
+
+                        System.out.println("Execution time: " + durationMs + " ms\n");
+
+                        // === One‐time “dry run” to seed both predictor buffers with historical data ===
+                        if (!firstTimeComputed) {
+                            // 1. Compute percentage changes across the full history
+                            calculateStockPercentageChange(false);
+
+                            // 2. Lock the timeline map so no new data races occur during seeding
+                            synchronized (symbolTimelines) {
+                                // 3. Iterate over every symbol that has been loaded into memory
+                                symbolTimelines.keySet().forEach(symbol -> {
+                                    List<StockUnit> timeLine = symbolTimelines.get(symbol);
+
+                                    // 4. Ensure we have at least two full windows of data (2 × buffer size)
+                                    if (timeLine.size() >= 30 * 2) {
+                                        // 5. Slide a window of length 30 from “oldest needed” up to the most recent 29
+                                        for (int start = timeLine.size() - 30 * 2; start <= timeLine.size() - 31; start++) {
+                                            // 5a. Extract a 30‐bar slice for feature computation
+                                            List<StockUnit> window = timeLine.subList(start, start + 30);
+
+                                            // 5b. Normalize features for the main entry predictor and feed them in
+                                            float[] mainFeatures = normalizeFeatures(computeFeatures(window, symbol), symbol);
+                                            predict(mainFeatures, symbol);          // Populates the 28‐step buffer
+
+                                            // 5c. Normalize slope‐based features for the uptrend predictor and feed them in
+                                            float[] upFeatures = normalizeUptrend(
+                                                    computeFeaturesForSlope(window, new int[]{5, 10, 20})
+                                            );
+                                            predictUptrend(upFeatures, symbol);    // Populates the 30‐step uptrend buffer
+                                        }
+                                    }
+                                });
+                            }
+
+                            // 6. Flip the flag so we never run this seeding block again
+                            firstTimeComputed = true;
+                        }
 
                         // After all updates, recalculate the percentage change for each symbol,
                         // so UI indicators and trading logic reflect the latest market conditions.
@@ -1735,7 +1838,7 @@ public class mainDataHandler {
                         if (sleepTime > 0) {
                             try {
                                 // Log the next fetch timestamp (for debugging/monitoring)
-                                java.time.Instant fetchTime = java.time.Instant.ofEpochMilli(nextMinuteMillis);
+                                Instant fetchTime = Instant.ofEpochMilli(nextMinuteMillis);
                                 System.out.println("[INFO] Next fetch scheduled at: " + fetchTime);
                                 logTextArea.append("Next fetch scheduled at: " + fetchTime + "\n");
 
@@ -2426,34 +2529,184 @@ public class mainDataHandler {
     }
 
     /**
-     * Generates notifications (alerts) for a specific rolling frame of stock data for a given symbol.
+     * Applies feature‐wise scaling and offset to raw uptrend feature values.
      * <p>
-     * This method is the core of the alert/decision pipeline: it processes a window of {@link StockUnit} bars
-     * and, if relevant events (e.g. spike, dip, breakout) are detected, produces one or more {@link Notification} objects.
+     * Each element raw[i] is transformed via:
+     * <pre>
+     *   scaled[i] = raw[i] * SCALE[i] + MIN_OFFSET[i]
+     * </pre>
+     * to map the model’s output back into the original feature range.
+     *
+     * @param raw an array of unscaled uptrend features (length = {@code SCALE.length})
+     * @return a new float[] where each element has been scaled and offset appropriately
+     */
+    public static float[] normalizeUptrend(float[] raw) {
+        // 1. Determine the number of features to process
+        int n = raw.length;
+        // 2. Allocate an output array of the same length
+        float[] scaled = new float[n];
+        // 3. For each feature index...
+        for (int i = 0; i < n; i++) {
+            // 3a. Multiply by the scale factor for this feature
+            // 3b. Add the minimum offset for this feature
+            scaled[i] = raw[i] * SCALE[i] + MIN_OFFSET[i];
+        }
+        // 4. Return the normalized feature array
+        return scaled;
+    }
+
+    public static float[] computeFeaturesForSlope(List<StockUnit> stocks, int[] SLOPE_WINDOWS) {
+        int T = stocks.size();
+        StockUnit last = stocks.get(T - 1);
+
+        // 1) per‐step features
+        float open = (float) last.getOpen();
+        float high = (float) last.getHigh();
+        float low = (float) last.getLow();
+        float close = (float) last.getClose();
+        float vol = (float) last.getVolume();
+
+        // pct change vs prior bar
+        float pctChange = (float) last.getPercentageChange();
+
+        double[] listOfCloses = stocks.stream()
+                .mapToDouble(StockUnit::getClose)
+                .toArray();
+
+        // rolling mean & std over last 10
+        float ma10 = (float) avg(listOfCloses, T - 10, T);
+        float std10 = (float) stddev(listOfCloses, T - 10, T);
+
+        // 2) multi-bar slopes & momentum
+        List<Float> multiSlopes = new ArrayList<>();
+        List<Float> multiMoms = new ArrayList<>();
+        double[] closes = stocks.stream().mapToDouble(StockUnit::getClose).toArray();
+        for (int w : SLOPE_WINDOWS) {
+            if (T >= w) {
+                multiSlopes.add((float) linRegSlope(closes, T - w, T));
+                multiMoms.add((float) ((closes[T - 1] / closes[T - w] - 1.0) * 100.0));
+            } else {
+                multiSlopes.add(0f);
+                multiMoms.add(0f);
+            }
+        }
+
+        // 3) overall volatility & avg volume over max window
+        int maxW = SLOPE_WINDOWS[SLOPE_WINDOWS.length - 1];
+        float volatility = (float) stddev(listOfCloses, T - maxW, T);
+        float avgVolume = (float) avg(listOfCloses, T - maxW, T);
+
+        StockUnit curr = stocks.get(stocks.size() - 1);
+        StockUnit prev = stocks.get(stocks.size() - 2);
+
+        float[] raw = new float[SCALE.length];
+        int i = 0;
+        raw[i++] = open;
+        raw[i++] = high;
+        raw[i++] = low;
+        raw[i++] = close;
+        raw[i++] = vol;
+        raw[i++] = pctChange;
+        raw[i++] = ma10;
+        raw[i++] = std10;
+        for (float s : multiSlopes) raw[i++] = s;
+        for (float m : multiMoms) raw[i++] = m;
+        raw[i++] = volatility;
+        raw[i++] = avgVolume;
+
+//        StringBuilder dbg = new StringBuilder();
+//        raw[i++] = isInUptrend(stocks, 5, 1.5, 0.8) ? 1 : 0;
+//        raw[i++] = hasGapDown(prev, curr, 0.08, dbg) ? 1 : 0;
+//        raw[i++] = checkBadWicks(stocks, 3, 0.39, dbg) ? 1 : 0;
+//        raw[i++] = lastNBarsRising(stocks, 3, 0.15, 0.5, dbg) ? 1 : 0;
+//        raw[i++] = (float) isNearResistance(stocks.subList(stocks.size() - 15, stocks.size()));
+        return raw;
+    }
+
+    // helper: compute slope of best‐fit line on closes[from…to)
+    private static double linRegSlope(double[] a, int from, int to) {
+        int n = to - from;
+        double sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        for (int i = 0; i < n; i++) {
+            double y = a[from + i];
+            sumX += i;
+            sumY += y;
+            sumXY += (double) i * y;
+            sumX2 += (double) i * (double) i;
+        }
+        double num = n * sumXY - sumX * sumY;
+        double den = n * sumX2 - sumX * sumX;
+        return den == 0 ? 0 : num / den;
+    }
+
+    // stddev over a[from…to)
+    private static double stddev(double[] a, int from, int to) {
+        int n = to - from;
+        double mean = 0;
+        for (int i = from; i < to; i++) mean += a[i];
+        mean /= n;
+        double var = 0;
+        for (int i = from; i < to; i++) {
+            double d = a[i] - mean;
+            var += d * d;
+        }
+        return n > 1 ? Math.sqrt(var / (n - 1)) : 0;
+    }
+
+    // average over a[from…to)
+    private static double avg(double[] a, int from, int to) {
+        double sum = 0;
+        for (int i = from; i < to; i++) sum += a[i];
+        return sum / (to - from);
+    }
+
+    /**
+     * Processes a fixed‐length frame of recent price bars for the given symbol and generates alerts.
+     * <p>
+     * This method is the core of the alerting pipeline:
      * <ul>
-     *   <li>Skips frames that span a weekend (to avoid false signals from market closures/gaps).</li>
-     *   <li>Extracts raw and normalized feature vectors (see {@link #computeFeatures} and {@link #normalizeFeatures}).</li>
-     *   <li>Calls the ML/decision model (e.g. neural net) via {@code predict()} to get a rally/alert confidence.</li>
-     *   <li>Delegates to {@link #evaluateResult} to interpret the prediction, indicators, and generate actual notifications.</li>
+     *   <li>Computes raw feature vector via {@link #computeFeatures}.</li>
+     *   <li>Normalizes features for ML input via {@link #normalizeFeatures}.</li>
+     *   <li>Runs the primary rally/event model via {@code predict()} to obtain a confidence score.</li>
+     *   <li>Computes slope‐based features for uptrend detection via {@link #computeFeaturesForSlope} and {@link #normalizeUptrend}.</li>
+     *   <li>Runs the uptrend model via {@code predictUptrend()} and logs the result to {@code predictSeries} for charting.</li>
+     *   <li>Delegates combined ML outputs and technical signals to {@link #evaluateResult} to produce final notifications.</li>
      * </ul>
      *
-     * @param stocks A frame (window) of recent {@link StockUnit} bars (length: {@code frameSize})
-     * @param symbol The ticker symbol context
-     * @return A list of notifications generated for this frame (maybe empty)
+     * @param stocks a time‐ordered list of recent {@link StockUnit} bars (length == {@code frameSize})
+     * @param symbol the ticker symbol context for this frame
+     * @return a list of {@link Notification} objects representing any alerts generated for this frame
      */
     public static List<Notification> getNotificationForFrame(List<StockUnit> stocks, String symbol) {
-
-        // Step 1: Compute all feature values (trend/momentum/spike/etc) for this frame, using latest model
+        // 1. Compute the raw indicator feature vector for this frame
         double[] features = computeFeatures(stocks, symbol);
 
-        // Step 2: Normalize the feature vector for ML input/aggregation
+        // 2. Normalize the features into [0,1] range for consistent ML input
         float[] normalizedFeatures = normalizeFeatures(features, symbol);
 
-        // Step 3: Feed normalized features to ML model for a prediction score (probability of rally/event/etc)
+        // 3. Run the primary ML model to get a rally/spike event confidence score
         double prediction = predict(normalizedFeatures, symbol);
 
-        // Step 4: Evaluate prediction + features using custom alert logic (spikes, dips, etc)
-        return evaluateResult(prediction, stocks, symbol, features, normalizedFeatures);
+        // 4. Prepare slope‐based feature windows for uptrend detection
+        int[] SLOPE_WINDOWS = new int[]{5, 10, 20};
+        float[] upSlopeRaw = computeFeaturesForSlope(stocks, SLOPE_WINDOWS);
+        float[] featureUptrend = normalizeUptrend(upSlopeRaw);
+
+        // 5. Run the uptrend ML model to get its confidence score
+        double uptrendPrediction = predictUptrend(featureUptrend, symbol);
+
+        // 6. Update the prediction time series for charting purposes (timestamp = last bar in frame)
+        predictSeries.addOrUpdate(new Second(stocks.get(stocks.size() - 1).getDateDate()), uptrendPrediction);
+
+        // 7. Combine both ML scores and technical signals to generate actionable notifications
+        return evaluateResult(
+                prediction,
+                stocks,
+                symbol,
+                features,
+                normalizedFeatures,
+                uptrendPrediction
+        );
     }
 
     /**
@@ -3091,9 +3344,11 @@ public class mainDataHandler {
      * @param symbol             The ticker symbol for the analyzed stock.
      * @param features           The array of raw indicator features for this frame.
      * @param normalizedFeatures The normalized (0-1) array of features, ready for scoring/aggregation.
+     * @param uptrendPrediction  The uptrend model's confidence output (probability or score indicating an uptrend).
      * @return List of {@link Notification}s to be shown/queued for the user.
      */
-    private static List<Notification> evaluateResult(double prediction, List<StockUnit> stocks, String symbol, double[] features, float[] normalizedFeatures) {
+    private static List<Notification> evaluateResult(double prediction, List<StockUnit> stocks, String symbol,
+                                                     double[] features, float[] normalizedFeatures, double uptrendPrediction) {
         // === 1. Prepare the output list for all alerts generated for this frame ===
         List<Notification> alertsList = new ArrayList<>();
 
@@ -3122,7 +3377,8 @@ public class mainDataHandler {
                 alertsList,
                 nearRes,
                 aggressiveness,
-                normalizedFeatures
+                normalizedFeatures,
+                uptrendPrediction
         );
 
         // === 6. Return all collected notifications for display or further processing ===
@@ -3145,12 +3401,12 @@ public class mainDataHandler {
      * @param nearRes              1.0 if price is near resistance, 0.0 otherwise
      * @param manualAggressiveness User/system-level aggressiveness multiplier (risk tolerance, 0.1–2.0)
      * @param normalizedFeatures   Feature vector, normalized to [0,1], for dynamic scoring
+     * @param uptrendPrediction    The uptrend model's confidence output (probability or score indicating an uptrend).
      */
     private static void spikeUp(
             double prediction, List<StockUnit> stocks, String symbol, double[] features,
             List<Notification> alertsList, double nearRes, float manualAggressiveness,
-            float[] normalizedFeatures
-    ) {
+            float[] normalizedFeatures, double uptrendPrediction) {
         // === 0. Liquidity Check: Only proceed if there is enough trading volume/capital to exit a position ===
         // Define how much you want to be able to sell
         double requiredNotional = volume;   // Volume
@@ -3194,15 +3450,15 @@ public class mainDataHandler {
         if (MEGA_CAPS.contains(symbol)) {
             // Mega caps (largest companies): use lowest risk/least aggressive config
             uptrend = shouldTrigger(stocks, 5, 0.3, 0.8,
-                    0.08, 0.39, 3, 0.05, 0.06, false);
+                    0.08, 0.39, 3, 0.05, 0.06, false, uptrendPrediction);
         } else if (LARGE_CAPS.contains(symbol)) {
             // Large caps: slightly more aggressive config than mega caps
             uptrend = shouldTrigger(stocks, 5, 0.6, 0.8,
-                    0.09, 0.40, 3, 0.12, 0.15, false);
+                    0.09, 0.40, 3, 0.12, 0.15, false, uptrendPrediction);
         } else if (MID_CAPS.contains(symbol) || SMALL_CAPS.contains(symbol)) {
             // Mid & small caps: highest volatility/aggressiveness config among cap sizes
             uptrend = shouldTrigger(stocks, 5, 1.5, 0.8,
-                    0.08, 0.39, 3, 0.15, 0.5, false);
+                    0.08, 0.39, 3, 0.15, 0.5, false, uptrendPrediction);
         } else {
             // Not a known cap group: select config based on sector (market) label
             // Sectors are grouped by typical volatility appetite
@@ -3211,17 +3467,17 @@ public class mainDataHandler {
                 // Low aggressiveness: stable, less-volatile sectors
                 case "bigCaps", "semiconductors", "techGiants", "aiStocks", "financials", "energy",
                      "industrials", "pharma", "foodBeverage", "retail" -> shouldTrigger(stocks, 5, 0.3, 0.8,
-                        0.08, 0.39, 3, 0.05, 0.06, false);
+                        0.08, 0.39, 3, 0.05, 0.06, false, uptrendPrediction);
 
                 // Mid-aggressiveness: moderate volatility sectors
                 case "midCaps", "chineseTech", "autoEV", "healthcareProviders", "robotics", "allSymbols" ->
                         shouldTrigger(stocks, 5, 0.6, 0.8,
-                                0.09, 0.40, 3, 0.12, 0.15, false);
+                                0.09, 0.40, 3, 0.12, 0.15, false, uptrendPrediction);
 
                 // High aggressiveness: high-risk, high-volatility sectors
                 case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum",
                      "favourites" -> shouldTrigger(stocks, 5, 1.5, 0.8,
-                        0.08, 0.39, 3, 0.15, 0.5, false);
+                        0.08, 0.39, 3, 0.15, 0.5, false, uptrendPrediction);
 
                 // If market not recognized, fail fast and force a fix
                 default -> throw new RuntimeException("Need to specify a market: " + market);
@@ -3601,49 +3857,60 @@ public class mainDataHandler {
      * @param flatTolerance      Minimum percent increase required for each consecutive close in microtrend.
      * @param minPumpPct         Minimum rise required in the candle pattern
      * @param debug              Determine if debug log should be printed
+     * @param uptrendPrediction  The uptrend model's confidence output (probability or score indicating an uptrend).
      * @return <code>true</code> if ALL trigger conditions are satisfied and a bullish signal should be fired;
      * <code>false</code> otherwise. Prints a full debug trace for every evaluation.
      */
     public static boolean shouldTrigger(
             List<StockUnit> stocks, int window, double minChangePct, double minGreenRatio,
             double gapTolerancePct, double wickToleranceRatio, int barsToCheck, double flatTolerance,
-            double minPumpPct, boolean debug
-    ) {
-        // Debug trace to visualize every filter and decision in order
+            double minPumpPct, boolean debug, double uptrendPrediction) {
+
         StringBuilder dbg = new StringBuilder();
 
-        // 1️⃣ Defensive: Enough data for a robust signal?
+        // 1️⃣ Defensive: Enough data?
         if (stocks == null || stocks.size() < Math.max(window + 1, barsToCheck)) {
             return false;
         }
 
-        // 2️⃣ Confirm multi-bar uptrend (trend filter)
-        if (!isInUptrend(stocks, window, minChangePct, minGreenRatio)) {
+        // 2️⃣ Fundamental trend filter
+        boolean fundamentalTrend = isInUptrend(stocks, window, minChangePct, minGreenRatio);
+        dbg.append(String.format("📊 Fundamental trend: %s\n", fundamentalTrend ? "✅" : "❌"));
+
+        // 2.5 ML-based trend filter
+//        double mlThreshold = 0.0;
+//        boolean mlTrendOk = uptrendPrediction >= mlThreshold;
+//        dbg.append(String.format("🤖 ML uptrend score: %.2f (thr = %.2f): %s\n", uptrendPrediction, mlThreshold, mlTrendOk ? "✅" : "❌"));
+
+        // block only if BOTH fundamental AND ML say “no”
+        if (!fundamentalTrend) {// && !mlTrendOk) {
+            dbg.append("🚫 Blocked: neither fundamental nor ML trend passed\n");
+            if (debug) System.out.print(dbg + "\n");
             return false;
         }
 
         StockUnit curr = stocks.get(stocks.size() - 1);
         StockUnit prev = stocks.get(stocks.size() - 2);
 
-        // 3️⃣ Last candle bullishness check
+        // 3️⃣ Last candle bullishness
         boolean lastCandleGreen = curr.getClose() > curr.getOpen();
         dbg.append(String.format("🟩 Last candle green: %s\n", lastCandleGreen ? "✅" : "❌"));
 
-        // 4️⃣ Resistance proximity filter (last 15 bars)
+        // 4️⃣ Resistance proximity
         boolean atResistance = isNearResistance(stocks.subList(stocks.size() - 15, stocks.size())) == 1.0;
         dbg.append(String.format("🟫 Resistance check: %s\n", atResistance ? "❌ blocked" : "✅ clear"));
 
-        // 5️⃣ Gap-down risk filter
+        // 5️⃣ Gap-down risk
         boolean hasGap = hasGapDown(prev, curr, gapTolerancePct, dbg);
 
-        // 6️⃣ Wick/spread abnormality filter (last N bars)
+        // 6️⃣ Wick/spread abnormality
         boolean wickRuleOk = checkBadWicks(stocks, barsToCheck, wickToleranceRatio, dbg);
 
-        // 7️⃣ Micro-uptrend filter (last N closes must rise by at least flatTolerance)
+        // 7️⃣ Micro-uptrend
         boolean microUp = lastNBarsRising(stocks, barsToCheck, flatTolerance, minPumpPct, dbg);
         dbg.append(String.format("📈 Microtrend: %s\n", microUp ? "✅" : "❌"));
 
-        // 8️⃣ Summarize all blocking reasons (for debug trace)
+        // 8️⃣ Summarize all blocking reasons
         if (!lastCandleGreen) dbg.append("🚫 Blocked: Last candle is not green\n");
         if (atResistance) dbg.append("🚫 Blocked: Near resistance\n");
         if (!microUp) dbg.append("🚫 Blocked: Microtrend fail\n");

@@ -4,6 +4,7 @@ import numpy as np
 import tensorflow as tf
 import tf2onnx
 from keras.src.callbacks import ReduceLROnPlateau, EarlyStopping
+from keras.src.layers import MaxPooling1D, Conv1D
 from sklearn.cluster import KMeans
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.metrics import f1_score
@@ -11,7 +12,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import Input, Bidirectional, LSTM, Dense, Dropout, RepeatVector, TimeDistributed
 from tensorflow.keras.losses import MeanSquaredError, BinaryCrossentropy
-from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
 
 # ======================================
@@ -48,6 +48,11 @@ RANDOM_STATE = 42  # F
 
 ONNX_FILENAME = "entryPrediction.onnx"  # F
 TIMES_SIZE = 6  # 6F
+
+# -------------  CNN hyper-params  -------------
+CONV_FILTERS = 16
+KERNEL_SIZE = 3
+POOL_SIZE = 2
 
 
 # ======================================
@@ -175,32 +180,34 @@ def build_seq_autoencoder_with_classifier(
         alpha=ALPHA,
         lr=LEARNING_RATE
 ):
-    # Input layer: (batch, seq_len, n_feat)
+    # ---------- INPUT ----------
     inp = Input(shape=(seq_len, n_feat), name="encoder_input")
 
-    # Encoder: BiLSTM → Dropout → bottleneck
-    x = Bidirectional(LSTM(LSTM_UNITS, return_sequences=False), name="enc_bi_lstm")(inp)
+    # ---------- NEW: temporal-conv front-end ----------
+    x = Conv1D(filters=CONV_FILTERS, kernel_size=KERNEL_SIZE, padding="same", activation="relu", name="conv1d")(inp)
+    x = MaxPooling1D(pool_size=POOL_SIZE, name="conv_pool")(x)
+    x = Dropout(DROPOUT_RATE, name="conv_dropout")(x)
+
+    # ---------- ORIGINAL ENCODER ----------
+    x = Bidirectional(LSTM(LSTM_UNITS, return_sequences=False), name="enc_bi_lstm")(x)
     x = Dropout(DROPOUT_RATE, name="enc_dropout")(x)
     z = Dense(latent_dim, activation="linear", name="bottleneck")(x)
 
-    # Classification head on latent code
+    # ---------- CLASSIFIER ----------
     cls = Dense(1, activation="sigmoid", name="classifier")(z)
 
-    # Decoder: repeat latent code → LSTM → Dropout → Timestep‐wise reconstruction
+    # ---------- DECODER ----------
     dec_in = RepeatVector(seq_len, name="repeat_z")(z)
     dec_lstm = LSTM(LSTM_UNITS, return_sequences=True, name="dec_lstm")(dec_in)
     dec_dropout = Dropout(DROPOUT_RATE, name="dec_dropout")(dec_lstm)
     recon = TimeDistributed(Dense(n_feat, activation="linear"), name="reconstruction")(dec_dropout)
 
-    # Full model
-    model = Model(inputs=inp, outputs=[recon, cls], name="seq_autoencoder_classifier")
-
-    # Compile with MSE for reconstruction + weighted BCE for classification
-    mse = MeanSquaredError()
-    bce = BinaryCrossentropy()
+    # ---------- COMPILE ----------
+    model = tf.keras.Model(inputs=inp, outputs=[recon, cls], name="seq_autoenc_cnn_lstm")
     model.compile(
         optimizer=Adam(learning_rate=lr),
-        loss={"reconstruction": mse, "classifier": bce},
+        loss={"reconstruction": MeanSquaredError(),
+              "classifier": BinaryCrossentropy()},
         loss_weights={"reconstruction": 1.0, "classifier": alpha},
         metrics={
             "classifier": [
@@ -212,8 +219,7 @@ def build_seq_autoencoder_with_classifier(
     )
 
     # Separate encoder model for embedding extraction
-    encoder_model = Model(inputs=inp, outputs=z, name="encoder")
-
+    encoder_model = tf.keras.Model(inputs=inp, outputs=z, name="cnn_lstm_encoder")
     return model, encoder_model
 
 
@@ -452,13 +458,6 @@ if __name__ == "__main__":
     prototypes = cluster_bad_prototypes(z_all, y_all, n_prototypes=N_BAD_PROTOTYPES)
     print("Computed bad‐pattern prototypes (shape):", prototypes.shape)
 
-    # Example: print out bias vectors from the trained model (just for inspection)
-    for var in model.trainable_weights:
-        if "bias" in var.name:
-            print(f"{var.name}:")
-            print(var.numpy())
-            print()
-
     # --- Evaluate on the validation JSON files ---
     # evaluate_on_new_file(model, scaler, X_train, VAL_JSON_PATH)
     evaluate_with_confusion(model, scaler, X_train, "valnotifications.json", threshold=0.5)
@@ -487,9 +486,8 @@ if __name__ == "__main__":
         f.write(onnx_model_proto.SerializeToString())
     print(f"ONNX model saved to {ONNX_FILENAME}")
 
-    # Try to implement a Conv1D Layer into the stack experiment
-
-    # Two-stage training
-    # •	Stage 1: Train autoencoder on normal (non-spike) windows for 50 epochs.
-    # •	Stage 2: Freeze encoder, train classification head for 20 epochs.
-    # •	Stage 3: Unfreeze entire network, fine-tune both for 10 epochs at lr = 1e-4.
+    '''
+    •	Your model is stable, not overfit, and achieves decent, but not stellar, predictive power (F1 ~0.73, ROC-AUC ~0.7).
+	•	You’re probably limited more by input features and dataset ambiguity than by architecture or tuning.
+	•	To improve: add/engineer features, tune augmentations, possibly try a slightly more expressive model if your dataset can support it.
+	'''
