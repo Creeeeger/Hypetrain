@@ -2,7 +2,19 @@ TODO
 Version 2.0:
 - Add Institutional purchase Hunter
 - implement the insider trader hunter
-- add order book analyzer
+- add order book analyzer - maybe OrderBookML
+    - train on crypto data since they are free
+    - change to real level 2 data, but we need a premium key since these datasets
+        are behind paywalls
+
 
 - Finish the Entry Predictor
-- add an uptrend ML
+    - improve accuracy
+
+- finish uptrend ML
+    - update readMe
+    - improve in loop
+
+
+    - recreate the features
+        - denoise the model

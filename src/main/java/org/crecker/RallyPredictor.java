@@ -1,9 +1,6 @@
 package org.crecker;
 
-import ai.onnxruntime.OnnxTensor;
-import ai.onnxruntime.OrtEnvironment;
-import ai.onnxruntime.OrtException;
-import ai.onnxruntime.OrtSession;
+import ai.onnxruntime.*;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 
 import java.nio.file.Paths;
@@ -46,21 +43,13 @@ import java.util.regex.Pattern;
 public class RallyPredictor implements AutoCloseable {
     /**
      * Number of time‐steps the ONNX model expects as input.
-     * This should match the window length (frameSize) you trained the model with.
      */
-    private int size = 20;
+    private static int size;
 
     /**
      * Total number of features per time‐step. Must match the model’s input “feature” dimension.
-     * In our case, we have exactly six features:
-     * 0 → open price
-     * 1 → high price
-     * 2 → low price
-     * 3 → close price
-     * 4 → volume
-     * 5 → percentageChange
      */
-    private static final int N_FEATURES = 6;
+    private static int N_FEATURES;
 
     /**
      * Mean values computed by the Python StandardScaler on the training data.
@@ -131,25 +120,39 @@ public class RallyPredictor implements AutoCloseable {
     private final Map<String, LinkedList<float[]>> symbolBuffers = new ConcurrentHashMap<>();
 
     /**
+     * For each stock symbol, maintains a rolling window of the most recent feature vectors
+     * used for uptrend detection. The window size is driven by {@code dynamicUptrendBufferSize}
+     * and will automatically adjust if the uptrend model’s expected input length changes.
+     * <p>
+     * Key:   stock symbol
+     * Value: linked list of float arrays, each array representing a feature vector at one time step
+     */
+    private final Map<String, LinkedList<float[]>> uptrendBuffer = new ConcurrentHashMap<>();
+
+    /**
      * Ensures that buffer‐size adjustments happen atomically across all symbols.
      */
     private final ReentrantLock sizeAdjustmentLock = new ReentrantLock();
 
-
-    // --- Model/config parameters ---
-
     /**
      * Current required history length (number of time steps) for streaming predictions.
-     * Default is 28, but may be updated if the ONNX model’s input shape changes.
      */
-    private int dynamicBufferSize = 28;
+    private static int dynamicBufferSize;
+
+    /**
+     * Current required history length (number of time steps) for streaming uptrend predictions.
+     */
+    private static int dynamicUptrendBufferSize;
+
+    /**
+     * Number of features per time step for the uptrend model.
+     */
+    private static int featureLengthUptrend;
 
     /**
      * Number of features per time step. Must match the model’s expected input “feature” dimension.
-     * Pulled from mainDataHandler.INDICATOR_KEYS.size()
      */
-    private final int featureLength = mainDataHandler.INDICATOR_KEYS.size();
-
+    private static int featureLength;
 
     /**
      * Private constructor – only called by {@link #getInstance(String)}.
@@ -436,6 +439,97 @@ public class RallyPredictor implements AutoCloseable {
     }
 
     /**
+     * Performs a streaming uptrend prediction for the given symbol using a preloaded ONNX model.
+     * Loads the ONNX model from disk (under rallyMLModel/uptrendPredictor.onnx) the first time,
+     * then uses a singleton RallyPredictor instance to update the symbol’s feature buffer
+     * and return the latest uptrend prediction.
+     *
+     * @param features an array of feature values for the current time step
+     * @param symbol   the stock symbol associated with these features
+     * @return the model’s uptrend score, or 0.0f if an error occurs
+     */
+    public static float predictUptrend(float[] features, String symbol) {
+        // Build the absolute path to the uptrend ONNX model file
+        String uptrendModelPath = Paths
+                .get(System.getProperty("user.dir"), "rallyMLModel", "uptrendPredictor.onnx")
+                .toString();
+        try {
+            // Get (or create) the singleton predictor for this model
+            RallyPredictor predictor = RallyPredictor.getInstance(uptrendModelPath);
+
+            // Delegate to the instance method to update buffer & predict
+            return predictor.updateAndPredictUptrend(symbol, features);
+        } catch (Exception e) {
+            // Log any errors and fall back to 0.0f
+            System.out.println("predictUptrend(streaming) error: " + e.getMessage());
+            return 0F;
+        }
+    }
+
+    /**
+     * Updates the in‐memory rolling buffer of feature vectors for the given symbol
+     * and, once the buffer reaches the required length, invokes the model inference.
+     *
+     * @param symbol   the stock symbol whose buffer is being updated
+     * @param features the new feature vector to append
+     * @return the uptrend prediction once enough history is collected, otherwise 0.0f
+     * @throws OrtException if the ONNX runtime encounters an error
+     */
+    public Float updateAndPredictUptrend(String symbol, float[] features) throws OrtException {
+        // Get or create the symbol’s feature buffer
+        LinkedList<float[]> buffer = uptrendBuffer.computeIfAbsent(symbol, k -> new LinkedList<>());
+
+        synchronized (buffer) {
+            // Append the latest feature vector to the buffer
+            buffer.addLast(features);
+            // If buffer exceeds the model’s expected window, drop the oldest step
+            if (buffer.size() > dynamicUptrendBufferSize) {
+                buffer.removeFirst();
+            }
+            // If we have exactly the needed number of steps, perform inference
+            if (buffer.size() == dynamicUptrendBufferSize) {
+                return predictUptrendFromBuffer(buffer);
+            }
+        }
+        // Not enough data yet: return default
+        return 0F;
+    }
+
+    /**
+     * Constructs the ONNX model input tensor from the buffered feature vectors
+     * and executes the model to obtain a single uptrend score.
+     *
+     * @param buffer the rolling window of feature vectors (size == dynamicUptrendBufferSize)
+     * @return the first element of the model’s output tensor
+     * @throws OrtException if tensor creation or model execution fails
+     */
+    private Float predictUptrendFromBuffer(LinkedList<float[]> buffer) throws OrtException {
+        // Prepare a [1 x time_steps x features] array for ONNX
+        float[][][] inputArray = new float[1][dynamicUptrendBufferSize][featureLengthUptrend];
+
+        // Copy each time step’s features into the input array
+        for (int t = 0; t < dynamicUptrendBufferSize; t++) {
+            float[] stepFeatures = buffer.get(t);
+            // Copy up to featureLengthUptrend elements (or fewer if feature vector is shorter)
+            System.arraycopy(
+                    stepFeatures,
+                    0,
+                    inputArray[0][t],
+                    0,
+                    Math.min(stepFeatures.length, featureLengthUptrend)
+            );
+        }
+
+        // Create the ONNX tensor and run the session
+        try (OnnxTensor inputTensor = OnnxTensor.createTensor(env, inputArray)) {
+            OrtSession.Result result = session.run(Collections.singletonMap("input", inputTensor));
+            // Extract and return the scalar prediction from the output tensor
+            float[][] output = (float[][]) result.get(0).getValue();
+            return output[0][0];
+        }
+    }
+
+    /**
      * Releases the OrtSession and OrtEnvironment for this RallyPredictor instance.
      * Also removes it from the registry so it can be garbage‐collected.
      * Must be called when shutting down or reloading a model to free native resources.
@@ -445,5 +539,79 @@ public class RallyPredictor implements AutoCloseable {
         if (session != null) session.close();
         if (env != null) env.close();
         INSTANCES.values().remove(this);
+    }
+
+    /**
+     * Inspect each ONNX model under rallyMLModel/ and set the static fields:
+     * <ul>
+     *   <li><code>dynamicUptrendBufferSize</code> & <code>featureLengthUptrend</code>
+     *       from <code>uptrendPredictor.onnx</code></li>
+     *   <li><code>size</code> & <code>N_FEATURES</code>
+     *       from <code>entryPrediction.onnx</code></li>
+     *   <li><code>dynamicBufferSize</code> & <code>featureLength</code>
+     *       from <code>spike_predictor.onnx</code></li>
+     * </ul>
+     *
+     * @throws OrtException if any ONNX model fails to load or introspection fails.
+     */
+    public static void setParameters() throws OrtException {
+        // Base directory where all ONNX models live
+        String base = Paths.get(System.getProperty("user.dir"), "rallyMLModel").toString();
+
+        // 1) uptrendPredictor.onnx → dynamicUptrendBufferSize & featureLengthUptrend
+        int[] up = inspect(Paths.get(base, "uptrendPredictor.onnx").toString());
+        dynamicUptrendBufferSize = up[0];
+        featureLengthUptrend = up[1];
+
+        // 2) entryPrediction.onnx → size & N_FEATURES
+        int[] entry = inspect(Paths.get(base, "entryPrediction.onnx").toString());
+        size = entry[0];
+        N_FEATURES = entry[1];
+
+        // 3) spike_predictor.onnx → dynamicBufferSize & featureLength
+        int[] spike = inspect(Paths.get(base, "spike_predictor.onnx").toString());
+        dynamicBufferSize = spike[0];
+        featureLength = spike[1];
+    }
+
+    /**
+     * Loads an ONNX model at the given path, inspects its first
+     * input tensor, and returns the expected window size (time_steps) and feature count.
+     * <p>
+     * <code>[batch, time_steps, num_features]</code>. We ignore the batch dimension
+     * (must be 1 at runtime) and extract the remaining two axes.
+     * </p>
+     *
+     * @param modelPath Absolute path to the ONNX file to inspect.
+     * @return A two-element <code>int[]</code>: <code>[windowSize, nFeatures]</code>.
+     * @throws OrtException          if creating the ONNX session or querying the metadata fails.
+     * @throws IllegalStateException if the graph’s first input is not a Tensor.
+     */
+    public static int[] inspect(String modelPath) throws OrtException {
+        // Acquire the shared ONNX Runtime environment
+        OrtEnvironment env = OrtEnvironment.getEnvironment();
+        OrtSession.SessionOptions opts = new OrtSession.SessionOptions();
+
+        // Open a session for introspection
+        try (OrtSession session = env.createSession(modelPath, opts)) {
+            // We only expect one input; grab its name
+            String inputName = session.getInputNames().iterator().next();
+
+            // Retrieve its NodeInfo to inspect shape
+            NodeInfo info = session.getInputInfo().get(inputName);
+            if (!(info.getInfo() instanceof TensorInfo)) {
+                throw new IllegalStateException("ONNX model at [" + modelPath + "] "
+                        + "does not expose a Tensor input");
+            }
+
+            // Extract the declared shape: [batch, time_steps, num_features]
+            long[] shape = ((TensorInfo) info.getInfo()).getShape();
+
+            // Cast down to int; if shape dims > Integer.MAX_VALUE you’ve bigger problems
+            int windowSize = (int) shape[1];
+            int nFeatures = (int) shape[2];
+
+            return new int[]{windowSize, nFeatures};
+        }
     }
 }

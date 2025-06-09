@@ -1,5 +1,6 @@
 package org.crecker;
 
+import ai.onnxruntime.OrtException;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -7,8 +8,10 @@ import org.jetbrains.annotations.NotNull;
 import org.jfree.chart.ChartFactory;
 import org.jfree.chart.ChartPanel;
 import org.jfree.chart.JFreeChart;
+import org.jfree.chart.axis.AxisLocation;
 import org.jfree.chart.axis.NumberAxis;
 import org.jfree.chart.axis.ValueAxis;
+import org.jfree.chart.plot.DatasetRenderingOrder;
 import org.jfree.chart.plot.IntervalMarker;
 import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
@@ -42,6 +45,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 import static org.crecker.RallyPredictor.predictNotificationEntry;
+import static org.crecker.RallyPredictor.setParameters;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
@@ -70,6 +74,11 @@ import static org.crecker.mainUI.volume;
  * </ul>
  */
 public class pLTester {
+
+    /**
+     * TimeSeries used to hold predicted values under the "Prediction" key.
+     */
+    public static TimeSeries predictSeries = new TimeSeries("Prediction");
 
     /**
      * Used for quick lookup of data index (list position) by LocalDateTime for each stock symbol.
@@ -101,7 +110,7 @@ public class pLTester {
     /**
      * Array of stock symbols currently under analysis/trading.
      */
-    public final static String[] SYMBOLS = {"QBTS"};
+    public final static String[] SYMBOLS = {"IONQ"};
 
     /**
      * Whether to display candlestick charts (true) or time series line charts (false).
@@ -133,7 +142,7 @@ public class pLTester {
      *
      * @param args Command-line arguments (unused).
      */
-    public static void main(String[] args) {
+    public static void main(String[] args) throws OrtException {
         // Set default trade volume for notifications and analyses
         volume = 100000;
 
@@ -349,7 +358,9 @@ public class pLTester {
      *     <li>Performance output at the end of all runs</li>
      * </ul>
      */
-    public static void PLAnalysis() {
+    public static void PLAnalysis() throws OrtException {
+        setParameters();
+
         // --- SETUP: ANSI color codes for styled CLI/terminal feedback ---
         final String RESET = "\u001B[0m";
         final String RED = "\u001B[31m";
@@ -728,14 +739,28 @@ public class pLTester {
     }
 
     /**
-     * Exports a list of StockUnits to a CSV file for ML model training or analysis.
-     * If the file doesn't exist, a header is written. Appends new rows for each unit.
+     * Exports a list of StockUnit objects to a CSV file for use in machine learning model training or analysis.
+     * The file is created (along with parent directories) if it does not already exist, and headers are written
+     * on first creation. Subsequent calls will append new rows without rewriting headers.
+     * <p>
+     * Each row corresponds to one StockUnit and includes:
+     * <ul>
+     *   <li>timestamp (ISO-8601 format)</li>
+     *   <li>open price</li>
+     *   <li>high price</li>
+     *   <li>low price</li>
+     *   <li>close price</li>
+     *   <li>volume</li>
+     *   <li>target value</li>
+     * </ul>
      *
-     * @param stocks List of StockUnit objects to write
+     * @param stocks   the list of StockUnit instances to be written; must not be null
+     * @param fileName the base name (without extension) of the CSV file to write; file will be created
+     *                 under the "rallyMLModel" directory in the current working directory
      */
-    public static void exportToCSV(List<StockUnit> stocks) {
+    public static void exportToCSV(List<StockUnit> stocks, String fileName) {
         try {
-            Path filePath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", "highFrequencyStocks.csv");
+            Path filePath = Paths.get(System.getProperty("user.dir"), "rallyMLModel", fileName + ".csv");
             File file = filePath.toFile();
 
             // Check if file exists to determine if headers should be added
@@ -1024,6 +1049,48 @@ public class pLTester {
                 renderer.setSeriesStroke(3, new BasicStroke(1f));
                 renderer.setSeriesShapesVisible(3, false);
             }
+
+            // Create a dataset from the prediction time series
+            TimeSeriesCollection predictionDataset = new TimeSeriesCollection(predictSeries);
+
+            // Add the prediction dataset as the second dataset in the plot (index 1)
+            plot.setDataset(1, predictionDataset);
+
+            // Create a new numerical axis for the prediction values, label it “Prediction”
+            NumberAxis predictionAxis = new NumberAxis("Prediction");
+
+            // Enable automatic range calculation so the axis rescales to fit the data
+            predictionAxis.setAutoRange(true);
+
+            // Style the axis label (the “Prediction” title) in white for visibility against a dark background
+            predictionAxis.setLabelPaint(Color.WHITE);
+            // Style the tick labels (the numeric values along the axis) in white
+            predictionAxis.setTickLabelPaint(Color.WHITE);
+            // Style the axis line itself (the vertical line) in white
+            predictionAxis.setAxisLinePaint(Color.WHITE);
+            // Style the tick marks (small lines at each tick) in white
+            predictionAxis.setTickMarkPaint(Color.WHITE);
+
+            // Associate this new axis with index 1 in the plot (the “right‐hand” axis position)
+            plot.setRangeAxis(1, predictionAxis);
+            // Position axis index 1 on the top‐or‐right side of the plot area
+            plot.setRangeAxisLocation(1, AxisLocation.TOP_OR_RIGHT);
+
+            // Map dataset 1 (our predictions) to use range axis 1
+            plot.mapDatasetToRangeAxis(1, 1);
+
+            // Create a renderer for drawing the prediction series as a line
+            // The first argument ‘true’ enables lines, the second ‘false’ disables shapes at data points
+            XYLineAndShapeRenderer predRenderer = new XYLineAndShapeRenderer(true, false);
+            // Set the stroke (line thickness) for series 0 to 0.5f (half‐pixel width)
+            predRenderer.setSeriesStroke(0, new BasicStroke(0.5f));
+            // Set the paint (line color) for series 0 to white
+            predRenderer.setSeriesPaint(0, Color.WHITE);
+            // Attach this renderer to dataset index 1
+            plot.setRenderer(1, predRenderer);
+
+            // Ensure that the prediction line is drawn in front of (after) the main series
+            plot.setDatasetRenderingOrder(DatasetRenderingOrder.FORWARD);
 
             // ===== COMMON PLOT STYLING =====
             chart.setBackgroundPaint(Color.WHITE);         // White background for the chart
@@ -1332,23 +1399,27 @@ public class pLTester {
     }
 
     /**
-     * Builds and returns a JPanel containing buttons and a percentage display for chart controls.
-     * Buttons allow user to:
+     * Builds and returns a control panel for the given chart, containing:
      * <ul>
-     *   <li>Save all labels to CSV</li>
-     *   <li>Clear the last labeled interval</li>
-     *   <li>Restore chart axis to auto range</li>
+     *   <li><b>Auto Range</b> button – resets the chart’s zoom to its default bounds</li>
+     *   <li><b>Save Labels (spike)</b> button – exports all high-frequency (spike) interval labels to CSV</li>
+     *   <li><b>Save Labels (uptrend)</b> button – exports all uptrend interval labels to CSV</li>
+     *   <li><b>Clear Last</b> button – removes the most recently labeled interval</li>
      * </ul>
-     * Also includes a JLabel that displays the most recent percentage change computed.
+     * Also includes a JLabel that displays the most recent percentage change between two markers.
      *
-     * @param chartPanel The ChartPanel being controlled.
-     * @param symbol     The stock symbol being analyzed (used for saving/clearing labels).
-     * @return JPanel with all controls.
+     * @param chartPanel the ChartPanel instance whose zoom and labels will be controlled
+     * @param symbol     the stock symbol used when saving or clearing labels
+     * @return a JPanel pre-configured with chart controls and a dynamic percentage display
      */
     private static JPanel getControlPanel(ChartPanel chartPanel, String symbol) {
         // Create the "Save All Labels" button and attach an action to save all interval labels to CSV
-        JButton saveButton = new JButton("Save All Labels");
-        saveButton.addActionListener(e -> saveLabels(symbol)); // Save all labeled data to CSV
+        JButton saveButtonSpike = new JButton("Save Labels (spike)");
+        saveButtonSpike.addActionListener(e -> saveLabels(symbol, "highFrequencyStocks")); // Save all labeled data to CSV
+
+        // Create the "Save All Labels" button and attach an action to save all interval labels to CSV
+        JButton saveButton = new JButton("Save Labels (uptrend)");
+        saveButton.addActionListener(e -> saveLabels(symbol, "uptrendStocks")); // Save all labeled data to CSV
 
         // Create the "Clear Last" button and attach an action to remove the most recent labeled interval
         JButton clearButton = new JButton("Clear Last");
@@ -1364,6 +1435,7 @@ public class pLTester {
         // Assemble all controls into a panel (horizontal layout by default)
         JPanel panel = new JPanel();
         panel.add(autoRangeButton);   // Add zoom reset button
+        panel.add(saveButtonSpike);   // Add save labels button
         panel.add(saveButton);        // Add save labels button
         panel.add(clearButton);       // Add clear last label button
         panel.add(percentageChange);  // Add dynamic percentage label
@@ -1372,20 +1444,22 @@ public class pLTester {
     }
 
     /**
-     * Saves all labels and timeline data for the given symbol to a CSV file.
-     * Uses the global symbolTimelines map.
-     * Pops up a dialog to notify the user when done.
+     * Saves all labeled intervals and their timeline data for the given stock symbol to a CSV file.
+     * Retrieves the list of StockUnit objects from the global symbolTimelines map.
+     * If data exists, delegates to {@link #exportToCSV(List, String)} and then displays
+     * a confirmation dialog to the user.
      *
-     * @param symbol The stock symbol being saved.
+     * @param symbol   the stock symbol whose labels and timeline will be exported
+     * @param fileName the base name (without “.csv”) of the output file placed under rallyMLModel
      */
-    private static void saveLabels(String symbol) {
+    private static void saveLabels(String symbol, String fileName) {
         // Get the timeline (list of StockUnit objects) for the given symbol
         List<StockUnit> timeline = symbolTimelines.get(symbol);
 
         // If the timeline exists (symbol found)
         if (timeline != null) {
             // Export all data (with current target labels) to a CSV file
-            exportToCSV(timeline);
+            exportToCSV(timeline, fileName);
 
             // Show a popup message to the user confirming the save action
             JOptionPane.showMessageDialog(null, "All labels saved successfully!");

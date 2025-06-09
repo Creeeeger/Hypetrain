@@ -61,6 +61,7 @@ import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
 
+import static org.crecker.RallyPredictor.setParameters;
 import static org.crecker.configHandler.createConfig;
 import static org.crecker.mainDataHandler.CACHE_DIR;
 import static org.crecker.mainDataHandler.useExtended;
@@ -480,6 +481,9 @@ public class mainUI extends JFrame {
         refreshChartType(false);
         // Fetch all available ticker metadata for searching and UI
         fetchTickerMap();
+
+        // set inferences parameters dynamically
+        setParameters();
 
         // If real-time mode is enabled, start or update notification listeners/handlers (price alerts, news, etc.).
         if (useRealtime) {

@@ -486,4 +486,9 @@ Launch command to ensure app stays awake
   /Users/greg/.m2/repository/org/json/json/20240303/json-20240303.jar:
   /Users/greg/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.20.0/onnxruntime-1.20.0.jar:
   /Users/greg/.m2/repository/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar:
-  /Users/greg/.m2/repository/com/formdev/flatlaf/3.6/flatlaf-3.6.jar org.crecker.mainUI
+  /Users/greg/.m2/repository/com/formdev/flatlaf/3.6/flatlaf-3.6.jar:
+  /Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar:
+  /Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar:
+  /Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar:
+  /Users/greg/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.19.0/jackson-datatype-jsr310-2.19.0.jar
+  org.crecker.mainUI
