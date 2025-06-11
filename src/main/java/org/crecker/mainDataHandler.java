@@ -14,7 +14,6 @@ import com.crazzyghost.alphavantage.timeseries.response.QuoteResponse;
 import com.crazzyghost.alphavantage.timeseries.response.StockUnit;
 import com.crazzyghost.alphavantage.timeseries.response.TimeSeriesResponse;
 import org.jetbrains.annotations.NotNull;
-import org.jfree.data.time.Second;
 
 import javax.swing.*;
 import java.awt.*;
@@ -35,7 +34,8 @@ import java.util.stream.Collectors;
 import static org.crecker.RallyPredictor.*;
 import static org.crecker.dataTester.handleSuccess;
 import static org.crecker.mainUI.*;
-import static org.crecker.pLTester.*;
+import static org.crecker.pLTester.SYMBOLS;
+import static org.crecker.pLTester.processStockDataFromFile;
 
 /**
  * The {@code mainDataHandler} class is responsible for the central logic and data flow in the stock analytics application.
@@ -83,22 +83,24 @@ public class mainDataHandler {
      * Length must match {@code MIN_OFFSET.length} and the dimensionality of the uptrend feature vector.
      */
     public static final float[] SCALE = new float[]{
-            0.03709612698921975F,
-            0.03718037481173628F,
-            0.037126334559678315F,
-            0.03711035319058666F,
+            0.036807112354299336F,
+            0.036889856005055274F,
+            0.036835540150491675F,
+            0.03682146827868771F,
             1.1870690197540156e-06F,
-            26.36753478595499F,
+            25.772260019739253F,
             0.06344392667150953F,
             1.2762418750533744F,
             1.228229629811581F,
-            2.1590134317330776F,
-            3.262574589133557F,
+            2.1640278249929468F,
+            3.2546182773518817F,
             0.12781457299556007F,
-            0.11427646696766346F,
-            0.06658063098303002F,
-            0.998415021345876F,
+            0.11427091845203872F,
+            0.06657535633132342F,
+            0.9987287909574805F,
             2.178107557782743e-06F,
+            0.9909652067191246F,
+            0.9908236813490472F,
     };
 
     /**
@@ -110,22 +112,24 @@ public class mainDataHandler {
      * Length must match {@code SCALE.length} and the dimensionality of the uptrend feature vector.
      */
     public static final float[] MIN_OFFSET = new float[]{
-            -1.0340369869738109F,
-            -1.0407093911370124F,
-            -1.0324910423454468F,
-            -1.0344617811922983F,
+            -1.0335559595853816F,
+            -1.040221117744066F,
+            -1.0320288170076934F,
+            -1.0340166260629797F,
             -1.1870690197540156e-06F,
-            0.5667664582441603F,
+            0.5819432477983969F,
             -2.085401869692518F,
             0.0F,
             0.5750325480851886F,
-            0.4939285600947485F,
-            0.4459961241469656F,
+            0.49275318935366114F,
+            0.4438076207180968F,
             0.5176808566205282F,
-            0.39627526885008F,
-            0.3261715297271644F,
+            0.3963045817628144F,
+            0.32614568976153896F,
             0.0F,
             -0.0002844608470464262F,
+            0.004855530687485926F,
+            0.004582815642035302F,
     };
 
     /**
@@ -499,7 +503,8 @@ public class mainDataHandler {
         });
         put("favourites", new String[]{ // These are my favourites and the ones working the best with the algorithm
                 "APLD", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
-                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U"
+                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U",
+                "META", "MSFT", "NVDA"
         });
     }};
 
@@ -2614,12 +2619,22 @@ public class mainDataHandler {
         raw[i++] = volatility;
         raw[i++] = avgVolume;
 
-//        StringBuilder dbg = new StringBuilder();
-//        raw[i++] = isInUptrend(stocks, 5, 1.5, 0.8) ? 1 : 0;
-//        raw[i++] = hasGapDown(prev, curr, 0.08, dbg) ? 1 : 0;
-//        raw[i++] = checkBadWicks(stocks, 3, 0.39, dbg) ? 1 : 0;
-//        raw[i++] = lastNBarsRising(stocks, 3, 0.15, 0.5, dbg) ? 1 : 0;
-//        raw[i++] = (float) isNearResistance(stocks.subList(stocks.size() - 15, stocks.size()));
+        int upCount3 = 0;
+        for (int j = Math.max(1, T - 3); j < T; j++) {
+            if (stocks.get(j).getClose() > stocks.get(j - 1).getClose()) {
+                upCount3++;
+            }
+        }
+        // 1 if all 3 moves were up, else 0
+        raw[i++] = (upCount3 == 3) ? 1f : 0f;
+
+        float roc3 = 0f;
+        if (T >= 4) {
+            float closeNow = (float) stocks.get(T - 1).getClose();
+            float closeThen = (float) stocks.get(T - 4).getClose();
+            roc3 = (closeNow / closeThen - 1f);
+        }
+        raw[i++] = (roc3 > 0f) ? 1f : 0f;
         return raw;
     }
 
@@ -2696,7 +2711,7 @@ public class mainDataHandler {
         double uptrendPrediction = predictUptrend(featureUptrend, symbol);
 
         // 6. Update the prediction time series for charting purposes (timestamp = last bar in frame)
-        predictSeries.addOrUpdate(new Second(stocks.get(stocks.size() - 1).getDateDate()), uptrendPrediction);
+        // predictSeries.addOrUpdate(new Second(stocks.get(stocks.size() - 1).getDateDate()), uptrendPrediction);
 
         // 7. Combine both ML scores and technical signals to generate actionable notifications
         return evaluateResult(
@@ -3449,16 +3464,16 @@ public class mainDataHandler {
 
         if (MEGA_CAPS.contains(symbol)) {
             // Mega caps (largest companies): use lowest risk/least aggressive config
-            uptrend = shouldTrigger(stocks, 5, 0.3, 0.8,
-                    0.08, 0.39, 3, 0.05, 0.06, false, uptrendPrediction);
+            uptrend = shouldTrigger(stocks, 5, 0.15, 0.8,
+                    0.08, 0.31, 3, 0.05, 0.06, false, uptrendPrediction);
         } else if (LARGE_CAPS.contains(symbol)) {
             // Large caps: slightly more aggressive config than mega caps
-            uptrend = shouldTrigger(stocks, 5, 0.6, 0.8,
-                    0.09, 0.40, 3, 0.12, 0.15, false, uptrendPrediction);
+            uptrend = shouldTrigger(stocks, 5, 0.4, 0.8,
+                    0.09, 0.41, 3, 0.12, 0.15, false, uptrendPrediction);
         } else if (MID_CAPS.contains(symbol) || SMALL_CAPS.contains(symbol)) {
             // Mid & small caps: highest volatility/aggressiveness config among cap sizes
-            uptrend = shouldTrigger(stocks, 5, 1.5, 0.8,
-                    0.08, 0.39, 3, 0.15, 0.5, false, uptrendPrediction);
+            uptrend = shouldTrigger(stocks, 5, 0.6, 0.8,
+                    0.08, 0.31, 3, 0.15, 0.5, true, uptrendPrediction);
         } else {
             // Not a known cap group: select config based on sector (market) label
             // Sectors are grouped by typical volatility appetite
@@ -3466,18 +3481,18 @@ public class mainDataHandler {
             uptrend = switch (market) {
                 // Low aggressiveness: stable, less-volatile sectors
                 case "bigCaps", "semiconductors", "techGiants", "aiStocks", "financials", "energy",
-                     "industrials", "pharma", "foodBeverage", "retail" -> shouldTrigger(stocks, 5, 0.3, 0.8,
-                        0.08, 0.39, 3, 0.05, 0.06, false, uptrendPrediction);
+                     "industrials", "pharma", "foodBeverage", "retail" -> shouldTrigger(stocks, 5, 0.15, 0.8,
+                        0.08, 0.31, 3, 0.05, 0.06, false, uptrendPrediction);
 
                 // Mid-aggressiveness: moderate volatility sectors
                 case "midCaps", "chineseTech", "autoEV", "healthcareProviders", "robotics", "allSymbols" ->
-                        shouldTrigger(stocks, 5, 0.6, 0.8,
-                                0.09, 0.40, 3, 0.12, 0.15, false, uptrendPrediction);
+                        shouldTrigger(stocks, 5, 0.6, 0.4,
+                                0.09, 0.31, 3, 0.12, 0.15, false, uptrendPrediction);
 
                 // High aggressiveness: high-risk, high-volatility sectors
                 case "ultraVolatile", "highVolatile", "smallCaps", "cryptoBlockchain", "quantum",
-                     "favourites" -> shouldTrigger(stocks, 5, 1.5, 0.8,
-                        0.08, 0.39, 3, 0.15, 0.5, false, uptrendPrediction);
+                     "favourites" -> shouldTrigger(stocks, 5, 0.6, 0.8,
+                        0.08, 0.31, 3, 0.15, 0.5, false, uptrendPrediction);
 
                 // If market not recognized, fail fast and force a fix
                 default -> throw new RuntimeException("Need to specify a market: " + market);
@@ -3500,6 +3515,42 @@ public class mainDataHandler {
                         changeUp2 >= getThreshold(symbol) * manualAggressiveness &&  // 2-bar momentum strong enough
                         changeUp3 >= getThreshold(symbol) * manualAggressiveness; // 3-bar momentum strong enough
 
+//        System.out.printf(
+//                "Triggered=%b | spike=%d | gain=%.2f/%.2f?%b | normGain=%.2f/0.85?%b | " +
+//                        "dynAggro=%.2f/%.2f?%b | pred=%.2f/0.9?%b | keltner=%d | " +
+//                        "m2=%.2f/%.2f?%b | m3=%.2f/%.2f?%b | Date=%s%n",
+//                isTriggered,
+//
+//                // spike
+//                (int) features[4],
+//
+//                // cumulative gain vs threshold
+//                features[5], cumulativeThreshold, features[5] >= cumulativeThreshold,
+//
+//                // normalized gain vs fixed threshold
+//                normalizedFeatures[5], normalizedFeatures[5] >= 0.85,
+//
+//                // dynamicAggro vs threshold
+//                dynamicAggro, threshold, dynamicAggro >= threshold,
+//
+//                // prediction vs 0.9
+//                prediction, prediction >= 0.9,
+//
+//                // Keltner breakout flag
+//                (int) features[6],
+//
+//                // 2-bar momentum vs computed threshold
+//                changeUp2, getThreshold(symbol) * manualAggressiveness,
+//                changeUp2 >= getThreshold(symbol) * manualAggressiveness,
+//
+//                // 3-bar momentum vs computed threshold
+//                changeUp3, getThreshold(symbol) * manualAggressiveness,
+//                changeUp3 >= getThreshold(symbol) * manualAggressiveness,
+//
+//                // date
+//                stocks.get(stocks.size() - 1).getDateDate()
+//        );
+
         int notificationCode = -1; // -1 means no notification
 
         // === 6. Only if all strict spike conditions are satisfied, trigger a classic alert notification ===
@@ -3509,7 +3560,7 @@ public class mainDataHandler {
         }
 
         // === 7. Upwards movements which are not categorized as spikes but still steady upwards ===
-        else if (uptrend && !MEGA_CAPS.contains(symbol)) {
+        else if (uptrend) {
             notificationCode = 4;
         }
 
@@ -3571,46 +3622,77 @@ public class mainDataHandler {
      * @param minGreen  Minimum % of green candles (0.0–1.0) to qualify (e.g., 0.6 means at least 60% green bars).
      * @return True if in uptrend, otherwise false.
      */
-    public static boolean isInUptrend(List<StockUnit> stocks, int window, double minChange, double minGreen) {
-        // Defensive: Make sure we have enough bars to check the window
-        if (stocks == null || stocks.size() < window + 1) return false;
+    public static boolean isInUptrend(List<StockUnit> stocks,
+                                      int window,
+                                      double minChange,
+                                      double minGreen) {
+        // Defensive check: ensure the list exists and has enough bars for window analysis
+        if (stocks == null || stocks.size() < window + 1) {
+            System.out.println("Not enough bars: stocks.size()="
+                    + (stocks == null ? "null" : stocks.size())
+                    + ", required>" + window);
+            return false;
+        }
 
-        int start = stocks.size() - window - 1; // First index in the window (oldest bar in window)
-        int end = stocks.size() - 1;            // Last index in the window (most recent bar)
+        // Determine indices for the window's start and end bars
+        int start = stocks.size() - window - 1; // Index of the first bar in the window
+        int end = stocks.size() - 1;            // Index of the last bar (latest)
 
-        // Get closing prices for start and end of window
+        // Extract closing prices at window boundaries
         double firstClose = stocks.get(start).getClose();
         double lastClose = stocks.get(end).getClose();
 
-        // Calculate total percent change from first to last close in window
+        // Compute overall percentage change over the window
         double percentChange = ((lastClose - firstClose) / firstClose) * 100.0;
+        System.out.printf(
+                "Window [%d→%d]: firstClose=%.2f, lastClose=%.2f, "
+                        + "percentChange=%.2f%% (minChange=%.2f%%)%n",
+                start, end, firstClose, lastClose, percentChange, minChange);
 
-        // Count number of green (bullish) candles in the window
+        // Count the number of green candles (where close > open) within the window
         int greenCount = 0;
         for (int i = start + 1; i <= end; i++) {
-            // A candle is green if close > open (bullish)
-            if (stocks.get(i).getClose() > stocks.get(i).getOpen()) {
+            StockUnit bar = stocks.get(i);
+            if (bar.getClose() > bar.getOpen()) {
                 greenCount++;
             }
         }
-
-        // Compute the ratio of green candles to total candles in the window
+        // Compute greenRatio as the fraction of bars that closed higher than they opened
         double greenRatio = greenCount / (double) window;
+        System.out.printf(
+                "Green candles=%d/%d → greenRatio=%.2f (minGreen=%.2f)%n",
+                greenCount, window, greenRatio, minGreen);
 
-        // Find the largest single red (bearish) candle in the window
-        double maxRed = 0;
+        // Identify the largest single-bar pullback (red candle magnitude)
+        double maxRed = 0.0;
         for (int i = start + 1; i <= end; i++) {
-            // Red candle size = open - close (only positive if it's red)
-            double red = stocks.get(i).getOpen() - stocks.get(i).getClose();
-            if (red > maxRed) maxRed = red;
+            StockUnit bar = stocks.get(i);
+            double redSize = bar.getOpen() - bar.getClose();
+            if (redSize > maxRed) {
+                maxRed = redSize;
+            }
         }
+        // Define allowed maximum pullback as one-third of the total window gain
+        double allowedPullback = (lastClose - firstClose) / 3.0;
+        boolean noBigPullback = maxRed < allowedPullback;
+        System.out.printf(
+                "Max red candle=%.2f, allowedPullback=%.2f → noBigPullback=%b%n",
+                maxRed, allowedPullback, noBigPullback);
 
-        // Check that no single red candle erases more than a third of the window's total gain
-        boolean noBigPullback = maxRed < (lastClose - firstClose) / 3.0;
+        // Final boolean checks for each uptrend criterion
+        boolean bigEnoughGain = percentChange >= minChange;
+        boolean enoughGreen = greenRatio >= minGreen;
 
-        // Must satisfy: (1) big enough gain, (2) enough green candles, (3) no big pullbacks
-        return percentChange >= minChange && greenRatio >= minGreen && noBigPullback;
+        // Consolidate all conditions into the final uptrend verdict
+        boolean isUptrend = bigEnoughGain && enoughGreen && noBigPullback;
+        System.out.printf(
+                "Decision: percentOK=%b, greenOK=%b, pullbackOK=%b "
+                        + "→ isInUptrend=%b%n",
+                bigEnoughGain, enoughGreen, noBigPullback, isUptrend);
+
+        return isUptrend;
     }
+
 
     /**
      * Maps manualAggressiveness ∈ [0.1, 2.0] to a dynamic percentile ∈ [pMin, pMax].
@@ -3872,6 +3954,7 @@ public class mainDataHandler {
         if (stocks == null || stocks.size() < Math.max(window + 1, barsToCheck)) {
             return false;
         }
+        System.out.println(stocks.get(stocks.size() - 1).getDateDate());
 
         // 2️⃣ Fundamental trend filter
         boolean fundamentalTrend = isInUptrend(stocks, window, minChangePct, minGreenRatio);
@@ -3947,44 +4030,90 @@ public class mainDataHandler {
      * @return <code>true</code> if at least one "big pump" is detected and at most one flat is found;
      * <code>false</code> otherwise.
      */
-    private static boolean lastNBarsRising(List<StockUnit> candles, int nBars,
-                                           double sidewaysTolerancePct, double minPumpPct, StringBuilder dbg) {
-        // Not enough bars for the microtrend check.
+    private static boolean lastNBarsRising(List<StockUnit> candles,
+                                           int nBars,
+                                           double sidewaysTolerancePct,
+                                           double minPumpPct,
+                                           StringBuilder dbg) {
+        // If we have fewer candles than requested bars, unable to evaluate trend.
         if (candles.size() < nBars) {
             dbg.append("🚫 Not enough bars for microtrend check\n");
             return false;
         }
+
+        // Counter for sideways (flat) moves
         int numFlat = 0;
+        // Flag to detect at least one significant upward pump
         boolean hasBigPump = false;
+
+        // Header for debug logging
         dbg.append("🔍 Microtrend details:\n");
-        // Loop through the last nBars-1 pairs of closes.
+
+        /*
+         * Iterate over pairs of consecutive closes spanning the last nBars.
+         * We use indices from (size - nBars) up to (size - 2) to access (i) and (i+1).
+         */
         for (int i = candles.size() - nBars; i < candles.size() - 1; i++) {
+            // Closing price of the earlier bar
             double prevClose = candles.get(i).getClose();
+            // Closing price of the next bar
             double nextClose = candles.get(i + 1).getClose();
-            // Minimum allowed close for "rising" by sideways tolerance.
-            double minAllowed = prevClose * (1 + sidewaysTolerancePct / 100.0);
-            // Minimum allowed close for "big pump" status.
-            double minBigPump = prevClose * (1 + minPumpPct / 100.0);
-            dbg.append(String.format("  pre:%.4f, curr:%.4f, minSide:%.4f", prevClose, nextClose, minAllowed));
-            // If the close fails to rise enough, mark as flat.
-            if (nextClose < minAllowed) {
+
+            // Threshold price above which movement is considered 'sideways'
+            double sideThreshold = prevClose * (1 + sidewaysTolerancePct / 100.0);
+            // Threshold price above which movement is considered a 'big pump'
+            double pumpThreshold = prevClose * (1 + minPumpPct / 100.0);
+
+            // Log the raw values and computed thresholds
+            dbg.append(String.format(
+                    "  [%d→%d] prevClose=%.4f, nextClose=%.4f, side<=%.4f, pump>=%.4f",
+                    i, i + 1, prevClose, nextClose, sideThreshold, pumpThreshold));
+
+            // Determine move category: flat if below sideThreshold, otherwise rising
+            if (nextClose < sideThreshold) {
                 numFlat++;
-                dbg.append(" (flat)\n");
+                dbg.append(" → flat\n");
             } else {
-                dbg.append(" (rising)");
-                // If it's a significant rise, flag as big pump.
-                if (nextClose >= minBigPump) {
+                dbg.append(" → rising");
+                // Further mark if this rising move qualifies as a big pump
+                if (nextClose >= pumpThreshold) {
                     hasBigPump = true;
                     dbg.append(" (BIG PUMP!)");
                 }
                 dbg.append("\n");
             }
         }
-        // Passes only if there's a big pump and at most one flat.
-        boolean ok = hasBigPump && numFlat <= 1;
-        dbg.append(String.format("🍾 BigPump:%s, Flats:%d\n", hasBigPump ? "✅" : "❌", numFlat));
+
+        // Summarize count of flats and presence of big pump
+        dbg.append(String.format(
+                "➡️ Flats=%d, BigPump=%s\n",
+                numFlat,
+                hasBigPump ? "✅" : "❌"));
+
+        /*
+         * Final decision logic:
+         *   - 0 flats  => pass regardless of pump
+         *   - 1 flat   => pass only if there was a big pump elsewhere
+         *   - >1 flats => always fail
+         */
+        boolean ok;
+        if (numFlat == 0) {
+            ok = true;
+            dbg.append("➡️ Final pass: No flats detected => ✅ pass\n");
+        } else if (numFlat == 1) {
+            ok = hasBigPump;
+            dbg.append("➡️ Final pass: One flat detected and big pump "
+                    + (hasBigPump ? "found" : "not found")
+                    + (ok ? " => ✅ pass" : " => ❌ fail")
+                    + "\n");
+        } else {
+            ok = false;
+            dbg.append("➡️ Final pass: More than one flat => ❌ fail\n");
+        }
+
         return ok;
     }
+
 
     /**
      * <p>
@@ -4037,52 +4166,83 @@ public class mainDataHandler {
      * @param dbg                Debug log; appends stepwise wick analysis details.
      * @return <code>true</code> if severe wicks are not found and the number of "bad" bars is within tolerance; <code>false</code> otherwise.
      */
-    private static boolean checkBadWicks(List<StockUnit> stocks, int barsToCheck,
-                                         double wickToleranceRatio, StringBuilder dbg) {
-        // Start wick analysis block in debug log.
-        dbg.append("🕯️ Wick analysis:\n");
-        int badCount = 0;     // Counter for bars with abnormal wicks.
-        boolean severe = false; // True if any wick is extreme (ratio > 0.7).
+    private static boolean checkBadWicks(List<StockUnit> stocks,
+                                         int barsToCheck,
+                                         double wickToleranceRatio,
+                                         StringBuilder dbg) {
+        // Header for debug log, indicating start of wick analysis
+        dbg.append("🕯️ Wick analysis (using average wick ratio):\n");
 
-        // Loop through the specified recent bars, from oldest to newest in the window.
-        for (int i = stocks.size() - barsToCheck; i < stocks.size(); i++) {
+        // Calculate the starting index for the loop to process only the latest barsToCheck elements
+        int start = stocks.size() - barsToCheck;
+
+        // Accumulator for the sum of wick ratios across all bars in the range
+        double totalWickRatio = 0.0;
+
+        // Flag to mark if any bar has an immediate severe wick (ratio > 0.7)
+        boolean severe = false;
+
+        // Iterate through the specified subset of bars
+        for (int i = start; i < stocks.size(); i++) {
             StockUnit bar = stocks.get(i);
 
-            // Calculate the full bar range.
+            // Compute the full range of the bar (high minus low)
             double range = bar.getHigh() - bar.getLow();
 
-            // Compute lower wick ratio (normalized); handle zero/negative ranges as bad data.
-            double lowWick = range > 0 ? (bar.getOpen() - bar.getLow()) / range : 1;
+            /*
+             * Calculate the low wick proportion: the distance from open to low,
+             * normalized by the total range. If range ≤ 0 (invalid or flat bar),
+             * treat as worst-case wick by assigning ratio = 1.0
+             */
+            double lowWick = (range > 0)
+                    ? (bar.getOpen() - bar.getLow()) / range
+                    : 1.0;
 
-            // Compute upper wick ratio (normalized).
-            double highWick = range > 0 ? (bar.getHigh() - bar.getClose()) / range : 1;
+            /*
+             * Calculate the high wick proportion: the distance from close to high,
+             * normalized by the total range. Again, if range ≤ 0, assign ratio = 1.0
+             */
+            double highWick = (range > 0)
+                    ? (bar.getHigh() - bar.getClose()) / range
+                    : 1.0;
 
-            // Flag the bar as "bad" if range is non-positive or any wick exceeds allowed tolerance.
-            boolean bad = range <= 0 || lowWick > wickToleranceRatio || highWick > wickToleranceRatio;
+            // Determine the dominant (larger) wick for this bar
+            double wickRatio = Math.max(lowWick, highWick);
+            totalWickRatio += wickRatio;
 
-            // Log wick ratios and evaluation for this bar.
-            dbg.append(String.format("  [%s] low:%.4f, high:%.4f vs tol:%.4f %s\n",
-                    bar.getDateDate(), lowWick, highWick, wickToleranceRatio, bad ? "❌" : "✅"));
+            // Append detailed metrics to the debug log for this bar
+            dbg.append(String.format(
+                    "  [%s] low: %.4f, high: %.4f → wickRatio: %.4f\n",
+                    bar.getDateDate(), lowWick, highWick, wickRatio));
 
-            if (bad) badCount++;
-
-            // Severe wick detected: if any wick ratio is over 0.7, invalidate immediately and stop.
-            if (lowWick > 0.7 || highWick > 0.7) {
-                severe = true;
+            // If this bar's wick ratio exceeds 0.7, mark severe and break early
+            if (wickRatio > 0.7) {
                 dbg.append("   🚫 Severe wick detected (ratio > 0.7)\n");
-                break;
+                severe = true;
+                break;  // no need to check further bars if a severe wick is found
             }
         }
 
-        // Allow up to a third of bars to be "bad" for resilience; any severe wick fails the whole window.
-        int maxBad = barsToCheck / 3;
-        boolean ok = badCount <= maxBad && !severe;
+        // Compute the average wick ratio across all processed bars
+        double avgWickRatio = totalWickRatio / barsToCheck;
 
-        // Final debug summary of this check.
-        dbg.append(String.format("  BadWicks:%d/%d => %s\n", badCount, barsToCheck, ok ? "✅" : "❌"));
+        /*
+         * Determine final result: pass only if no severe wick occurred and the
+         * average wick ratio is within the user-defined tolerance.
+         */
+        boolean ok = !severe && (avgWickRatio <= wickToleranceRatio);
 
+        // Log the summary line with average wick and pass/fail outcome
+        dbg.append(String.format(
+                "➡️ avgWickRatio=%.4f (maxAllowed=%.4f) => %s\n",
+                avgWickRatio,
+                wickToleranceRatio,
+                ok ? "✅ pass" : "❌ fail"));
+
+        // Return true if the wick analysis passes all criteria
         return ok;
     }
+
 
     /**
      * Determines if a Simple Moving Average (SMA) crossover event has occurred.
