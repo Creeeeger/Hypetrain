@@ -347,7 +347,7 @@ Stay tactical. **Obey the rules, protect the account.**
 
 - Open project in pycharm
 - Install dependencies which throw errors or dependency install command inside the file
-- Run main.py
+- Run spikeModel.py
 
 ## Model knowledge & research
 

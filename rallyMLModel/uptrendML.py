@@ -1,23 +1,20 @@
 import os
 from collections import Counter
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tf2onnx
-from keras import Model, Input
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
-from keras.src.layers import Conv1D, BatchNormalization, Activation, Bidirectional, MultiHeadAttention, \
-    LayerNormalization, LSTM
+from keras.src.layers import LSTM
 from keras.src.metrics import Recall, Precision, AUC
 from numba import njit
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay, classification_report
+from sklearn.metrics import confusion_matrix
 from sklearn.metrics import f1_score
+from sklearn.metrics import precision_recall_curve
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras import backend as K
-from tensorflow.python.keras.layers import MaxPool1D, Dropout, Dense, Add
 
 # pip install command:
 # pip install numpy pandas scikit-learn numba tensorflow tf2onnx keras
@@ -26,7 +23,6 @@ from tensorflow.python.keras.layers import MaxPool1D, Dropout, Dense, Add
 # CONFIGURATION
 # ——————————————
 DATA_PATH = "uptrendStocks.csv"
-DATA_PATH_TEST = "uptrendStocks3.csv"
 WINDOW_SIZE = 30
 OUTLIER_WINDOW = 300
 AUG_TIMES = 5
@@ -42,7 +38,7 @@ FEATURE_COLUMNS = [
                   ] + [
                       f'momentum_{w}' for w in SLOPE_WINDOWS  # multi-bar momentum
                   ] + [
-                      'volatility', 'avg_volume'#, 'fund_trend', 'gap_down', 'wicks_ok', 'micro_up', 'near_res'
+                      'volatility', 'avg_volume', 'up3', 'roc3_pos'
                   ]
 
 TARGET_COLUMN = 'target'
@@ -222,12 +218,21 @@ def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, wind
     max_w = max(SLOPE_WINDOWS)
     df['volatility'] = df['close'].rolling(max_w, min_periods=1).std().fillna(0)
     df['avg_volume'] = df['volume'].rolling(max_w, min_periods=1).mean().fillna(0)
+    df['up3'] = (
+        (df['close'] > df['close'].shift(1))
+        .astype(int)
+        .rolling(window=3, min_periods=1)
+        .sum()
+        .eq(3)  # True only if sum==3
+        .astype(int)  # 1 for True, 0 for False
+    )
 
-  #  df['fund_trend'] = compute_fundamental_trend(df, window=window_size, min_change_pct=0.5, min_green_ratio=0.6)
-   # df['gap_down'] = compute_gap_down(df, tolerance_pct=0.2)
-   # df['wicks_ok'] = compute_bad_wicks_ok(df, bars_to_check=5, wick_tol=0.3)
-   # df['micro_up'] = compute_micro_up(df, bars_to_check=5, flat_tol_pct=0.1, min_pump_pct=0.5)
-   # df['near_res'] = compute_near_resistance(df, lookback=15, tol_pct=0.5)
+    df['roc3_pos'] = (
+        df['close'].pct_change(3)
+        .fillna(0)
+        .gt(0)  # True if >0
+        .astype(int)  # 1 for True, 0 for False
+    )
 
     # ————————————
     # 2) outlier smoothing
@@ -346,45 +351,61 @@ def augment_data(X, y, times: int):
 
 
 # ——————————————
-# 5) MODEL BUILDING & TRAINING
-# ——————————————
-def build_model(seq_len: int, n_features: int):
-    inp = tf.keras.Input(shape=(seq_len, n_features), name="input")
-
-    # 1D convolution to pick up local slope patterns
-    x = tf.keras.layers.Conv1D(32, kernel_size=3, activation='relu', padding='same')(inp)
-    x = tf.keras.layers.MaxPool1D(pool_size=2)(x)
-
-    x = tf.keras.layers.Conv1D(64, 3, padding='same')(x)
-    x = tf.keras.layers.BatchNormalization()(x)
-
-    # LSTM to capture longer-term dependencies
-    x = tf.keras.layers.LSTM(64, return_sequences=False)(x)
-    x = tf.keras.layers.Dropout(0.3)(x)
-
-    # A little dense head
-    x = tf.keras.layers.Dense(16, activation='relu')(x)
-    out = tf.keras.layers.Dense(1, activation='sigmoid', name="output")(x)
-
-    return tf.keras.Model(inp, out)
-
-
-# ——————————————
-# 5) MODEL WITH DILATED CNN + BiLSTM + BN + Focal Loss
+# 5) MODEL
 # ——————————————
 def build_dilated_CNN(seq_len: int, n_feats: int):
     inp = tf.keras.Input((seq_len, n_feats), name='input')
     x = inp
-    for rate in [1, 2]:
-        x = tf.keras.layers.Conv1D(32, 3, padding='same', dilation_rate=rate)(x)
-        x = tf.keras.layers.BatchNormalization()(x)
-        x = tf.keras.layers.Activation('relu')(x)
+
+    # --- Basic Conv1D block (simple, fast) ---
+    x = tf.keras.layers.Conv1D(
+        16, 3,  # reduce filters from 32 to 16 for simplicity
+        padding='same',
+        # Uncomment below to increase regularization
+        kernel_regularizer=tf.keras.regularizers.l2(1e-4)
+    )(x)
+    # Uncomment to add more Conv1D layers (with/without dilation)
+    # x = tf.keras.layers.Conv1D(16, 3, padding='same', dilation_rate=2)(x)
+    # x = tf.keras.layers.Conv1D(16, 3, padding='same', dilation_rate=3)(x)
+
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
+
+    # Uncomment to stack more Conv/BN/Activation blocks
+    # x = tf.keras.layers.Conv1D(16, 3, padding='same')(x)
+    # x = tf.keras.layers.BatchNormalization()(x)
+    # x = tf.keras.layers.Activation('relu')(x)
+
     x = tf.keras.layers.MaxPool1D(2)(x)
-    x = tf.keras.layers.Bidirectional(LSTM(64, return_sequences=False))(x)
-    x = tf.keras.layers.Dropout(0.3)(x)
-    x = tf.keras.layers.Dense(16, activation='relu')(x)
+
+    # --- Core Recurrent Layer ---
+    x = tf.keras.layers.Bidirectional(
+        LSTM(32,  # reduce LSTM size from 64 to 32
+             return_sequences=False,
+             kernel_regularizer=tf.keras.regularizers.l2(1e-4)
+             )
+    )(x)
+    # Uncomment to make the LSTM bigger or deeper
+    # x = tf.keras.layers.Bidirectional(LSTM(64, return_sequences=False))(x)
+    # x = tf.keras.layers.LSTM(32, return_sequences=False)(x)
+
+    # Regularization
+    x = tf.keras.layers.Dropout(0.4)(x)  # Lower dropout for smaller model
+    # Uncomment for heavier dropout
+    # x = tf.keras.layers.Dropout(0.6)(x)
+
+    # --- Dense block ---
+    x = tf.keras.layers.Dense(
+        8,
+        activation='relu',
+        # kernel_regularizer=tf.keras.regularizers.l2(1e-4)
+    )(x)
+    # Uncomment for another dense layer
+    # x = tf.keras.layers.Dense(8, activation='relu')(x)
+
     out = tf.keras.layers.Dense(1, activation='sigmoid', name='out')(x)
     model = tf.keras.Model(inp, out)
+
     model.compile(
         optimizer='adam',
         loss=binary_focal_loss(alpha=0.25, gamma=2.0),
@@ -393,46 +414,30 @@ def build_dilated_CNN(seq_len: int, n_feats: int):
     return model
 
 
-def build_attention_head_model(seq_len: int, n_feats: int,
-                              d_model=64, num_heads=4, ff_dim=128,
-                              conv_filters=32, lstm_units=64):
-    inp = Input(shape=(seq_len, n_feats), name="input")
+def build_dilated_CNN1(seq_len: int, n_feats: int):
+    inp = tf.keras.Input((seq_len, n_feats), name='input')
+    x = inp
 
-    # 1) Local feature extractor
-    x = tf.keras.layers.Conv1D(conv_filters, 3, padding="same", activation="relu")(inp)
-    x = tf.keras.layers.Conv1D(conv_filters, 3, padding="same", activation="relu")(x)
-    x = tf.keras.layers.MaxPool1D(2)(x)  # now length = seq_len/2
+    x = tf.keras.layers.Conv1D(32, 3, padding='same', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+    x = tf.keras.layers.BatchNormalization()(x)
+    x = tf.keras.layers.Activation('relu')(x)
 
-    # 2) Project to d_model
-    x = tf.keras.layers.Dense(d_model)(x)
+    x = tf.keras.layers.MaxPool1D(2)(x)
+    x = tf.keras.layers.Bidirectional(
+        LSTM(64, return_sequences=False, kernel_regularizer=tf.keras.regularizers.l2(1e-4)))(x)
 
-    # 3) Transformer encoder block
-    # 3a) Self‐attention
-    attn_output = tf.keras.layers.MultiHeadAttention(
-        num_heads=num_heads,
-        key_dim=d_model // num_heads,
-        dropout=0.1
-    )(x, x)
-    attn_output = tf.keras.layers.Dropout(0.1)(attn_output)
-    x = tf.keras.layers.Add()([x, attn_output])
-    x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x)
+    x = tf.keras.layers.Dropout(0.6)(x)
+    x = tf.keras.layers.Dense(16, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
 
-    # 3b) Feed-forward
-    ff = tf.keras.layers.Dense(ff_dim, activation="relu")(x)
-    ff = tf.keras.layers.Dense(d_model)(ff)
-    ff = tf.keras.layers.Dropout(0.1)(ff)
-    x = tf.keras.layers.Add()([x, ff])
-    x = tf.keras.layers.LayerNormalization(epsilon=1e-6)(x)
+    out = tf.keras.layers.Dense(1, activation='sigmoid', name='out')(x)
+    model = tf.keras.Model(inp, out)
 
-    # 4) Bidirectional LSTM to capture order
-    x = tf.keras.layers.Bidirectional(tf.keras.layers.LSTM(lstm_units, return_sequences=False))(x)
-    x = tf.keras.layers.Dropout(0.3)(x)
-
-    # 5) Head
-    x = tf.keras.layers.Dense(16, activation="relu")(x)
-    out = tf.keras.layers.Dense(1, activation="sigmoid", name="output")(x)
-
-    return Model(inputs=inp, outputs=out)
+    model.compile(
+        optimizer='adam',
+        loss=binary_focal_loss(alpha=0.25, gamma=2.0),
+        metrics=['accuracy', Precision(), Recall(), AUC()]
+    )
+    return model
 
 
 def binary_focal_loss(alpha=0.25, gamma=2.0):
@@ -467,14 +472,7 @@ class F1Metrics(tf.keras.callbacks.Callback):
 
 
 def train_model(model: tf.keras.Model, X_train, y_train, X_val, y_val, epochs: int, batch_size: int):
-    model.compile(optimizer='adam',
-                  loss='binary_crossentropy',
-                  metrics=['accuracy',
-                           Precision(name='precision'),
-                           Recall(name='recall'),
-                           AUC(name='auc')])
-
-    reduce_lr = ReduceLROnPlateau(monitor='val_loss', factor=0.5, patience=3, min_lr=1e-6)
+    reduce_lr = ReduceLROnPlateau(monitor='val_f1', mode='max', factor=0.5, patience=3, min_lr=1e-6)
 
     f1_callback = F1Metrics(X_val, y_val)
 
@@ -484,14 +482,16 @@ def train_model(model: tf.keras.Model, X_train, y_train, X_val, y_val, epochs: i
         epochs=epochs,
         batch_size=batch_size,
         callbacks=[
+            f1_callback,
+            reduce_lr,
             EarlyStopping(
-                monitor='val_loss',
+                monitor='val_f1',
+                mode='max',
                 patience=5,
-                restore_best_weights=True,
+                restore_best_weights=False,
                 verbose=1
             ),
-            reduce_lr,
-            f1_callback],
+        ],
         verbose=1
     )
 
@@ -524,30 +524,17 @@ def export_to_onnx(model, onnx_filename: str):
     print(f"ONNX model saved to {onnx_filename}")
 
 
-def plot_confusion_matrix(model, X, y_true, threshold=0.8, labels=('0', '1')):
+def plot_confusion_matrix(model, X, y_true, threshold=0.5):
     # 1) Get predicted probabilities and hard labels
     cls_probs = model.predict(X, verbose=0).reshape(-1)
     y_pred = (cls_probs >= threshold).astype(int)
 
     # 2) Text confusion matrix + classification report
     cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-    cr = classification_report(y_true, y_pred, digits=4)
     print("\nConfusion Matrix (rows=true, cols=predicted):")
     print("           pred=0    pred=1")
     print(f"true=0   {cm[0, 0]:8d}   {cm[0, 1]:8d}")
     print(f"true=1   {cm[1, 0]:8d}   {cm[1, 1]:8d}")
-
-    print("\nClassification Report:\n")
-    print(cr)
-
-    # 3) Graphic confusion matrix
-    disp = ConfusionMatrixDisplay(confusion_matrix=cm, display_labels=labels)
-    fig, ax = plt.subplots(figsize=(4, 4))
-    disp.plot(ax=ax, cmap=plt.cm.Blues, colorbar=False)
-    ax.set_title(f'Confusion Matrix (thr={threshold})')
-    plt.show()
-
-    return cm, cr
 
 
 # ——————————————
@@ -567,7 +554,6 @@ if __name__ == "__main__":
     cnt_val = Counter(val_df[TARGET_COLUMN])
     times_val = int(np.ceil(cnt_val[0] / cnt_val[1])) - 1
 
-    # 2) prepare & augment *before* scaling
     X_train, y_train, scaler = prepare_sequences(
         train_df,
         FEATURE_COLUMNS,
@@ -584,20 +570,7 @@ if __name__ == "__main__":
         TARGET_COLUMN,
         WINDOW_SIZE,
         OUTLIER_WINDOW,
-        aug_times=0,
-        preprocessor=scaler
-    )
-
-    df_test = load_data(DATA_PATH_TEST)
-    train_test_df, val_test_df = split_data(df_test, SPLIT_RATIO)
-
-    X_test, y_test, _ = prepare_sequences(
-        df_test,
-        FEATURE_COLUMNS,
-        TARGET_COLUMN,
-        WINDOW_SIZE,
-        OUTLIER_WINDOW,
-        aug_times=0,
+        aug_times=times_val,
         preprocessor=scaler
     )
 
@@ -628,5 +601,9 @@ if __name__ == "__main__":
     print("Training complete!")
 
     export_to_onnx(model, ONNX_FILENAME)
+    probs = model.predict(X_val).ravel()
+    prec, rec, th = precision_recall_curve(y_val, probs)
 
-    plot_confusion_matrix(model, X_test, y_test, threshold=0.8)
+    best = th[np.argmax(2 * prec * rec / (prec + rec))]  # max F1
+    print(best)
+    plot_confusion_matrix(model, X_val, y_val, threshold=best)

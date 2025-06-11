@@ -27,81 +27,159 @@ import static org.crecker.pLTester.dumpNotifications;
  * by displaying a candlestick chart for each notification’s historical and future stock windows.
  */
 public class NotificationLabelingUI extends JFrame {
+
     /**
-     * The ordered list of notifications to present to the user.
+     * Ordered list of notifications to be labeled by the user.
      */
     private final List<Notification> notifications;
+
     /**
-     * Index of the currently displayed notification (0-based).
+     * Index of the current notification being displayed.
      */
     private int currentIndex = 0;
 
     // UI components
     /**
-     * Displays “Notification i of N” at the top.
+     * Label showing the progress counter (e.g., "1 / 100").
      */
     private final JLabel counterLabel = new JLabel();
+
     /**
-     * Holds the JFreeChart chart showing price data.
+     * Panel that displays the price or data chart for the current notification.
      */
-    private final transient ChartPanel chartPanel;
+    private final ChartPanel chartPanel;
+
     /**
-     * Button for marking the current notification as “Good” (target = 1).
+     * Button to mark a notification as "Good".
      */
     private final JButton goodButton;
+
     /**
-     * Button for marking the current notification as “Bad” (target = 0).
+     * Button to skip labeling the current notification.
+     */
+    private final JButton skipButton;
+
+    /**
+     * Button to mark a notification as "Bad".
      */
     private final JButton badButton;
 
     /**
-     * Constructor.
+     * Constructor: Initializes the UI with the given list of notifications.
+     * Sets up the window, chart area, and vertically stacked action buttons.
      *
-     * @param notifications The ordered list of {@link Notification} objects to label.
+     * @param notifications Ordered list of {@link Notification} objects to label.
      */
     public NotificationLabelingUI(List<Notification> notifications) {
-        super("Notification Labeling Suite"); // Set window title
-        this.notifications = notifications;   // Store reference to list
+        super("Notification Labeling Suite");                 // Set window title
+        this.notifications = notifications;                      // Store provided notifications
 
-        // Basic JFrame setup:
-        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);         // Exit on close
-        setLayout(new BorderLayout());                         // Use BorderLayout for arrangement
-        setPreferredSize(new Dimension(1000, 700));            // Suggest window size
+        // Apply system look-and-feel for native appearance
+        try {
+            UIManager.setLookAndFeel(
+                    UIManager.getSystemLookAndFeelClassName()
+            );
+            SwingUtilities.updateComponentTreeUI(this);
+        } catch (Exception ignored) {
+            // If look-and-feel setup fails, continue with default
+        }
 
-        // 1) Top: counter “Notification i of N”
-        counterLabel.setHorizontalAlignment(JLabel.CENTER);     // Center-align the text
-        add(counterLabel, BorderLayout.NORTH);                  // Add to top region
+        // Configure main frame behavior and layout
+        setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);         // Exit application on close
+        setLayout(new BorderLayout(8, 8));                      // Layout with 8px gaps
+        setPreferredSize(new Dimension(1000, 700));             // Initial window size
 
-        // 2) Center: placeholder for chartPanel; initialize with null chart
-        chartPanel = new ChartPanel(null);                      // Create chart panel (no chart yet)
-        add(chartPanel, BorderLayout.CENTER);                   // Add to center region
+        // --- Top region: progress counter ---
+        counterLabel.setFont(
+                counterLabel.getFont().deriveFont(Font.BOLD, 16f)
+        );                                                       // Bold, larger text
+        counterLabel.setBorder(
+                BorderFactory.createEmptyBorder(10, 0, 10, 0)
+        );                                                       // Padding around label
+        counterLabel.setHorizontalAlignment(JLabel.CENTER);      // Center text
+        add(counterLabel, BorderLayout.NORTH);
 
-        // 3) South: button panel with “Good” (green) and “Bad” (red)
-        JPanel buttonPanel = new JPanel();                      // Container for buttons
-        goodButton = new JButton("Good");                       // Create “Good” button
-        goodButton.setBackground(new Color(0x00AA00));          // Dark green background
-        goodButton.setForeground(Color.WHITE);                  // White text
-        goodButton.setOpaque(true);                             // Make background visible
-        goodButton.setBorderPainted(false);                     // Remove default border
+        // --- Center region: chart container ---
+        chartPanel = new ChartPanel(null);                       // Placeholder chart
+        JPanel chartContainer = new JPanel(new BorderLayout());
+        chartContainer.setBorder(
+                BorderFactory.createTitledBorder("Price Chart")
+        );                                                       // Title around chart area
+        chartContainer.add(chartPanel, BorderLayout.CENTER);
+        add(chartContainer, BorderLayout.CENTER);
 
-        badButton = new JButton("Bad");                         // Create “Bad” button
-        badButton.setBackground(new Color(0xCC0000));           // Dark red background
-        badButton.setForeground(Color.WHITE);                    // White text
-        badButton.setOpaque(true);                              // Make background visible
-        badButton.setBorderPainted(false);                      // Remove default border
+        // --- Side region: vertical button stack ---
+        JPanel buttonPanel = new JPanel();                       // Panel to hold buttons vertically
+        buttonPanel.setLayout(
+                new BoxLayout(buttonPanel, BoxLayout.Y_AXIS)
+        );                                                       // Vertical stacking
+        buttonPanel.setBorder(
+                BorderFactory.createEmptyBorder(20, 20, 20, 20)
+        );                                                       // Padding around buttons
 
-        buttonPanel.add(goodButton);                             // Add “Good” to panel
-        buttonPanel.add(badButton);                              // Add “Bad” to panel
-        add(buttonPanel, BorderLayout.SOUTH);                    // Add panel to bottom region
+        // Initialize action buttons with oversized dimensions
+        goodButton = new JButton("Good");                       // Good label
+        styleButton(goodButton, new Color(0x00AA00));            // Dark green background
+        goodButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
+        goodButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
 
-        // Wire up button actions:
-        goodButton.addActionListener(e -> labelCurrentNotification(1)); // Label as Good
-        badButton.addActionListener(e -> labelCurrentNotification(0));  // Label as Bad
+        skipButton = new JButton("Skip");                       // Skip label
+        styleButton(skipButton, new Color(0x888888));            // Gray background
+        skipButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
+        skipButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
 
-        pack();                          // Pack components to preferred sizes
-        setLocationRelativeTo(null);     // Center the window on screen
+        badButton = new JButton("Bad");                         // Bad label
+        styleButton(badButton, new Color(0xCC0000));             // Dark red background
+        badButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
+        badButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
 
-        // Render the first chart & counter immediately
+        // Add buttons with spacing between them
+        buttonPanel.add(goodButton);
+        buttonPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        buttonPanel.add(skipButton);
+        buttonPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        buttonPanel.add(badButton);
+
+        // Add the button panel to the east side for easy reach
+        add(buttonPanel, BorderLayout.EAST);
+
+        // --- Wire up button actions to label or skip ---
+        goodButton.addActionListener(
+                e -> labelCurrentNotification(1)
+        );                                                        // 1 = Good
+        badButton.addActionListener(
+                e -> labelCurrentNotification(0)
+        );                                                        // 0 = Bad
+        skipButton.addActionListener(
+                e -> skipCurrentNotification()
+        );                                                        // Skip
+
+        // Finalize frame layout and show first notification
+        pack();                                                   // Arrange components
+        setLocationRelativeTo(null);                              // Center window on screen
+        updateUIForCurrent();                                     // Display the first notification
+    }
+
+    /**
+     * Applies consistent styling to toolbar buttons.
+     * Sets font, background, foreground, and border properties for a uniform look.
+     *
+     * @param button The {@link JButton} to style.
+     * @param bg     Background {@link Color} for the button.
+     */
+    private void styleButton(JButton button, Color bg) {
+        button.setFont(new Font("SansSerif", Font.BOLD, 18));  // Larger, bold text
+        button.setBackground(bg);                                // Custom background color
+        button.setForeground(Color.WHITE);                       // White text for contrast
+        button.setOpaque(true);                                  // Paint background
+        button.setBorderPainted(false);                          // Remove default border
+    }
+
+    /**
+     * Advances past the current notification without labeling it.
+     */
+    private void skipCurrentNotification() {
+        currentIndex++;
         updateUIForCurrent();
     }
 
@@ -118,6 +196,7 @@ public class NotificationLabelingUI extends JFrame {
             counterLabel.setText("All notifications labeled!"); // Show final text
             chartPanel.setChart(null);                           // Clear any existing chart
             goodButton.setEnabled(false);                        // Disable Good button
+            skipButton.setEnabled(false);
             badButton.setEnabled(false);                         // Disable Bad button
             return;                                               // Done
         }
@@ -266,8 +345,6 @@ public class NotificationLabelingUI extends JFrame {
         domainAxis.setAutoRange(true);                          // Auto-scale date range
         domainAxis.setLowerMargin(0.01);                        // Small left margin so bars don’t butt against edge
         domainAxis.setUpperMargin(0.01);                        // Small right margin
-        // Optionally set a custom date format, e.g.:
-        // domainAxis.setDateFormatOverride(new SimpleDateFormat("HH:mm"));
 
         // 6) Adjust candlestick renderer properties
         CandlestickRenderer renderer = (CandlestickRenderer) plot.getRenderer();

@@ -123,13 +123,9 @@ public class pLTester {
     private final static int cut = 5000;
 
     /**
-     * Toggle to enable or disable dumping of all generated notifications to disk.
-     * When set to true, the system will call {@link #dumpNotifications(List)} with
-     * the full notification list (notificationsForPLAnalysis). This is useful for
-     * persisting notification data for offline ML training or auditing.
+     * Toggle to enable or disable dumping of labeled generated notifications to disk.
      */
     static boolean dump = false;
-    static boolean dumpAll = false;
 
     /**
      * Application entry point.
@@ -454,16 +450,6 @@ public class pLTester {
             SwingUtilities.invokeLater(() ->
                     new NotificationLabelingUI(notificationsForPLAnalysis).setVisible(true)
             );
-
-            if (dumpAll) {
-                try {
-                    // dump all for validation
-                    dumpNotifications(notificationsForPLAnalysis);
-                } catch (IOException e) {
-                    // If dumping fails, escalate as a runtime exception to halt execution and expose the error.
-                    throw new RuntimeException("Failed to dump notifications for PLAnalysis", e);
-                }
-            }
         }
 
         // === MAIN SIMULATION LOOP ===
@@ -486,7 +472,7 @@ public class pLTester {
             // --- TERMINAL OPPORTUNITY DISPLAY ---
             System.out.println(WHITE_BOLD + "\n=== NEW TRADE OPPORTUNITY ===" + RESET);
             System.out.printf(YELLOW + "Notification Time: %s%n" + RESET, notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            notification.showNotification(); // Print event details
+            //notification.showNotification(); // Print event details
 
             // --- FIND TRADE ENTRY INDEX ---
             Integer baseIndex = getIndexForTime(symbol, notifyTime); // Get timeline index for event

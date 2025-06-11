@@ -14,6 +14,8 @@ from tensorflow.keras.layers import Input, Bidirectional, LSTM, Dense, Dropout, 
 from tensorflow.keras.losses import MeanSquaredError, BinaryCrossentropy
 from tensorflow.keras.optimizers import Adam
 
+# Pip command: pip install numpy tensorflow tf2onnx scikit-learn keras
+
 # ======================================
 #           GLOBAL CONSTANTS
 # ======================================
@@ -490,4 +492,8 @@ if __name__ == "__main__":
     •	Your model is stable, not overfit, and achieves decent, but not stellar, predictive power (F1 ~0.73, ROC-AUC ~0.7).
 	•	You’re probably limited more by input features and dataset ambiguity than by architecture or tuning.
 	•	To improve: add/engineer features, tune augmentations, possibly try a slightly more expressive model if your dataset can support it.
+	
+	-> create better larger dataSet
+	-> add additional features to the model
+	-> use less ambigious train and val Samples
 	'''
