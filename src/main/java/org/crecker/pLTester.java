@@ -692,6 +692,9 @@ public class pLTester {
         // For every loaded timeline...
         calculateStockPercentageChange(false);
 
+        // Precompute for uptrend ML
+        precomputeFeatureRanges(false);
+
         // --- INDICATOR AND LABELING PIPELINE ---
         // Precompute all indicator min/max ranges for normalization (not using live data)
         precomputeIndicatorRanges(false);
