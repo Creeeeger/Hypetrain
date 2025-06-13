@@ -7,7 +7,7 @@
   </component>
   <component name="FacetManager">
     <facet type="Python" name="Python">
-      <configuration sdkName="Python 3.12 (Hypetrain)" />
+      <configuration sdkName="Python 3.12" />
     </facet>
   </component>
 </module>

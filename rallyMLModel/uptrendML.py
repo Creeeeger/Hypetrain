@@ -1,48 +1,43 @@
 import os
 from collections import Counter
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
 import tf2onnx
+from keras import Model, Input
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
-from keras.src.layers import LSTM
 from keras.src.metrics import Recall, Precision, AUC
 from numba import njit
 from sklearn.compose import ColumnTransformer
-from sklearn.metrics import confusion_matrix
-from sklearn.metrics import f1_score
-from sklearn.metrics import precision_recall_curve
+from sklearn.metrics import f1_score, precision_recall_curve
 from sklearn.preprocessing import MinMaxScaler
 from tensorflow.keras import backend as K
+from tqdm import trange
 
 # pip install command:
-# pip install numpy pandas scikit-learn numba tensorflow tf2onnx keras
+# pip install numpy pandas scikit-learn numba tensorflow tf2onnx keras shap scikit-learn tqdm
 
 # ——————————————
 # CONFIGURATION
 # ——————————————
-DATA_PATH = "uptrendStocks.csv"
+test_file = "stocksTEST.csv"
+stock_file = "uptrendStocksOBTSUNAMBG.csv"
+ONNX_FILENAME = "uptrendPredictor.onnx"
+TARGET_COLUMN = 'target'
+
 WINDOW_SIZE = 30
-OUTLIER_WINDOW = 300
-AUG_TIMES = 5
 SPLIT_RATIO = 0.8
 SEED = 42
 BATCH_SIZE = 32
 EPOCHS = 50
-SLOPE_WINDOWS = [5, 10, 20]
+STRIDE = 10
 FEATURE_COLUMNS = [
-                      'open', 'high', 'low', 'close', 'volume', 'pct_change', 'ma_10', 'std_10'
-                  ] + [
-                      f'close_slope_{w}' for w in SLOPE_WINDOWS  # multi-bar slopes
-                  ] + [
-                      f'momentum_{w}' for w in SLOPE_WINDOWS  # multi-bar momentum
-                  ] + [
-                      'volatility', 'avg_volume', 'up3', 'roc3_pos'
-                  ]
-
-TARGET_COLUMN = 'target'
-ONNX_FILENAME = "uptrendPredictor.onnx"
+    'close', 'pct_change', 'ma_10', 'std_10',
+    'up3', 'roc3_pos', 'slope_3', 'slope_5', 'slope_7',
+    'rsi_14', 'macd_line', 'macd_signal', 'atr_14', 'obv'
+]
 
 
 # ——————————————
@@ -75,12 +70,9 @@ def compute_slopes_numba(arr: np.ndarray, window: int) -> np.ndarray:
     n = arr.shape[0]
     slopes = np.zeros(n, dtype=np.float64)
     for i in range(n):
-        start = 0 if i - window + 1 < 0 else i - window + 1
+        start = max(0, i - window + 1)
         length = i - start + 1
-        Sx = 0.0
-        Sy = 0.0
-        Sxy = 0.0
-        Sxx = 0.0
+        Sx = Sy = Sxy = Sxx = 0.0
         for k in range(length):
             x = float(k)
             y = arr[start + k]
@@ -93,114 +85,11 @@ def compute_slopes_numba(arr: np.ndarray, window: int) -> np.ndarray:
     return slopes
 
 
-def compute_fundamental_trend(df: pd.DataFrame,
-                              window: int,
-                              min_change_pct: float,
-                              min_green_ratio: float) -> pd.Series:
-    close = df['close']
-    open_ = df['open']
-
-    first = close.shift(window)
-    last = close
-    pct_change = (last - first) / first * 100
-
-    is_green = (close > open_).astype(int)
-    green_ratio = is_green.rolling(window).mean()
-
-    red_size = (open_ - close).clip(lower=0)
-    max_red = red_size.rolling(window).max()
-
-    total_gain = (last - first).clip(lower=0)
-    no_big_pullback = max_red < (total_gain / 3)
-
-    return ((pct_change >= min_change_pct) &
-            (green_ratio >= min_green_ratio) &
-            no_big_pullback).astype(int)
-
-
-def compute_gap_down(df: pd.DataFrame, tolerance_pct: float) -> pd.Series:
-    prev_close = df['close'].shift(1)
-    return (df['open'] + prev_close * (tolerance_pct / 100) < prev_close).astype(int)
-
-
-def compute_bad_wicks_ok(df: pd.DataFrame,
-                         bars_to_check: int,
-                         wick_tol: float) -> pd.Series:
-    highs = df['high'].values
-    lows = df['low'].values
-    opens = df['open'].values
-    closes = df['close'].values
-    n = len(df)
-    out = np.zeros(n, dtype=int)
-
-    for i in range(n):
-        start = i - bars_to_check + 1
-        if start < 0:
-            continue
-        bad = 0
-        ok = True
-        for j in range(start, i + 1):
-            rng = highs[j] - lows[j]
-            if rng <= 0:
-                bad += 1
-                continue
-            low_w = (opens[j] - lows[j]) / rng
-            high_w = (highs[j] - closes[j]) / rng
-            if low_w > 0.7 or high_w > 0.7:
-                ok = False
-                break
-            if low_w > wick_tol or high_w > wick_tol:
-                bad += 1
-        out[i] = int(ok and (bad <= bars_to_check // 3))
-    return pd.Series(out, index=df.index)
-
-
-def compute_micro_up(df: pd.DataFrame,
-                     bars_to_check: int,
-                     flat_tol_pct: float,
-                     min_pump_pct: float) -> pd.Series:
-    close = df['close'].values
-    n = len(df)
-    out = np.zeros(n, dtype=int)
-
-    for i in range(n):
-        start = i - bars_to_check + 1
-        if start < 0:
-            continue
-        flats = 0
-        pump = False
-        for j in range(start, i):
-            prev, curr = close[j], close[j + 1]
-            if curr < prev * (1 + flat_tol_pct / 100):
-                flats += 1
-            elif curr >= prev * (1 + min_pump_pct / 100):
-                pump = True
-        out[i] = int(pump and (flats <= 1))
-    return pd.Series(out, index=df.index)
-
-
-def compute_near_resistance(df: pd.DataFrame,
-                            lookback: int,
-                            tol_pct: float = 0.5) -> pd.Series:
-    highs = df['high'].values
-    close = df['close'].values
-    n = len(df)
-    out = np.zeros(n, dtype=int)
-
-    for i in range(n):
-        if i < 1:
-            continue
-        start = max(0, i - lookback)
-        res = highs[start:i].max()
-        out[i] = int((close[i] >= res * (1 - tol_pct / 100)) and (close[i] <= res))
-    return pd.Series(out, index=df.index)
-
-
 # ——————————————
 # 3) PREPARE SEQUENCES
 # ——————————————
-def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, window_size: int, outlier_window: int,
-                      aug_times: int = 0, preprocessor=None):
+def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, window_size: int,
+                      aug_times: int = 0, preprocessor=None, oversample=False):
     df = data.copy()
 
     # ————————————
@@ -210,14 +99,6 @@ def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, wind
     df['ma_10'] = df['close'].rolling(10, min_periods=1).mean()
     df['std_10'] = df['close'].rolling(10, min_periods=1).std().fillna(0)
 
-    close_arr = df['close'].values.astype(np.float64)
-    for w in SLOPE_WINDOWS:
-        df[f'close_slope_{w}'] = compute_slopes_numba(close_arr, w)
-        df[f'momentum_{w}'] = df['close'].pct_change(w).fillna(0) * 100.0
-
-    max_w = max(SLOPE_WINDOWS)
-    df['volatility'] = df['close'].rolling(max_w, min_periods=1).std().fillna(0)
-    df['avg_volume'] = df['volume'].rolling(max_w, min_periods=1).mean().fillna(0)
     df['up3'] = (
         (df['close'] > df['close'].shift(1))
         .astype(int)
@@ -234,18 +115,41 @@ def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, wind
         .astype(int)  # 1 for True, 0 for False
     )
 
-    # ————————————
-    # 2) outlier smoothing
-    # ————————————
-    numeric = features
-    for feat in numeric:
-        rm = df[feat].rolling(window=outlier_window, min_periods=1, closed='left').median()
-        q1 = df[feat].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.05)
-        q3 = df[feat].rolling(window=outlier_window, min_periods=1, closed='left').quantile(0.95)
-        iqr = q3 - q1
-        lb, ub = q1 - 1.5 * iqr, q3 + 1.5 * iqr
-        mask = (df[feat] < lb) | (df[feat] > ub)
-        df.loc[mask, feat] = rm[mask]
+    # slopes
+    close_arr = df['close'].values
+    df['slope_3'] = compute_slopes_numba(close_arr, 3)
+    df['slope_5'] = compute_slopes_numba(close_arr, 5)
+    df['slope_7'] = compute_slopes_numba(close_arr, 7)
+
+    # RSI(14)
+    delta = df['close'].diff()
+    up = delta.clip(lower=0)
+    down = -delta.clip(upper=0)
+    roll_up = up.rolling(14, min_periods=1).mean()
+    roll_down = down.rolling(14, min_periods=1).mean()
+    rs = roll_up / (roll_down + 1e-6)
+    df['rsi_14'] = 100 - (100 / (1 + rs))
+
+    # MACD
+    ema_fast = df['close'].ewm(span=12, adjust=False).mean()
+    ema_slow = df['close'].ewm(span=26, adjust=False).mean()
+    macd_line = ema_fast - ema_slow
+    macd_signal = macd_line.ewm(span=9, adjust=False).mean()
+    df['macd_line'] = macd_line
+    df['macd_signal'] = macd_signal
+
+    # ATR
+    high_low = df['high'] - df['low']
+    high_close = (df['high'] - df['close'].shift()).abs()
+    low_close = (df['low'] - df['close'].shift()).abs()
+    tr = pd.concat([high_low, high_close, low_close], axis=1).max(axis=1)
+    df['atr_14'] = tr.rolling(14, min_periods=1).mean()
+
+    # OBV (needs volume)
+    if 'volume' in df.columns:
+        df['obv'] = (np.sign(df['close'].diff()) * df['volume']).fillna(0).cumsum()
+    else:
+        df['obv'] = 0.0
 
     # ————————————
     # 3) build raw windows (no scaling yet)
@@ -257,6 +161,9 @@ def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, wind
 
     raw_X = np.array(raw_X)  # shape = (n_windows, window_size, n_features)
     raw_y = np.array(raw_y)
+
+    if oversample:
+        raw_X, raw_y = slide_oversample(raw_X, raw_y, WINDOW_SIZE, STRIDE)
 
     # ————————————
     # 4) augment BEFORE scaling
@@ -297,39 +204,36 @@ def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, wind
     return X_scaled, raw_y, preprocessor
 
 
+def slide_oversample(X, y, window, stride):
+    X_new, y_new = [], []
+    pos = np.where(y == 1)[0]
+    for idx in pos:
+        for shift in range(1, window, stride):
+            if idx + shift < len(X):
+                X_new.append(X[idx + shift])
+                y_new.append(1)
+    if not X_new:
+        return X, y
+    return np.vstack([X, np.array(X_new)]), np.concatenate([y, np.array(y_new)])
+
+
+# balanced batch generator
+def balanced_generator(X, y, batch_size):
+    pos, neg = np.where(y == 1)[0], np.where(y == 0)[0]
+    half = batch_size // 2
+    while True:
+        p = np.random.choice(pos, half, replace=True)
+        n = np.random.choice(neg, half, replace=True)
+        idx = np.concatenate([p, n])
+        np.random.shuffle(idx)
+        yield X[idx], y[idx]
+
+
 # ——————————————
 # 4) DATA AUGMENTATION
 # ——————————————
-def scale_price_range(window, min_f=0.9, max_f=1.1):
-    f = np.random.uniform(min_f, max_f)
-    w = window.copy()
-    w[:, :4] *= f
-    return w
-
-
-def shift_price_range(window, max_s=2.0):
-    s = np.random.uniform(-max_s, max_s)
-    w = window.copy()
-    w[:, :4] += s
-    return w
-
-
-def distort_volume_and_change(window, vol_s=0.001):
-    w = window.copy()
-    w[:, 4] *= np.random.uniform(1 - vol_s, 1 + vol_s)
-    return w
-
-
-def jitter_time_series(window, sigma=0.001):
+def jitter_time_series(window, sigma=0.005):
     return window + np.random.normal(0, sigma, size=window.shape)
-
-
-def augment_window(window):
-    w = scale_price_range(window)
-    w = shift_price_range(w)
-    w = distort_volume_and_change(w)
-    w = jitter_time_series(w)
-    return w
 
 
 def augment_data(X, y, times: int):
@@ -338,7 +242,7 @@ def augment_data(X, y, times: int):
     X_aug, y_aug = [], []
     for i in minority_idx:
         for _ in range(times):
-            X_aug.append(augment_window(X[i]))
+            X_aug.append(jitter_time_series(X[i]))
             y_aug.append(1)
 
     if len(X_aug) == 0:
@@ -353,68 +257,36 @@ def augment_data(X, y, times: int):
 # ——————————————
 # 5) MODEL
 # ——————————————
-def build_dilated_CNN(seq_len: int, n_feats: int):
-    inp = tf.keras.Input((seq_len, n_feats), name='input')
-    x = inp
-
-    # --- Basic Conv1D block (simple, fast) ---
-    x = tf.keras.layers.Conv1D(
-        16, 3,  # reduce filters from 32 to 16 for simplicity
-        padding='same',
-        # Uncomment below to increase regularization
-        kernel_regularizer=tf.keras.regularizers.l2(1e-4)
-    )(x)
-    # Uncomment to add more Conv1D layers (with/without dilation)
-    # x = tf.keras.layers.Conv1D(16, 3, padding='same', dilation_rate=2)(x)
-    # x = tf.keras.layers.Conv1D(16, 3, padding='same', dilation_rate=3)(x)
-
+def TCN_block(x, filters, kernel, dilation):
+    prev = x
+    x = tf.keras.layers.Conv1D(filters, kernel, padding='causal', dilation_rate=dilation)(x)
     x = tf.keras.layers.BatchNormalization()(x)
     x = tf.keras.layers.Activation('relu')(x)
+    x = tf.keras.layers.SpatialDropout1D(0.2)(x)
+    if prev.shape[-1] != filters:
+        prev = tf.keras.layers.Conv1D(filters, 1, padding='same')(prev)
+    return tf.keras.layers.Add()([prev, x])
 
-    # Uncomment to stack more Conv/BN/Activation blocks
-    # x = tf.keras.layers.Conv1D(16, 3, padding='same')(x)
-    # x = tf.keras.layers.BatchNormalization()(x)
-    # x = tf.keras.layers.Activation('relu')(x)
 
-    x = tf.keras.layers.MaxPool1D(2)(x)
-
-    # --- Core Recurrent Layer ---
-    x = tf.keras.layers.Bidirectional(
-        LSTM(32,  # reduce LSTM size from 64 to 32
-             return_sequences=False,
-             kernel_regularizer=tf.keras.regularizers.l2(1e-4)
-             )
-    )(x)
-    # Uncomment to make the LSTM bigger or deeper
-    # x = tf.keras.layers.Bidirectional(LSTM(64, return_sequences=False))(x)
-    # x = tf.keras.layers.LSTM(32, return_sequences=False)(x)
-
-    # Regularization
-    x = tf.keras.layers.Dropout(0.4)(x)  # Lower dropout for smaller model
-    # Uncomment for heavier dropout
-    # x = tf.keras.layers.Dropout(0.6)(x)
-
-    # --- Dense block ---
-    x = tf.keras.layers.Dense(
-        8,
-        activation='relu',
-        # kernel_regularizer=tf.keras.regularizers.l2(1e-4)
-    )(x)
-    # Uncomment for another dense layer
-    # x = tf.keras.layers.Dense(8, activation='relu')(x)
-
-    out = tf.keras.layers.Dense(1, activation='sigmoid', name='out')(x)
-    model = tf.keras.Model(inp, out)
-
+def build_tcn_model(window: int, n_feats: int):
+    inp = Input((window, n_feats))
+    x = inp
+    for d in [1, 2, 4, 8]:
+        x = TCN_block(x, 64, 3, d)
+    x = tf.keras.layers.GlobalAveragePooling1D()(x)
+    x = tf.keras.layers.Dense(32, activation='relu')(x)
+    x = tf.keras.layers.Dropout(0.3)(x)
+    out = tf.keras.layers.Dense(1, activation='sigmoid')(x)
+    model = Model(inp, out)
     model.compile(
         optimizer='adam',
-        loss=binary_focal_loss(alpha=0.25, gamma=2.0),
+        loss=binary_focal_loss(),
         metrics=['accuracy', Precision(), Recall(), AUC()]
     )
     return model
 
 
-def build_dilated_CNN1(seq_len: int, n_feats: int):
+def build_dilated_CNN(seq_len: int, n_feats: int):
     inp = tf.keras.Input((seq_len, n_feats), name='input')
     x = inp
 
@@ -423,10 +295,10 @@ def build_dilated_CNN1(seq_len: int, n_feats: int):
     x = tf.keras.layers.Activation('relu')(x)
 
     x = tf.keras.layers.MaxPool1D(2)(x)
-    x = tf.keras.layers.Bidirectional(
-        LSTM(64, return_sequences=False, kernel_regularizer=tf.keras.regularizers.l2(1e-4)))(x)
 
-    x = tf.keras.layers.Dropout(0.6)(x)
+    x = tf.keras.layers.LSTM(64, return_sequences=False, kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
+
+    x = tf.keras.layers.Dropout(0.5)(x)
     x = tf.keras.layers.Dense(16, activation='relu', kernel_regularizer=tf.keras.regularizers.l2(1e-4))(x)
 
     out = tf.keras.layers.Dense(1, activation='sigmoid', name='out')(x)
@@ -434,13 +306,13 @@ def build_dilated_CNN1(seq_len: int, n_feats: int):
 
     model.compile(
         optimizer='adam',
-        loss=binary_focal_loss(alpha=0.25, gamma=2.0),
+        loss=binary_focal_loss(),
         metrics=['accuracy', Precision(), Recall(), AUC()]
     )
     return model
 
 
-def binary_focal_loss(alpha=0.25, gamma=2.0):
+def binary_focal_loss(alpha=0.75, gamma=2.0):
     def loss(y_true, y_pred):
         # clip to prevent NaNs
         y_pred = K.clip(y_pred, K.epsilon(), 1.0 - K.epsilon())
@@ -462,13 +334,33 @@ class F1Metrics(tf.keras.callbacks.Callback):
         self.y_val = y_val
 
     def on_epoch_end(self, epoch, logs=None):
-        # Get predicted probabilities
-        y_pred_prob = self.model.predict(self.X_val, verbose=0).reshape(-1)
-        y_pred = (y_pred_prob >= 0.5).astype(int)
-        f1 = f1_score(self.y_val, y_pred)
-        print(f"\nval_f1: {f1:.4f}")
         logs = logs or {}
-        logs["val_f1"] = f1
+
+        # 1) get predicted probabilities
+        y_pred_prob = self.model.predict(self.X_val, verbose=0).ravel()
+
+        # drop any NaN or infinite preds
+        mask = np.isfinite(y_pred_prob)
+        if not mask.all():
+            n_bad = np.sum(~mask)
+            print(f"  ⚠️  dropping {n_bad} NaN/inf preds from threshold sweep")
+            y_pred_prob = y_pred_prob[mask]
+            y_true = self.y_val[mask]
+        else:
+            y_true = self.y_val
+
+        # now safe to compute pr curve
+        p, r, thr = precision_recall_curve(y_true, y_pred_prob)
+
+        f1s = 2 * p * r / (p + r + 1e-8)
+        best_ix = np.argmax(f1s)
+        best_thr = thr[best_ix]
+        best_f1 = f1s[best_ix]
+
+        # 4) print & log
+        print(f"\n → Best thresh: {best_thr:.3f}  |  Best F1: {best_f1:.4f}")
+        logs["val_f1"] = best_f1
+        logs["val_thr"] = best_thr
 
 
 def train_model(model: tf.keras.Model, X_train, y_train, X_val, y_val, epochs: int, batch_size: int):
@@ -476,20 +368,22 @@ def train_model(model: tf.keras.Model, X_train, y_train, X_val, y_val, epochs: i
 
     f1_callback = F1Metrics(X_val, y_val)
 
+    steps = len(y_train) // BATCH_SIZE
+
     return model.fit(
-        X_train, y_train,
+        balanced_generator(X_train, y_train, BATCH_SIZE),
         validation_data=(X_val, y_val),
         epochs=epochs,
-        batch_size=batch_size,
+        # batch_size=batch_size,
+        steps_per_epoch=steps,
         callbacks=[
             f1_callback,
             reduce_lr,
             EarlyStopping(
                 monitor='val_f1',
                 mode='max',
-                patience=5,
-                restore_best_weights=False,
-                verbose=1
+                patience=10,
+                restore_best_weights=True,
             ),
         ],
         verbose=1
@@ -524,17 +418,74 @@ def export_to_onnx(model, onnx_filename: str):
     print(f"ONNX model saved to {onnx_filename}")
 
 
-def plot_confusion_matrix(model, X, y_true, threshold=0.5):
-    # 1) Get predicted probabilities and hard labels
-    cls_probs = model.predict(X, verbose=0).reshape(-1)
-    y_pred = (cls_probs >= threshold).astype(int)
+# ────────────────────────────────────────────────────────────────────────────────
+#  2) PERMUTATION IMPORTANCE (F1 DROP)
+# ────────────────────────────────────────────────────────────────────────────────
+def permutation_importance_f1(model, X_val, y_val, feature_names,
+                              threshold=0.5, n_repeats=5, random_state=42):
+    rng = np.random.default_rng(random_state)
 
-    # 2) Text confusion matrix + classification report
-    cm = confusion_matrix(y_true, y_pred, labels=[0, 1])
-    print("\nConfusion Matrix (rows=true, cols=predicted):")
-    print("           pred=0    pred=1")
-    print(f"true=0   {cm[0, 0]:8d}   {cm[0, 1]:8d}")
-    print(f"true=1   {cm[1, 0]:8d}   {cm[1, 1]:8d}")
+    # Baseline F1
+    base_probs = model.predict(X_val, verbose=0).ravel()
+    base_pred = (base_probs >= threshold).astype(int)
+    base_f1 = f1_score(y_val, base_pred)
+
+    importances = np.zeros(len(feature_names))
+
+    for f_idx in trange(len(feature_names), desc="Permutation"):
+        delta = 0.0
+        for _ in range(n_repeats):
+            X_perm = X_val.copy()
+            # Permute the feature across the *batch* (keeps temporal structure inside each window)
+            X_perm[:, :, f_idx] = rng.permutation(X_perm[:, :, f_idx])
+            probs = model.predict(X_perm, verbose=0).ravel()
+            pred = (probs >= threshold).astype(int)
+            perm_f1 = f1_score(y_val, pred)
+            delta += base_f1 - perm_f1
+        importances[f_idx] = delta / n_repeats
+
+    return sorted(zip(feature_names, importances), key=lambda kv: kv[1], reverse=True)
+
+
+def check_permutations(model, X_val, y_val, feature_names):
+    print("\n=== Permutation F1 drop ===")
+    perm_rank = permutation_importance_f1(model, X_val, y_val, FEATURE_COLUMNS, threshold=0.5, n_repeats=5)
+    for feat, score in perm_rank[:20]:
+        print(f"{feat:25s} {score:10.5f}")
+    # Quick leak-check
+    sus_feats = [f for f, _ in perm_rank[:10]]
+    print("\nTop-10 permutation losers (suspect if they include 'shift', 'jitter', "
+          "'volume'-only props):")
+    print(sus_feats)
+
+
+def plot_prediction(model):
+    probs = model.predict(X_full, verbose=0).ravel()
+
+    # 4) Align each probability with the last bar of its window (use df_test!)
+    time_axis = df_test.index[WINDOW_SIZE:]
+    # 5) Plot price vs. probability (also from df_test)
+    fig, ax1 = plt.subplots(figsize=(14, 6))
+
+    # Price line from df_test
+    ax1.plot(df_test['close'], label='Smoothed Close', color='tab:blue')
+    ax1.set_ylabel('Price', color='tab:blue')
+    ax1.tick_params(axis='y', labelcolor='tab:blue')
+
+    # Probability line
+    ax2 = ax1.twinx()
+    ax2.plot(time_axis, probs, label='Uptrend Prob.', color='tab:red', lw=2)
+    ax2.set_ylabel('Probability', color='tab:red')
+    ax2.set_ylim(0, 1)
+    ax2.tick_params(axis='y', labelcolor='tab:red')
+
+    # Combine legends
+    lines, labels = ax1.get_legend_handles_labels()
+    lines2, labels2 = ax2.get_legend_handles_labels()
+    ax1.legend(lines + lines2, labels + labels2, loc='upper left')
+    plt.title("Smoothed Close vs. Uptrend Probability")
+    plt.tight_layout()
+    plt.show()
 
 
 # ——————————————
@@ -543,52 +494,54 @@ def plot_confusion_matrix(model, X, y_true, threshold=0.5):
 if __name__ == "__main__":
     set_reproducibility(SEED)
 
-    df = load_data(DATA_PATH)
+    # 1) Load your one stock
+    df = load_data(stock_file)
 
+    # 3) Split into train/val (optional if you’re retraining)
     train_df, val_df = split_data(df, SPLIT_RATIO)
 
-    # 1) figure out how many aug rounds to equalize each split
-    cnt_train = Counter(train_df[TARGET_COLUMN])
-    times_train = int(np.ceil(cnt_train[0] / cnt_train[1])) - 1
-
-    cnt_val = Counter(val_df[TARGET_COLUMN])
-    times_val = int(np.ceil(cnt_val[0] / cnt_val[1])) - 1
-
+    # 4) Prepare sequences & get scaler on the training half
     X_train, y_train, scaler = prepare_sequences(
         train_df,
         FEATURE_COLUMNS,
         TARGET_COLUMN,
         WINDOW_SIZE,
-        OUTLIER_WINDOW,
-        aug_times=times_train,
-        preprocessor=None
+        aug_times=0,
+        preprocessor=None,
+        oversample=True
     )
 
+    print("TRAIN dist before:", Counter(y_train))
+
+    # ─── UNDER-SAMPLE NEGATIVES ───────────────────────────────────────────────────
+    # drop 70% of the zero-labels to reduce class imbalance
+    neg_idx = np.where(y_train == 0)[0]
+    drop_idx = np.random.choice(neg_idx, size=int(len(neg_idx) * 0.9), replace=False)
+    keep = np.ones(len(y_train), dtype=bool)
+    keep[drop_idx] = False
+    X_train, y_train = X_train[keep], y_train[keep]
+
+    print("TRAIN dist after:", Counter(y_train))
+
+    # 5) Prepare validation (or test) with the same scaler
     X_val, y_val, _ = prepare_sequences(
         val_df,
         FEATURE_COLUMNS,
         TARGET_COLUMN,
         WINDOW_SIZE,
-        OUTLIER_WINDOW,
-        aug_times=times_val,
-        preprocessor=scaler
+        aug_times=0,
+        preprocessor=scaler,
+        oversample=True
     )
+    print("VAL dist:", Counter(y_val))
 
-    val_counts = Counter(y_val)
-    total = len(y_val)
-    print({cls: f"{cnt} ({cnt / total:.1%})" for cls, cnt in val_counts.items()})
-
-    # 3) shuffle
-    perm = np.random.permutation(len(y_train))
-    X_train, y_train = X_train[perm], y_train[perm]
-
-    perm_val = np.random.permutation(len(y_val))
-    X_val, y_val = X_val[perm_val], y_val[perm_val]
-
+    # 6) Train your model
     with tf.device('/CPU:0'):
         model = build_dilated_CNN(WINDOW_SIZE, X_train.shape[2])
+        final_model = build_tcn_model(WINDOW_SIZE, X_train.shape[2])
 
         print(model.summary())
+        print(final_model.summary())
 
         train_model(
             model,
@@ -598,12 +551,52 @@ if __name__ == "__main__":
             BATCH_SIZE
         )
 
-    print("Training complete!")
+        train_model(
+            final_model,
+            X_train, y_train,
+            X_val, y_val,
+            EPOCHS,
+            BATCH_SIZE
+        )
 
+    print("\n=== Layer biases ===")
+    for layer in model.layers:
+        # most layers store bias as layer.bias
+        if hasattr(layer, 'bias') and layer.bias is not None:
+            b = layer.bias.numpy()
+            print(f"{layer.name:20s} bias shape {b.shape} → values:\n{b}\n")
+        else:
+            # some layers (e.g. pooling) have no bias
+            print(f"{layer.name:20s} has no bias\n")
+
+    print("\n=== Layer biases Final Model TNC ===")
+    for layer in final_model.layers:
+        # most layers store bias as layer.bias
+        if hasattr(layer, 'bias') and layer.bias is not None:
+            b = layer.bias.numpy()
+            print(f"{layer.name:20s} bias shape {b.shape} → values:\n{b}\n")
+        else:
+            # some layers (e.g. pooling) have no bias
+            print(f"{layer.name:20s} has no bias\n")
+
+    # 7) Export to ONNX
     export_to_onnx(model, ONNX_FILENAME)
-    probs = model.predict(X_val).ravel()
-    prec, rec, th = precision_recall_curve(y_val, probs)
 
-    best = th[np.argmax(2 * prec * rec / (prec + rec))]  # max F1
-    print(best)
-    plot_confusion_matrix(model, X_val, y_val, threshold=best)
+    check_permutations(model, X_val, y_val, FEATURE_COLUMNS)
+    check_permutations(final_model, X_val, y_val, FEATURE_COLUMNS)
+
+    df_test = load_data(test_file)
+
+    # 8) For plotting, rebuild sequences on the full, smoothed series
+    X_full, y_full, _ = prepare_sequences(
+        df_test,
+        FEATURE_COLUMNS,
+        TARGET_COLUMN,
+        WINDOW_SIZE,
+        aug_times=0,
+        preprocessor=scaler,
+        oversample=False
+    )
+
+    plot_prediction(model)
+    plot_prediction(final_model)
