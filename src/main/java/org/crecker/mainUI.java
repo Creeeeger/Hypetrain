@@ -49,10 +49,7 @@ import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
-import java.time.Instant;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
+import java.time.*;
 import java.time.temporal.ChronoUnit;
 import java.time.temporal.TemporalUnit;
 import java.util.*;
@@ -96,6 +93,16 @@ public class mainUI extends JFrame {
      * Mapping from company short names to TickerData (symbol, max position size). Used for search and symbol lookup.
      */
     public static final Map<String, TickerData> nameToData = new TreeMap<>();
+
+    /**
+     * Thread-safe map maintaining a history of recent notifications for each stock symbol.
+     * <p>
+     * Keys are stock symbols (e.g., "AAPL"), and values are Lists of {@link Notification}
+     * objects in chronological order. This map is used to display past markers on charts
+     * and to prune notifications older than the configured time window.
+     * </p>
+     */
+    public static Map<String, List<Notification>> notificationHistory = new ConcurrentHashMap<>();
 
     /**
      * Executor for real-time chart updates.
@@ -729,14 +736,55 @@ public class mainUI extends JFrame {
      */
     public static void addNotification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime,
                                        String symbol, double change, int config, List<StockUnit> validationWindow) {
+
+        // 1) Define the time zone for interpreting stored LocalDateTime values,
+        //    and capture the current instant in UTC for pruning logic.
+        ZoneId notificationZone = ZoneId.of("America/New_York");  // Notification timestamps are US/Eastern
+        ZoneId systemZone = ZoneId.systemDefault();        // e.g., Europe/London or wherever this JVM runs
+        Instant nowUtc = Instant.now();                  // Reference “now” in UTC
+
+        // 2) Atomically update the per-symbol notification history
+        notificationHistory.compute(symbol, (sym, list) -> {
+            // 2a) Initialize the list if this is the first notification for this symbol
+            if (list == null) {
+                list = new ArrayList<>();
+            }
+
+            // 2b) Build a new Notification object with all relevant data
+            Notification notification = new Notification(
+                    title,           // notification title text
+                    content,         // body or message content
+                    stockUnitList,   // the lookback window of StockUnit bars
+                    localDateTime,   // naive LocalDateTime in US/Eastern
+                    symbol,          // stock symbol key
+                    change,          // percentage change or other metric
+                    config,          // configuration code for styling/logic
+                    validationWindow // future window for ML validation
+            );
+
+            // 2c) Add the newly created notification to the history
+            list.add(notification);
+
+            // 2d) Prune any notifications older than 20 minutes relative to nowUtc
+            list.removeIf(n -> {
+                // Convert each notification’s LocalDateTime from US/Eastern to UTC instant
+                Instant eventUtc = n.getLocalDateTime()
+                        .atZone(notificationZone)
+                        .toInstant();
+                // Compute how many minutes have elapsed; remove if beyond 20
+                long minutesOld = Duration.between(eventUtc, nowUtc).toMinutes();
+                return minutesOld > 20;
+            });
+
+            // 2e) Return the updated list to store back into notificationHistory
+            return list;
+        });
+
         // Ensure all notification updates happen on the Swing Event Dispatch Thread for UI safety
         SwingUtilities.invokeLater(() -> {
             // Loop backwards to safely remove notifications while iterating
             for (int i = notificationListModel.size() - 1; i >= 0; i--) {
                 Notification existing = notificationListModel.getElementAt(i);
-                // Suppose the notification stores a naive LocalDateTime as US/Eastern
-                ZoneId notificationZone = ZoneId.of("America/New_York"); // or whatever was used originally
-                ZoneId systemZone = ZoneId.systemDefault(); // e.g. "Europe/London"
 
                 // Convert existing notification time to an instant (absolute time)
                 ZonedDateTime notificationTime = existing.getLocalDateTime().atZone(notificationZone);
@@ -753,10 +801,60 @@ public class mainUI extends JFrame {
                 }
             }
 
-            // Add the new notification to the model/list (appears in the hype panel)
-            notificationListModel.addElement(
-                    new Notification(title, content, stockUnitList, localDateTime, symbol, change, config, validationWindow)
+            // Create a new Notification instance and immediately decorate the corresponding chart
+            Notification notification = new Notification(
+                    title,             // The title or headline for the notification popup
+                    content,           // The detailed message or content text
+                    stockUnitList,     // Lookback window of StockUnit bars for context
+                    localDateTime,     // Timestamp of the event, as a LocalDateTime
+                    symbol,            // Stock symbol identifier
+                    change,            // Percentage change or relevant metric
+                    config,            // Configuration code (used for marker styling)
+                    validationWindow   // Future window of StockUnit bars for validation
             );
+
+            // Retrieve the XYPlot from the notification’s chart panel
+            XYPlot plot = notification
+                    .getChartPanel()
+                    .getChart()
+                    .getXYPlot();
+
+            // Iterate through the existing notification history for this symbol
+            for (Notification not : notificationHistory.get(symbol)) {
+                // Compute the marker timestamp:
+                //  - Take the event’s LocalDateTime in the system default time zone
+                //  - Convert to Instant, shift by +30 seconds, then to epoch milliseconds
+                long markerTimeMs = not.getLocalDateTime()
+                        .atZone(ZoneId.systemDefault())
+                        .toInstant()
+                        .plus(Duration.ofSeconds(30))
+                        .toEpochMilli();
+
+                // Create a vertical line (ValueMarker) at the computed timestamp
+                ValueMarker marker = new ValueMarker(markerTimeMs);
+
+                // Select a distinct color based on this notification’s config code
+                Color color = switch (not.getConfig()) {
+                    case 1 -> new Color(255, 171, 70);  // Deep Orange
+                    case 2 -> new Color(48, 149, 255);  // Sky Blue
+                    case 3 -> new Color(60, 184, 93);  // Leaf Green
+                    case 4 -> new Color(255, 58, 255);  // Royal Purple
+                    case 5 -> new Color(255, 0, 0);  // Alarm Red
+                    default -> new Color(147, 147, 159); // Gray       – fallback/unconfigured
+                };
+
+                // Apply styling: paint and stroke width
+                marker.setPaint(color);
+                marker.setStroke(new BasicStroke(1.0f)); // 1px wide solid line
+
+                // Add the marker to the domain (time) axis on the foreground layer
+                // index 0: default layer, ensuring it appears on top of chart content
+                plot.addDomainMarker(0, marker, Layer.FOREGROUND);
+            }
+
+            // Finally, add the new notification object to the list model,
+            // so it appears in the UI component (e.g., hype panel or list)
+            notificationListModel.addElement(notification);
         });
 
         // Compose the text body for the system notification
@@ -788,6 +886,7 @@ public class mainUI extends JFrame {
                 System.err.println("Failed to send macOS notification: " + e.getMessage());
             }
         }
+
         // --- Windows system tray notification ---
         else if (osName.contains("win")) {
             if (SystemTray.isSupported()) {
@@ -795,6 +894,7 @@ public class mainUI extends JFrame {
                 displayWindowsNotification(title, notificationContent);
             }
         }
+
         // --- Other OS: fallback, just print to console (e.g., Linux, unsupported platforms) ---
         else {
             System.out.println("Can't create notification.");

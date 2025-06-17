@@ -1,6 +1,7 @@
 import random
 from collections import Counter
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -8,10 +9,12 @@ import tf2onnx
 from keras.losses import BinaryCrossentropy
 from keras.metrics import Precision, Recall, AUC
 from keras.src.callbacks import EarlyStopping, ReduceLROnPlateau
+from sklearn.metrics import f1_score
 from sklearn.utils import class_weight
 from tensorflow.keras import Input, Model
 from tensorflow.keras.layers import Conv1D, MaxPool1D, LSTM, Dropout, Dense, BatchNormalization
 from tensorflow.keras.optimizers import Adam
+from tqdm import trange
 
 # ====================
 # Configuration / Parameters
@@ -21,10 +24,13 @@ FEATURES = ['close', 'ma_10', 'slope_5', 'ret_1']
 WINDOW_SIZE = 18
 SPLIT_RATIO = 0.8
 STOCK_FILE = "uptrendStocksQUBTUNAMBG.csv"
-TEST_FILE = "uptrendStocksOBTSUNAMBG.csv"
+TEST_FILE = "uptrendStocksQUBTUNAMBG.csv"
 
 # Random seed
-SEED = 300277411
+# SEED = int.from_bytes(os.urandom(4), 'big')
+# SEED = 300277411
+# SEED = 3920515201
+SEED = 3301294676
 
 # Undersampling
 NEG_SAMPLE_KEEP_RATIO = 1 - 0.94  # keep 6% of negatives
@@ -35,13 +41,13 @@ MODEL_PARAMS = {
     'conv_kernel_size': 2,
     'lstm_units': 32,
     'dropout_rate': 0.4,
-    'dense_units': 16,
+    'dense_units': 8,
     'learning_rate': 1e-3
 }
 
 # Training settings
 TRAIN_PARAMS = {
-    'epochs': 20,
+    'epochs': 50,
     'batch_size': 16,
     'es_patience': 5,
     'rlrp_factor': 0.5,
@@ -82,7 +88,20 @@ def make_sequences(df: pd.DataFrame):
     return np.array(X), np.array(y)
 
 
-def build_power_model(seq_len: int, n_feats: int):
+def fit_minmax_scaler(X_train: np.ndarray, X_val: np.ndarray, eps: float = 1e-6):
+    # Compute per‐feature min/max from TRAIN only
+    feature_mins = X_train.min(axis=(0, 1))  # shape: (n_feats,)
+    feature_maxs = X_train.max(axis=(0, 1))  # shape: (n_feats,)
+    feature_ranges = np.maximum(feature_maxs - feature_mins, eps)
+
+    # Scale both train & val
+    X_train_scaled = (X_train - feature_mins) / feature_ranges
+    X_val_scaled = (X_val - feature_mins) / feature_ranges
+
+    return X_train_scaled, X_val_scaled, feature_mins, feature_ranges
+
+
+def build_model(seq_len: int, n_feats: int):
     inp = Input((seq_len, n_feats), name='input')
     x = Conv1D(
         filters=MODEL_PARAMS['conv_filters'],
@@ -120,6 +139,39 @@ def export_to_onnx(model: Model, onnx_filename: str):
     print(f"ONNX model saved to {onnx_filename}")
 
 
+def permutation_importance_f1(model, X_val, y_val, feature_names,
+                              threshold=0.5, n_repeats=5, random_state=SEED):
+    rng = np.random.default_rng(random_state)
+
+    # Baseline F1
+    base_probs = model.predict(X_val, verbose=0).ravel()
+    base_pred = (base_probs >= threshold).astype(int)
+    base_f1 = f1_score(y_val, base_pred)
+
+    importances = np.zeros(len(feature_names))
+
+    for f_idx in trange(len(feature_names), desc="Permutation"):
+        delta = 0.0
+        for _ in range(n_repeats):
+            X_perm = X_val.copy()
+            # Permute the feature across the *batch* (keeps temporal structure inside each window)
+            X_perm[:, :, f_idx] = rng.permutation(X_perm[:, :, f_idx])
+            probs = model.predict(X_perm, verbose=0).ravel()
+            pred = (probs >= threshold).astype(int)
+            perm_f1 = f1_score(y_val, pred)
+            delta += base_f1 - perm_f1
+        importances[f_idx] = delta / n_repeats
+
+    return sorted(zip(feature_names, importances), key=lambda kv: kv[1], reverse=True)
+
+
+def check_permutations(model, X_val, y_val):
+    print("\n=== Permutation F1 drop ===")
+    perm_rank = permutation_importance_f1(model, X_val, y_val, FEATURES, threshold=0.5, n_repeats=5)
+    for feat, score in perm_rank[:20]:
+        print(f"{feat:25s} {score:10.5f}")
+
+
 if __name__ == "__main__":
     # Set seeds
     random.seed(SEED)
@@ -148,11 +200,17 @@ if __name__ == "__main__":
     print("TRAIN dist after:", Counter(y_train))
 
     # Build and initialize model
-    model = build_power_model(WINDOW_SIZE, X_train.shape[2])
+    model = build_model(WINDOW_SIZE, X_train.shape[2])
     p = np.mean(y_train)
     b0 = np.log(p / (1 - p))
     model.layers[-1].bias.assign([b0])
     print(model.summary())
+
+    X_train, X_val, min_vals, ranges = fit_minmax_scaler(X_train, X_val)
+    print(FEATURES)
+    print(ranges)
+    print(min_vals)
+    print(f"X_train shape: {X_train.shape}")
 
     # Training
     with tf.device('/CPU:0'):
@@ -173,6 +231,8 @@ if __name__ == "__main__":
             callbacks=[es, rlrp]
         )
 
+    check_permutations(model, X_val, y_val)
+
     # Print layer biases
     print("\n=== Layer biases ===")
     for layer in model.layers:
@@ -182,12 +242,15 @@ if __name__ == "__main__":
     # Evaluate on test set if provided
     if TEST_FILE:
         test_df = load_data(TEST_FILE)
+
         X_test, y_test = make_sequences(test_df)
+
+        X_test, X_test_val, min_vals, ranges = fit_minmax_scaler(X_test, X_test)
+
+        print(X_test)
+
         results = model.evaluate(X_test, y_test, batch_size=TRAIN_PARAMS['batch_size'])
         print("Test set evaluation:", dict(zip(model.metrics_names, results)))
-
-        # Plot predictions vs close
-        import matplotlib.pyplot as plt
 
         fig, ax1 = plt.subplots(figsize=(12, 5))
         time_idx = test_df.index[WINDOW_SIZE:]
@@ -201,3 +264,6 @@ if __name__ == "__main__":
 
     # Export model
     export_to_onnx(model, "tinyUptrend.onnx")
+
+# update first big model
+# engineer more features to support model

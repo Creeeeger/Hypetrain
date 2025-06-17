@@ -17,6 +17,8 @@ import org.jfree.chart.plot.ValueMarker;
 import org.jfree.chart.plot.XYPlot;
 import org.jfree.chart.renderer.xy.CandlestickRenderer;
 import org.jfree.chart.renderer.xy.XYLineAndShapeRenderer;
+import org.jfree.chart.ui.RectangleAnchor;
+import org.jfree.chart.ui.TextAnchor;
 import org.jfree.data.time.Second;
 import org.jfree.data.time.TimeSeries;
 import org.jfree.data.time.TimeSeriesCollection;
@@ -35,8 +37,7 @@ import java.awt.geom.Rectangle2D;
 import java.io.*;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.time.LocalDateTime;
-import java.time.LocalTime;
+import java.time.*;
 import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.List;
@@ -49,8 +50,7 @@ import static org.crecker.RallyPredictor.setParameters;
 import static org.crecker.dataTester.getData;
 import static org.crecker.dataTester.parseStockUnit;
 import static org.crecker.mainDataHandler.*;
-import static org.crecker.mainUI.setDarkMode;
-import static org.crecker.mainUI.volume;
+import static org.crecker.mainUI.*;
 
 /**
  * pLTester is the primary entry point and main orchestrator for
@@ -162,7 +162,7 @@ public class pLTester {
     private static void updateStocks() {
         // Specify which stocks to update in batch
         for (String stock : Arrays.asList("APLD", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
-                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "CRWV")) {
+                "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U", "CRWV", "SBET", "AMD")) {
             getData(stock); // Calls external data getter (see dataTester)
         }
     }
@@ -179,15 +179,12 @@ public class pLTester {
      *         returns null, the JSON will contain null (no fallback string).</li>
      *     <li><b>target</b>: the integer ML label (e.g., 0 or 1) assigned to this notification.</li>
      *     <li><b>lookbackWindow</b>: an array of historical StockUnit data points. Each element in this array
-     *         is an object with keys "date", "open", "high", "low", "close", "volume", "percentageChange".</li>
-     *     <li><b>validationWindow</b>: an array of subsequent StockUnit data points immediately following the
-     *         lookback window, with the same fields as lookbackWindow.</li>
+     *         is an object with keys "date", "open", "high", "low", "close", "volume".</li>
      * </ul>
      *
      * @param newNotifications the list of Notification objects to append. Each Notification must provide:
      *                         <ul>
-     *                             <li>{@link Notification#getStockUnitList()} for lookback data</li>
-     *                             <li>{@link Notification#getValidationWindow()} for validation data</li>
+     *                             <li>{@link Notification#getNormalizedList()} for lookback data</li>
      *                             <li>{@link Notification#getSymbol()} for the stock symbol (maybe null)</li>
      *                             <li>{@link Notification#getTarget()} for the integer label</li>
      *                         </ul>
@@ -284,9 +281,9 @@ public class pLTester {
             // 4d. Serialize lookbackWindow: List<StockUnit> -> List<Map<String, Object>>
             // -------------------------------------------------------------
             List<Map<String, Object>> lookbackList = new ArrayList<>();
-            for (StockUnit u : n.getStockUnitList()) {
+            for (StockUnit u : n.getNormalizedList()) {
                 // For each StockUnit, build a Map of its fields:
-                // "date" formatted as a string, "open", "high", "low", "close", "volume", "percentageChange"
+                // "date" formatted as a string, "open", "high", "low", "close", "volume"
                 Map<String, Object> barMap = new LinkedHashMap<>();
                 barMap.put("date", dtf.format(u.getLocalDateTimeDate()));
                 barMap.put("open", u.getOpen());
@@ -294,28 +291,9 @@ public class pLTester {
                 barMap.put("low", u.getLow());
                 barMap.put("close", u.getClose());
                 barMap.put("volume", u.getVolume());
-                barMap.put("percentageChange", u.getPercentageChange());
                 lookbackList.add(barMap);
             }
             notificationMap.put("lookbackWindow", lookbackList);
-
-            // -------------------------------------------------------------
-            // 4e. Serialize validationWindow: List<StockUnit> -> List<Map<String, Object>>
-            // -------------------------------------------------------------
-            List<Map<String, Object>> validationList = new ArrayList<>();
-            for (StockUnit u : n.getValidationWindow()) {
-                // Same structure as lookbackWindow for each StockUnit
-                Map<String, Object> barMap = new LinkedHashMap<>();
-                barMap.put("date", dtf.format(u.getLocalDateTimeDate()));
-                barMap.put("open", u.getOpen());
-                barMap.put("high", u.getHigh());
-                barMap.put("low", u.getLow());
-                barMap.put("close", u.getClose());
-                barMap.put("volume", u.getVolume());
-                barMap.put("percentageChange", u.getPercentageChange());
-                validationList.add(barMap);
-            }
-            notificationMap.put("validationWindow", validationList);
 
             // Add the fully built notificationMap to the cumulative list
             allNotifications.add(notificationMap);
@@ -454,6 +432,39 @@ public class pLTester {
 
         // === MAIN SIMULATION LOOP ===
         for (Notification notification : notificationsForPLAnalysis) {
+
+            // Maintain a per-symbol history of recent notifications (only keep the last 20 minutes)
+            ZoneId notificationZone = ZoneId.of("America/New_York");
+
+            // Update the history map for this symbol in one atomic operation
+            notificationHistory.compute(notification.getSymbol(), (sym, list) -> {
+                // If we've never seen this symbol before, start a fresh list
+                if (list == null) {
+                    list = new ArrayList<>();
+                }
+
+                // 1) Record the new notification
+                list.add(notification);
+
+                // 2) Determine the cutoff time: notifications older than 20 minutes before this one get removed
+                Instant cutoff = notification.getLocalDateTime()
+                        .atZone(notificationZone)  // interpret the LocalDateTime in EST
+                        .toInstant();
+
+                // 3) Prune any notifications whose timestamp is more than 20 minutes before our cutoff
+                list.removeIf(previous -> {
+                    Instant prevInstant = previous.getLocalDateTime()
+                            .atZone(notificationZone)
+                            .toInstant();
+                    long minutesBetween = Duration.between(prevInstant, cutoff).toMinutes();
+                    return minutesBetween > 20;
+                });
+
+                // Return the updated list to be stored back in notificationHistory
+                return list;
+            });
+
+            // Store the exact LocalDateTime this notification occurred for downstream use
             LocalDateTime notifyTime = notification.getLocalDateTime();
 
             // --- DUPLICATE/EARLY FILTER ---
@@ -462,9 +473,6 @@ public class pLTester {
                 continue;
             }
 
-            // --- GUI NOTIFICATION DISPLAY ---
-            // if (gui != null) createNotification(notification); // (If using GUI, pop up the notification event panel) disable Notification requests fist before uncommenting
-
             // --- GET SYMBOL TIMELINE ---
             String symbol = notification.getSymbol();
             List<StockUnit> timeline = timelineCache.computeIfAbsent(symbol, mainDataHandler::getSymbolTimeline); // Efficiently cache timelines
@@ -472,7 +480,41 @@ public class pLTester {
             // --- TERMINAL OPPORTUNITY DISPLAY ---
             System.out.println(WHITE_BOLD + "\n=== NEW TRADE OPPORTUNITY ===" + RESET);
             System.out.printf(YELLOW + "Notification Time: %s%n" + RESET, notifyTime.format(DateTimeFormatter.ISO_LOCAL_DATE_TIME));
-            //notification.showNotification(); // Print event details
+
+            // --- 1) DECORATE THIS NOTIFICATION’S CHART WITH TIME MARKERS ---
+            // Retrieve the XYPlot from the notification’s chart panel:
+            XYPlot notifPlot = notification
+                    .getChartPanel()
+                    .getChart()
+                    .getXYPlot();
+
+            // Remove any previously added vertical (domain) markers so we start fresh:
+            notifPlot.clearDomainMarkers();
+
+            // Determine "now" as the UTC instant of this notification (for pruning old events):
+            ZoneId notifZone = ZoneId.of("America/New_York");
+            Instant nowUtc = notification
+                    .getLocalDateTime()
+                    .atZone(notifZone)
+                    .toInstant();
+
+            // For each past notification of the same symbol (including this one), add a marker:
+            for (Notification old : notificationHistory.getOrDefault(symbol, List.of())) {
+                // Convert the old event’s timestamp to UTC:
+                Instant evUtc = old.getLocalDateTime()
+                        .atZone(notifZone)
+                        .toInstant();
+
+                // Skip events more than 20 minutes before the current one:
+                if (Duration.between(evUtc, nowUtc).toMinutes() > 20) {
+                    continue;
+                }
+
+                // Create and style a vertical marker at the event time, using the last bar’s StockUnit:
+                StockUnit lastBar = old.getStockUnitList().get(old.getStockUnitList().size() - 1);
+                ValueMarker marker = getValueMarker(old, lastBar);
+                notifPlot.addDomainMarker(marker);
+            }
 
             // --- FIND TRADE ENTRY INDEX ---
             Integer baseIndex = getIndexForTime(symbol, notifyTime); // Get timeline index for event
@@ -487,6 +529,26 @@ public class pLTester {
             // --- TRADE ENTRY WINDOW (DEFAULT: 5 candles/minutes, can be extended) ---
             int totalMinutes = 5;
             int offset = 0;
+
+            // --- 2) COMPUTE NEXT-OPEN PRICE MARKER ---
+            // Look up the open price of the bar immediately after the event:
+            double nextOpen = timeline.get(baseIndex + 1).getOpen();
+
+            // Prepare a horizontal marker at that price level:
+            ValueMarker priceMarker = new ValueMarker(nextOpen);
+            priceMarker.setLabel("Next Open: " + String.format("%.2f", nextOpen));
+            priceMarker.setLabelAnchor(RectangleAnchor.TOP_LEFT);
+            priceMarker.setLabelTextAnchor(TextAnchor.TOP_LEFT);
+            priceMarker.setPaint(Color.MAGENTA);           // Make it stand out in magenta
+            priceMarker.setStroke(new BasicStroke(1.5f));  // Slightly thicker line for emphasis
+
+            // Add the horizontal marker to the plot’s range (price) axis:
+            notifPlot.addRangeMarker(priceMarker);
+
+            // --- 3) FINALLY, SHOW THE NOTIFICATION POPUP ---
+            // Now that the chart is annotated, display your notification UI:
+            notification.showNotification();
+
             while (offset < totalMinutes) {
                 int currentIndex = baseIndex + offset;
                 StockUnit unit = timeline.get(currentIndex);
@@ -1526,33 +1588,44 @@ public class pLTester {
     }
 
     /**
-     * Creates and returns a ValueMarker (vertical line) for a notification, with color
-     * and style based on its configuration.
+     * Generates a vertical marker for a given notification on a time-series chart.
+     * <p>
+     * This marker is positioned 30 seconds after the StockUnit’s timestamp,
+     * colored according to the notification’s configuration, and styled with a
+     * standard 1-pixel stroke.
+     * </p>
      *
-     * @param notification The Notification object.
-     * @param unit         The StockUnit associated with the notification's time.
-     * @return The ValueMarker to be added to the plot.
+     * @param notification the Notification whose configuration determines the marker’s color
+     * @param unit         the StockUnit providing the timestamp (in milliseconds since epoch)
+     * @return a configured {@link ValueMarker} ready to be added to a JFreeChart plot
      */
     @NotNull
     private static ValueMarker getValueMarker(Notification notification, StockUnit unit) {
-        ValueMarker marker = new ValueMarker(unit.getDateDate().getTime());
+        // 1) Compute the timestamp for the vertical line:
+        //    - original: the time of the bar in milliseconds since UNIX epoch
+        //    - shifted:  add 30,000 ms (30 seconds) so the marker appears just after the bar
+        long original = unit.getDateDate().getTime();
+        long shifted = original + 30_000L;
+
+        // 2) Create the marker at the shifted timestamp on the domain axis
+        ValueMarker marker = new ValueMarker(shifted);
+
+        // 3) Choose paint color based on notification config code:
+        //    config values map to distinct colors to distinguish notification types.
         int config = notification.getConfig();
+        Color color = switch (config) {
+            case 1 -> new Color(255, 171, 70);   // Deep Orange
+            case 2 -> new Color(48, 149, 255);   // Sky Blue
+            case 3 -> new Color(60, 184, 93);   // Leaf Green
+            case 4 -> new Color(255, 58, 255);   // Royal Purple
+            case 5 -> new Color(255, 0, 0);   // Alarm Red
+            default -> new Color(147, 147, 159);  // Gray         – fallback/unconfigured
+        };
 
-        Color color;
-        if (config == 0) {
-            color = new Color(255, 0, 0);         // Bright Red
-        } else if (config == 1) {
-            color = new Color(255, 140, 0);       // Deep Orange
-        } else if (config == 2) {
-            color = new Color(0, 128, 255);       // Sky Blue
-        } else if (config == 3) {
-            color = new Color(34, 177, 76);       // Leaf Green
-        } else {
-            color = new Color(128, 0, 128);       // Royal Purple
-        }
-
+        // 4) Apply color and a uniform stroke width
         marker.setPaint(color);
-        marker.setStroke(new BasicStroke(1.0f));
+        marker.setStroke(new BasicStroke(1.0f)); // 1px wide line for clear visibility
+
         return marker;
     }
 

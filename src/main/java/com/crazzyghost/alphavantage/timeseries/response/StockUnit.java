@@ -21,7 +21,7 @@ public class StockUnit {
     /**
      * Opening price for the period
      */
-    private final double open;
+    private double open;
     /**
      * Adjusted closing price (includes splits/dividends)
      */
@@ -241,6 +241,13 @@ public class StockUnit {
      */
     public void setPercentageChange(double percentageChange) {
         this.percentageChange = percentageChange;
+    }
+
+    /**
+     * @param open Set the opening price
+     */
+    public void setOpen(double open) {
+        this.open = open;
     }
 
     /**

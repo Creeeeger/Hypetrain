@@ -181,21 +181,6 @@ def prepare_sequences(data: pd.DataFrame, features: list[str], target: str, wind
             [('scaler', MinMaxScaler(), list(range(n_feats)))]
         )
         scaled_flat = preprocessor.fit_transform(flat)
-        scaler = preprocessor.named_transformers_['scaler']
-        scale_vals = scaler.scale_
-        min_vals = scaler.min_
-
-        # Print Java float array for SCALE
-        print("public static final float[] SCALE = new float[]{")
-        for v in scale_vals:
-            print(f"    {v}F,")
-        print("};\n")
-
-        # Print Java float array for MIN_OFFSET
-        print("public static final float[] MIN_OFFSET = new float[]{")
-        for v in min_vals:
-            print(f"    {v}F,")
-        print("};")
     else:
         scaled_flat = preprocessor.transform(flat)
 

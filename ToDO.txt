@@ -2,33 +2,31 @@ TODO
 Version 2.0:
 =====================================
 - Add Institutional purchase Hunter
-- implement the insider trader hunter
+- Implement the insider trader hunter
 =====================================
 
 =====================================
 - add order book analyzer - maybe OrderBookML
-    - train on crypto data since they are free
+    - train on crypto data since it's free
     - change to real level 2 data, but we need a premium key since these datasets
       are behind paywalls
 =====================================
 
-
 =====================================
 - Finish the Entry Predictor for notifications
-    -> improve accuracy & predictive power
-    -> improve dataSet
+1. evaluate on several stocks to see if it predicts
+2. implement better way of understanding what 0 and 1 means
+3. change parameters and optimize
 =====================================
 
 =====================================
 - finish uptrend ML
+    - implement range fitting normalizing
     - implement it properly into the evaluation
-    - create useful features in java
-    - create useful features in Python
-    - optimize the architecture
-    - execute some tests
+    - create useful features in java & Python (rsi atr)
+    - evaluate in realLife
 =====================================
 
 =====================================
-- update ReadMe with new features
-- add comments and javaDoc to new code
+- comment features for slope and ML models when completed
 =====================================

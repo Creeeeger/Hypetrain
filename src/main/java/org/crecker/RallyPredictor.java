@@ -10,8 +10,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.locks.ReentrantLock;
-import java.util.regex.Matcher;
-import java.util.regex.Pattern;
+
+import static org.crecker.NotificationLabelingUI.normalizeWindowMinMax;
 
 /**
  * <h1>RallyPredictor</h1>
@@ -50,49 +50,6 @@ public class RallyPredictor implements AutoCloseable {
      * Total number of features per time‐step. Must match the model’s input “feature” dimension.
      */
     private static int N_FEATURES;
-
-    /**
-     * Mean values computed by the Python StandardScaler on the training data.
-     * The ordering here must exactly match FEATURE_COLS = [open, high, low, close, volume, percentageChange].
-     * Each entry was obtained from scaler.mean_ in Python:
-     * FEATURE_MEANS[0] = mean of “open”
-     * FEATURE_MEANS[1] = mean of “high”
-     * FEATURE_MEANS[2] = mean of “low”
-     * FEATURE_MEANS[3] = mean of “close”
-     * FEATURE_MEANS[4] = mean of “volume”
-     * FEATURE_MEANS[5] = mean of “percentageChange”
-     * <p>
-     * These floats are used to center each raw feature before dividing by its scale.
-     */
-    private static final float[] FEATURE_MEANS = new float[]{
-            4.18877424e+01f,
-            4.20415464e+01f,
-            4.17932113e+01f,
-            4.19515795e+01f,
-            2.42354397e+05f,
-            2.10162414e-01f,
-    };
-
-    /**
-     * Scale (standard deviation) values computed by the Python StandardScaler on the training data.
-     * The ordering here must match FEATURE_MEANS above. Each entry was obtained from scaler.scale_ in Python:
-     * FEATURE_SCALES[0] = std of “open”
-     * FEATURE_SCALES[1] = std of “high”
-     * FEATURE_SCALES[2] = std of “low”
-     * FEATURE_SCALES[3] = std of “close”
-     * FEATURE_SCALES[4] = std of “volume”
-     * FEATURE_SCALES[5] = std of “percentageChange”
-     * <p>
-     * These floats are used to divide (after subtracting the mean) so each feature has unit variance.
-     */
-    private static final float[] FEATURE_SCALES = new float[]{
-            3.81914738e+01f,
-            3.82674599e+01f,
-            3.81453129e+01f,
-            3.82160052e+01f,
-            4.71319662e+05f,
-            7.79173064e-01f,
-    };
 
     /**
      * Maps each ONNX model file path to its own RallyPredictor singleton.
@@ -203,39 +160,63 @@ public class RallyPredictor implements AutoCloseable {
             RallyPredictor predictor = RallyPredictor.getInstance(spikeModelPath);
             return predictor.updateAndPredict(symbol, features);
         } catch (Exception e) {
-            System.out.println("predict Function: " + e.getMessage());
+            e.printStackTrace();
             return 0F;
         }
     }
 
     /**
-     * Appends the given feature vector to the symbol’s rolling buffer, then attempts
-     * to run streaming prediction if the buffer has at least {@link #dynamicBufferSize} entries.
+     * Appends the given feature vector into a per-symbol rolling window buffer,
+     * and when the buffer has reached the configured {@link #dynamicBufferSize},
+     * performs a prediction using the full window snapshot.
+     * <p>
+     * Thread-safety:
+     * The per-symbol buffer is protected by synchronizing on the buffer instance
+     * only for the minimal duration needed to update its contents and capture a snapshot.
+     * Inference is performed outside the synchronized block to avoid blocking other threads.
+     * </p>
      *
-     * @param symbol   Stock symbol used as the key for its rolling buffer.
-     * @param features Feature vector for the current time step (length == featureLength).
-     * @return Model’s float prediction if buffer size ≥ dynamicBufferSize; otherwise 0F.
+     * @param symbol   The stock symbol whose buffer this update belongs to.
+     *                 Buffers are created on demand for new symbols.
+     * @param features A feature vector representing the latest observation.
+     *                 Must have length == {@link #featureLength}.
+     * @return A non-null {@link Float} containing the model’s prediction if the rolling
+     * buffer has reached size {@link #dynamicBufferSize}; otherwise returns 0F.
+     * If an {@link OrtException} occurs during inference, the stack trace is
+     * printed and 0F is returned.
      */
     public Float updateAndPredict(String symbol, float[] features) {
-        // Get or create the buffer for this symbol
+        // Retrieve or create the per-symbol buffer.
         LinkedList<float[]> buffer = symbolBuffers.computeIfAbsent(symbol, k -> new LinkedList<>());
+        LinkedList<float[]> windowSnapshot = null;
 
+        // 1) Update the buffer under lock:
         synchronized (buffer) {
-            // If buffer is already full, drop the oldest entry
-            if (buffer.size() >= dynamicBufferSize) {
-                buffer.removeFirst();
-            }
+            // Add the newest feature vector to the end.
             buffer.addLast(features);
 
-            // Only run inference once we have at least dynamicBufferSize vectors
-            if (buffer.size() >= dynamicBufferSize) {
-                try {
-                    return predictSpike(buffer); // Run model inference
-                } catch (OrtException e) {
-                    handleModelError(e); // Try to recover from shape mismatch
-                }
+            // Remove the oldest if we exceed the target window size.
+            if (buffer.size() > dynamicBufferSize) {
+                buffer.removeFirst();
+            }
+
+            // If we've accumulated enough data, capture a snapshot for inference.
+            if (buffer.size() == dynamicBufferSize) {
+                windowSnapshot = new LinkedList<>(buffer);
             }
         }
+
+        // 2) Perform inference outside the lock to avoid blocking other threads.
+        if (windowSnapshot != null) {
+            try {
+                return predictSpike(windowSnapshot);
+            } catch (OrtException e) {
+                // Log the exception and fall through to return 0F.
+                e.printStackTrace();
+            }
+        }
+
+        // 3) Not enough data or an error occurred: indicate “no prediction yet.”
         return 0F;
     }
 
@@ -258,6 +239,10 @@ public class RallyPredictor implements AutoCloseable {
             OrtSession.Result result = session.run(Collections.singletonMap("args_0", inputTensor));
             float[][] output = (float[][]) result.get(0).getValue(); // Extract prediction
             return output[0][0]; // Typically [batch, output_dim], so take the first value
+        } catch (OrtException e) {
+            // Print stack trace for debugging, and return 0F as a safe fallback.
+            e.printStackTrace();
+            return 0F;
         }
     }
 
@@ -284,71 +269,21 @@ public class RallyPredictor implements AutoCloseable {
     }
 
     /**
-     * If ONNX inference fails due to an unexpected input shape (e.g., “Expected: N”),
-     * this method parses the required N from the error message, updates dynamicBufferSize,
-     * and prunes any existing rolling buffers to that new length.
+     * Immediately predicts from a fixed, non‐streaming window of exactly {@link #size} bars.
+     * <p>
+     * Constructs a tensor of shape [1 × {@code size} × {@link #N_FEATURES}] by extracting and
+     * normalizing the required fields from each {@link StockUnit} in the provided list,
+     * then invokes the ONNX model and returns its scalar output.
+     * This is typically used for “entry” predictions once sufficient data has been collected.
+     * </p>
      *
-     * @param e OrtException that includes “Expected: <integer>” in its message.
-     */
-    private void handleModelError(OrtException e) {
-        // Try to extract the expected time_steps from error message (e.g., "Expected: 32")
-        Integer expectedSize = parseExpectedSizeFromError(e.getMessage());
-        if (expectedSize != null) {
-            sizeAdjustmentLock.lock();
-            try {
-                // Only adjust if it's actually different
-                if (expectedSize != dynamicBufferSize) {
-                    System.out.println("Adjusting buffer size to " + expectedSize);
-                    dynamicBufferSize = expectedSize;
-                    trimAllBuffers(); // Trim all symbol buffers to the new required size
-                }
-            } finally {
-                sizeAdjustmentLock.unlock();
-            }
-        } else {
-            e.printStackTrace(); // Print stack trace if auto-recovery not possible
-        }
-    }
-
-    /**
-     * Removes oldest entries from each symbol’s buffer so no buffer exceeds
-     * the new {@link #dynamicBufferSize}.
-     * This ensures that future calls to predictSpike(...) match the model’s input length.
-     */
-    private void trimAllBuffers() {
-        symbolBuffers.forEach((symbol, buffer) -> {
-            while (buffer.size() > dynamicBufferSize) {
-                buffer.removeFirst();// Remove oldest until buffer is at the right size
-            }
-        });
-    }
-
-    /**
-     * Parses “Expected: N” from an ONNX Runtime exception message. For example,
-     * if e.getMessage() contains “Expected: 32”, this returns 32.
-     *
-     * @param errorMessage The raw exception message from OrtException.
-     * @return Parsed integer, or null if the pattern isn’t found.
-     */
-    private Integer parseExpectedSizeFromError(String errorMessage) {
-        Pattern pattern = Pattern.compile("Expected: (\\d+)");
-        Matcher matcher = pattern.matcher(errorMessage);
-
-        if (matcher.find()) {
-            return Integer.parseInt(matcher.group(1)); // Parse the captured group as int
-        }
-        return null;
-    }
-
-    /**
-     * Immediately predicts from a fixed, non‐streaming window of exactly {@code size} bars.
-     * Builds a [1 × size × 6] tensor from the List of StockUnit, normalizes each feature,
-     * calls ONNX, and returns the scalar output. This is typically used for “entry” predictions
-     * after a notification has fired.
-     *
-     * @param stockUnits List of StockUnit length ≥ size. Each StockUnit must provide:
-     *                   getOpen(), getHigh(), getLow(), getClose(), getVolume(), getPercentageChange().
-     * @return ONNX model’s float output (batch[0][0]), or 0F if insufficient data or on error.
+     * @param stockUnits A non-null List of {@link StockUnit} instances with length ≥ {@link #size}.
+     *                   Each {@code StockUnit} must supply values for:
+     *                   {@link StockUnit#getOpen()}, {@link StockUnit#getHigh()},
+     *                   {@link StockUnit#getLow()}, {@link StockUnit#getClose()},
+     *                   {@link StockUnit#getVolume()}, and {@link StockUnit#getPercentageChange()}.
+     * @return The model’s predicted score (the scalar at output[0][0]) if the input list
+     * has at least {@link #size} elements and inference succeeds; otherwise returns 0F.
      */
     public float predictFromWindow(List<StockUnit> stockUnits) {
         // If the list is null or shorter than the required number of time‐steps, we cannot form a valid input.
@@ -361,29 +296,16 @@ public class RallyPredictor implements AutoCloseable {
         // This array will hold the normalized feature vectors for all 'size' timesteps.
         float[][][] inputArray = new float[1][size][N_FEATURES];
 
-        // Iterate over each of the first 'size' StockUnit entries to fill and normalize.
+        // Iterate over each of the first 'size' StockUnit entries to fill
         for (int i = 0; i < size; i++) {
             StockUnit u = stockUnits.get(i);
 
-            // 1) Extract raw feature values from StockUnit:
-            float rawOpen = (float) u.getOpen();             // open price
-            float rawHigh = (float) u.getHigh();             // high price
-            float rawLow = (float) u.getLow();              // low price
-            float rawClose = (float) u.getClose();            // close price
-            float rawVol = (float) u.getVolume();           // traded volume
-            float rawPct = (float) u.getPercentageChange(); // percentage change
-
-            // 2) Normalize each feature: (raw value – precomputed mean) / precomputed scale
-            //    The order of indices must match FEATURE_MEANS and FEATURE_SCALES arrays:
-            //      index 0 → 'open', index 1 → 'high', index 2 → 'low',
-            //      index 3 → 'close', index 4 → 'volume', index 5 → 'percentageChange'.
-            inputArray[0][i][0] = (rawOpen - FEATURE_MEANS[0]) / FEATURE_SCALES[0];
-            inputArray[0][i][1] = (rawHigh - FEATURE_MEANS[1]) / FEATURE_SCALES[1];
-            inputArray[0][i][2] = (rawLow - FEATURE_MEANS[2]) / FEATURE_SCALES[2];
-            inputArray[0][i][3] = (rawClose - FEATURE_MEANS[3]) / FEATURE_SCALES[3];
-            inputArray[0][i][4] = (rawVol - FEATURE_MEANS[4]) / FEATURE_SCALES[4];
-            inputArray[0][i][5] = (rawPct - FEATURE_MEANS[5]) / FEATURE_SCALES[5];
-            // At this point, inputArray[0][i] is a length-6 vector of z-scored features for timestep i.
+            // Directly use raw values
+            inputArray[0][i][0] = (float) u.getOpen();
+            inputArray[0][i][1] = (float) u.getHigh();
+            inputArray[0][i][2] = (float) u.getLow();
+            inputArray[0][i][3] = (float) u.getClose();
+            inputArray[0][i][4] = (float) u.getVolume();
         }
 
         // Run ONNX inference inside a try-with-resources to ensure the OnnxTensor closes automatically.
@@ -398,13 +320,6 @@ public class RallyPredictor implements AutoCloseable {
             // Return the single scalar at out[0][0], which is the model’s predicted float.
             return out[0][0];
         } catch (OrtException e) {
-            // If ONNX Runtime throws an exception (e.g., incorrect tensor shape),
-            // parse the error message to see if the model expects a different 'size'.
-            Integer expectedSize = parseExpectedSizeFromError(e.getMessage());
-            if (expectedSize != null) {
-                // Update our 'size' so future calls use the new required window length.
-                size = expectedSize;
-            }
             // Print stack trace for debugging, and return 0F as a safe fallback.
             e.printStackTrace();
             return 0F;
@@ -415,7 +330,7 @@ public class RallyPredictor implements AutoCloseable {
      * Static helper for “entry” predictions using entryPrediction.onnx.
      * Calls {@link #predictFromWindow(List)} on the singleton for that file.
      *
-     * @param stockUnits Exactly size StockUnit objects (the 30-bar lookback).
+     * @param stockUnits Exactly size StockUnit objects (the 20-bar lookback).
      * @return ONNX entry model’s float output, or 0F on error.
      */
     public static float predictNotificationEntry(List<StockUnit> stockUnits) {
@@ -428,8 +343,12 @@ public class RallyPredictor implements AutoCloseable {
             // Retrieve (or load) the RallyPredictor instance tied to that ONNX path
             RallyPredictor predictor = RallyPredictor.getInstance(entryPredictionPath);
 
+            // slice to the correct size for inference
+            int fromIdx = Math.max(0, stockUnits.size() - 20);
+            List<StockUnit> slice = normalizeWindowMinMax(stockUnits.subList(fromIdx, stockUnits.size()));
+
             // Call the predictor’s predictFromWindow method, passing in the StockUnit window
-            return predictor.predictFromWindow(stockUnits);
+            return predictor.predictFromWindow(slice);
         } catch (Exception ex) {
             // If anything goes wrong (e.g., model load or inference fails), print stack trace
             ex.printStackTrace();
@@ -440,7 +359,7 @@ public class RallyPredictor implements AutoCloseable {
 
     /**
      * Performs a streaming uptrend prediction for the given symbol using a preloaded ONNX model.
-     * Loads the ONNX model from disk (under rallyMLModel/uptrendPredictor.onnx) the first time,
+     * Loads the ONNX model from disk (under rallyMLModel/uptrendPredictor.onnx or tinyUptrend.onnx) the first time,
      * then uses a singleton RallyPredictor instance to update the symbol’s feature buffer
      * and return the latest uptrend prediction.
      *
@@ -451,7 +370,7 @@ public class RallyPredictor implements AutoCloseable {
     public static float predictUptrend(float[] features, String symbol) {
         // Build the absolute path to the uptrend ONNX model file
         String uptrendModelPath = Paths
-                .get(System.getProperty("user.dir"), "rallyMLModel", "uptrendPredictor.onnx")
+                .get(System.getProperty("user.dir"), "rallyMLModel", "tinyUptrend.onnx")
                 .toString();
         try {
             // Get (or create) the singleton predictor for this model
@@ -558,8 +477,8 @@ public class RallyPredictor implements AutoCloseable {
         // Base directory where all ONNX models live
         String base = Paths.get(System.getProperty("user.dir"), "rallyMLModel").toString();
 
-        // 1) uptrendPredictor.onnx → dynamicUptrendBufferSize & featureLengthUptrend
-        int[] up = inspect(Paths.get(base, "uptrendPredictor.onnx").toString());
+        // 1) uptrendPredictor.onnx or tinyUptrend.onnx → dynamicUptrendBufferSize & featureLengthUptrend
+        int[] up = inspect(Paths.get(base, "tinyUptrend.onnx").toString());
         dynamicUptrendBufferSize = up[0];
         featureLengthUptrend = up[1];
 

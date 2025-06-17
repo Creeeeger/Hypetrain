@@ -1,15 +1,15 @@
 import json
+import os
+import random
 
 import numpy as np
 import tensorflow as tf
 import tf2onnx
 from keras.src.callbacks import ReduceLROnPlateau, EarlyStopping
 from keras.src.layers import MaxPooling1D, Conv1D
-from sklearn.cluster import KMeans
 from sklearn.metrics import confusion_matrix, classification_report
 from sklearn.metrics import f1_score
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import StandardScaler
 from tensorflow.keras.layers import Input, Bidirectional, LSTM, Dense, Dropout, RepeatVector, TimeDistributed
 from tensorflow.keras.losses import MeanSquaredError, BinaryCrossentropy
 from tensorflow.keras.optimizers import Adam
@@ -26,10 +26,9 @@ VAL_JSON_PATH = "valnotifications.json"
 
 # Window sizes
 LOOKBACK_SIZE = 20
-VALIDATE_SIZE = 3
 
 # Feature columns and dimensions
-FEATURE_COLS = ['open', 'high', 'low', 'close', 'volume', 'percentageChange']
+FEATURE_COLS = ['open', 'high', 'low', 'close', 'volume']
 NUM_FEATURES = len(FEATURE_COLS)
 
 # Model hyperparameters
@@ -47,6 +46,8 @@ N_BAD_PROTOTYPES = 15
 # Train/test split
 TEST_SPLIT = 0.2  # F
 RANDOM_STATE = 42  # F
+THRESHOLD = 0.5
+SEED = int.from_bytes(os.urandom(4), 'big')
 
 ONNX_FILENAME = "entryPrediction.onnx"  # F
 TIMES_SIZE = 6  # 6F
@@ -55,6 +56,14 @@ TIMES_SIZE = 6  # 6F
 CONV_FILTERS = 16
 KERNEL_SIZE = 3
 POOL_SIZE = 2
+
+
+def set_seeds():
+    tf.config.set_visible_devices([], "GPU")
+    random.seed(SEED)
+    np.random.seed(SEED)
+    tf.random.set_seed(SEED)
+    print(f"Seed used for this run: {SEED}")
 
 
 # ======================================
@@ -83,10 +92,9 @@ def load_notifications_from_jsonl(json_path):
     for obj in all_notifs:
         # 1) Grab the lookback‐ and validation‐window arrays
         lookback = obj.get("lookbackWindow", [])
-        val_bars = obj.get("validationWindow", [])
 
         # 2) Skip if lookback or validation window is too short
-        if len(lookback) < LOOKBACK_SIZE or len(val_bars) < VALIDATE_SIZE:
+        if len(lookback) < LOOKBACK_SIZE:
             skipped += 1
             continue
 
@@ -106,7 +114,6 @@ def load_notifications_from_jsonl(json_path):
             x_window[i, 2] = bar['low']
             x_window[i, 3] = bar['close']
             x_window[i, 4] = bar['volume']
-            x_window[i, 5] = bar['percentageChange']
 
         # 5) Append to our lists
         windows.append(x_window)
@@ -123,59 +130,45 @@ def load_notifications_from_jsonl(json_path):
 
 
 class F1Metrics(tf.keras.callbacks.Callback):
-    def __init__(self, X_val, y_val):
+    def __init__(self, X_val, y_val, threshold):
         super().__init__()
         self.X_val = X_val
         self.y_val = y_val
+        self.threshold = threshold
 
     def on_epoch_end(self, epoch, logs=None):
         # Get predicted probabilities
         y_pred_prob = self.model.predict(self.X_val, verbose=0)[1].reshape(-1)
-        y_pred = (y_pred_prob >= 0.5).astype(int)
+        y_pred = (y_pred_prob >= self.threshold).astype(int)
+
         f1 = f1_score(self.y_val, y_pred)
         print(f"\nval_f1: {f1:.4f}")
+
         logs = logs or {}
         logs["val_f1"] = f1
 
 
 # ======================================
-#         SPLIT & SCALE DATA
+#         SPLIT DATA
 # ======================================
-def time_based_split_and_scale(X, y, test_size=TEST_SPLIT, random_state=42):
-    """
-    1) Randomly split X, y into train + test (stratified so labels remain balanced).
-    2) Fit a StandardScaler on the _training_ windows (flattened).
-    3) Return (scaled_train, scaled_test, y_train, y_test, scaler).
-    """
+def time_based_split(X, y, test_size=TEST_SPLIT, random_state=42):
     # 1) Random split (stratify by y to preserve class balance)
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=test_size, random_state=random_state, stratify=y
+        X, y,
+        test_size=test_size,
+        random_state=random_state,
+        stratify=y
     )
 
-    # 2) Fit scaler on flattened training sequence
-    n_train, seq_len, n_feat = X_train.shape
-    flat_train = X_train.reshape(n_train * seq_len, n_feat)
-    scaler = StandardScaler().fit(flat_train)
-
-    # 3) Scale train
-    flat_train_scaled = scaler.transform(flat_train)
-    X_train_scaled = flat_train_scaled.reshape(n_train, seq_len, n_feat)
-
-    # 4) Scale test
-    n_test = X_test.shape[0]
-    flat_test = X_test.reshape(n_test * seq_len, n_feat)
-    flat_test_scaled = scaler.transform(flat_test)
-    X_test_scaled = flat_test_scaled.reshape(n_test, seq_len, n_feat)
-
-    print(f"  Train samples: {X_train_scaled.shape[0]}, Test samples: {X_test_scaled.shape[0]}")
-    return X_train_scaled, X_test_scaled, y_train, y_test, scaler
+    print(f"  Train samples: {X_train.shape[0]}, Test samples: {X_test.shape[0]}")
+    return X_train, X_test, y_train, y_test
 
 
 # ======================================
 #       MODEL CONSTRUCTION
 # ======================================
 
-def build_seq_autoencoder_with_classifier(
+def build_model(
         seq_len=LOOKBACK_SIZE,
         n_feat=NUM_FEATURES,
         latent_dim=LATENT_DIM,
@@ -243,7 +236,7 @@ def train_autoencoder_classifier(
     Train the sequence autoencoder + classifier. Returns the trained model,
     the standalone encoder, and the training history.
     """
-    model, encoder_model = build_seq_autoencoder_with_classifier(
+    model, encoder_model = build_model(
         seq_len=seq_len,
         n_feat=n_feat,
         latent_dim=latent_dim,
@@ -260,7 +253,7 @@ def train_autoencoder_classifier(
         min_lr=1e-6
     )
 
-    f1_callback = F1Metrics(X_val, y_val)
+    f1_callback = F1Metrics(X_val, y_val, THRESHOLD)
 
     # Force CPU usage if desired; remove `with tf.device('/CPU:0')` if you want GPU
     with tf.device('/CPU:0'):
@@ -283,97 +276,40 @@ def train_autoencoder_classifier(
     return model, encoder_model, history
 
 
-def extract_embeddings(encoder, X_all):
-    z_all = encoder.predict(X_all, batch_size=BATCH_SIZE)
-    return z_all
-
-
-def cluster_bad_prototypes(z_all, y_all, n_prototypes=N_BAD_PROTOTYPES):
-    bad_indices = np.where(y_all == 0)[0]
-    z_bad = z_all[bad_indices]
-    kmeans = KMeans(n_clusters=n_prototypes, random_state=RANDOM_STATE).fit(z_bad)
-    prototypes = kmeans.cluster_centers_
-    return prototypes
-
-
-# ======================================
-#        PROTOTYPE CLASSIFICATION
-# ======================================
-
-def classify_by_prototype(window_raw, encoder, scaler, prototypes, threshold):
-    # 1) Flatten & scale
-    flat = window_raw.reshape(LOOKBACK_SIZE, NUM_FEATURES)
-    scaled_flat = scaler.transform(flat)
-    new_scaled = scaled_flat.reshape(1, LOOKBACK_SIZE, NUM_FEATURES)
-
-    # 2) Get latent code
-    z_new = encoder.predict(new_scaled)
-
-    # 3) Compute distances to each prototype
-    dists = np.linalg.norm(prototypes - z_new, axis=1)
-    min_dist = float(np.min(dists))
-
-    # 4) Classify
-    label = 0 if min_dist < threshold else 1
-    return label, min_dist
-
-
-def scale_price_range(window, min_factor=0.9, max_factor=1.1):
-    factor = np.random.uniform(min_factor, max_factor)
-    window_scaled = window.copy()
-    window_scaled[:, :4] *= factor  # scale open, high, low, close
-    return window_scaled
-
-
-def shift_price_range(window, max_shift=5.0):
-    shift = np.random.uniform(-max_shift, max_shift)
-    window_shifted = window.copy()
-    window_shifted[:, :4] += shift  # apply shift to OHLC
-    return window_shifted
-
-
-def distort_volume_and_change(window, volume_scale=0.2, pct_change_scale=0.05):
-    window_distorted = window.copy()
-    window_distorted[:, 4] *= np.random.uniform(1 - volume_scale, 1 + volume_scale)
-    window_distorted[:, 5] *= np.random.uniform(1 - pct_change_scale, 1 + pct_change_scale)
-    return window_distorted
-
-
 def jitter_time_series(window, sigma=0.01):
     noise = np.random.normal(loc=0.0, scale=sigma, size=window.shape)
     return window + noise
 
 
 def augment_window(window):
-    window = scale_price_range(window, 0.9, 1.1)
-    window = shift_price_range(window, max_shift=2)
-    window = distort_volume_and_change(window, 0.001, 0.002)
-    window = jitter_time_series(window, sigma=0.001)
+    window = jitter_time_series(window, sigma=0.004)
     return window
 
 
 # ======================================
 #         EVALUATION ON NEW FILE
 # ======================================
-def evaluate_with_confusion(model, scaler, X_train_scaled, json_path, threshold=0.5):
+def evaluate_with_confusion(model, json_path, threshold):
     # 1) Load raw data + true labels
-    X_val_raw, y_val = load_notifications_from_jsonl(json_path)  # shape = (N_val, 19, 6)
-    n_val, seq_len, n_feat = X_val_raw.shape
+    x_test, y_test = load_notifications_from_jsonl(json_path)  # shape = (N_val, 19, 6)
 
-    # 2) Shape check
-    assert seq_len == X_train_scaled.shape[1] and n_feat == X_train_scaled.shape[2], (
-        f"Expected input shape {(X_train_scaled.shape[1], X_train_scaled.shape[2])}, "
-        f"got {(seq_len, n_feat)}"
-    )
+    augmented_X = []
+    augmented_y = []
 
-    # 3) Flatten + scale
-    flat_val = X_val_raw.reshape(n_val * seq_len, n_feat)
-    flat_val_scaled = scaler.transform(flat_val)
-    X_val_scaled = flat_val_scaled.reshape(n_val, seq_len, n_feat)
+    for i in range(len(x_test)):
+        for _ in range(3):
+            augmented_X.append(augment_window(x_test[i]))
+            augmented_y.append(y_test[i])
+
+    # 4) Convert to numpy arrays and concatenate with the original training set
+    augmented_X = np.array(augmented_X)  # shape = (N_train * K, LOOKBACK_SIZE, NUM_FEATURES)
+    augmented_y = np.array(augmented_y)  # shape = (N_train * K,)
+
+    x_test_aug = np.concatenate([x_test, augmented_X], axis=0)
+    y_test_aug = np.concatenate([y_test, augmented_y], axis=0)
 
     # 4) Run predictions
-    #    recon_preds we can ignore; cls_probs is shape (N_val, 1)
-    _, cls_probs = model.predict(X_val_scaled, batch_size=1)
+    _, cls_probs = model.predict(x_test_aug, batch_size=1)
     cls_probs = cls_probs.reshape(-1)  # shape = (N_val,)
 
     # 5) Build per‐sample summary
@@ -384,11 +320,11 @@ def evaluate_with_confusion(model, scaler, X_train_scaled, json_path, threshold=
     for i, p in enumerate(cls_probs):
         y_hat = 1 if p >= threshold else 0
         y_pred[i] = y_hat
-        print(f"{i:4d} | {p:8.4f}   | {y_hat:10d} | {y_val[i]:9d}")
+        print(f"{i:4d} | {p:8.4f}   | {y_hat:10d} | {y_test_aug[i]:9d}")
 
     # 6) Confusion matrix + classification report
-    cm = confusion_matrix(y_val, y_pred, labels=[0, 1])
-    cr = classification_report(y_val, y_pred, digits=4)
+    cm = confusion_matrix(y_test_aug, y_pred, labels=[0, 1])
+    cr = classification_report(y_test_aug, y_pred, digits=4)
 
     print("\nConfusion Matrix (rows=true, cols=predicted):")
     print("         pred=0    pred=1")
@@ -399,36 +335,51 @@ def evaluate_with_confusion(model, scaler, X_train_scaled, json_path, threshold=
     print(cr)
 
 
+def save_onnx_model(model):
+    recon_name = model.outputs[0].name.split(':')[0]
+    cls_name = model.outputs[1].name.split(':')[0]
+
+    # set both as the outputs you want in the ONNX graph
+    model.output_names = [recon_name, cls_name]
+    seq_len, n_features = X_train.shape[1], X_train.shape[2]
+
+    input_signature = [
+        tf.TensorSpec((None, seq_len, n_features),
+                      dtype=model.inputs[0].dtype,
+                      name='input')
+    ]
+
+    onnx_model_proto, _ = tf2onnx.convert.from_keras(
+        model,
+        input_signature,
+        opset=15
+    )
+
+    with open(ONNX_FILENAME, "wb") as f:
+        f.write(onnx_model_proto.SerializeToString())
+    print(f"ONNX model saved to {ONNX_FILENAME}")
+
+
 # ======================================
 #               MAIN
 # ======================================
 if __name__ == "__main__":
-    tf.config.set_visible_devices([], "GPU")
+    set_seeds()
 
-    # ---- Print current configuration ----
-    print("===== RUNNING WITH CONFIGURATION =====")
-    print(f"LOOKBACK_SIZE   = {LOOKBACK_SIZE}")
-    print(f"VALIDATE_SIZE   = {VALIDATE_SIZE}")
-    print(f"LEARNING_RATE   = {LEARNING_RATE}")
-    print(f"N_BAD_PROTOTYPES= {N_BAD_PROTOTYPES}")
-    print("=======================================\n")
-
-    # --- Load all data and do split/scale ---
+    # --- Load all data and do split
     X_all, y_all = load_notifications_from_jsonl(JSON_PATH)
-    X_train, X_test, y_train, y_test, scaler = time_based_split_and_scale(X_all, y_all)
+    X_train, X_test, y_train, y_test = time_based_split(X_all, y_all)
 
     augmented_X = []
     augmented_y = []
 
-    # 3) For each original window, call augment_window(...) K times
     for i in range(len(X_train)):
         for _ in range(TIMES_SIZE):
             augmented_X.append(augment_window(X_train[i]))
             augmented_y.append(y_train[i])
 
-    # 4) Convert to numpy arrays and concatenate with the original training set
-    augmented_X = np.array(augmented_X)  # shape = (N_train * K, LOOKBACK_SIZE, NUM_FEATURES)
-    augmented_y = np.array(augmented_y)  # shape = (N_train * K,)
+    augmented_X = np.array(augmented_X)
+    augmented_y = np.array(augmented_y)
 
     X_train_aug = np.concatenate([X_train, augmented_X], axis=0)
     y_train_aug = np.concatenate([y_train, augmented_y], axis=0)
@@ -450,50 +401,12 @@ if __name__ == "__main__":
         batch_size=BATCH_SIZE
     )
 
-    # --- Prepare entire dataset for embedding & clustering ---
-    N_all = X_all.shape[0]
-    flat_all = X_all.reshape(N_all * LOOKBACK_SIZE, NUM_FEATURES)
-    flat_all_scaled = scaler.transform(flat_all)
-    X_all_scaled = flat_all_scaled.reshape(N_all, LOOKBACK_SIZE, NUM_FEATURES)
-
-    z_all = extract_embeddings(encoder, X_all_scaled)
-    prototypes = cluster_bad_prototypes(z_all, y_all, n_prototypes=N_BAD_PROTOTYPES)
-    print("Computed bad‐pattern prototypes (shape):", prototypes.shape)
-
     # --- Evaluate on the validation JSON files ---
-    # evaluate_on_new_file(model, scaler, X_train, VAL_JSON_PATH)
-    evaluate_with_confusion(model, scaler, X_train, "valnotifications.json", threshold=0.5)
-    #
-    # 6J) Export to ONNX
-    recon_name = model.outputs[0].name.split(':')[0]  # e.g. "reconstruction"
-    cls_name = model.outputs[1].name.split(':')[0]  # e.g. "classifier"
+    evaluate_with_confusion(model, "valnotifications.json", 0.5)
 
-    # set both as the outputs you want in the ONNX graph
-    model.output_names = [recon_name, cls_name]
-
-    seq_len, n_features = X_train.shape[1], X_train.shape[2]
-    input_signature = [
-        tf.TensorSpec((None, seq_len, n_features),
-                      dtype=model.inputs[0].dtype,
-                      name='input')
-    ]
-
-    onnx_model_proto, _ = tf2onnx.convert.from_keras(
-        model,
-        input_signature,
-        opset=15
-    )
-
-    with open(ONNX_FILENAME, "wb") as f:
-        f.write(onnx_model_proto.SerializeToString())
-    print(f"ONNX model saved to {ONNX_FILENAME}")
+    save_onnx_model(model)
 
     '''
-    •	Your model is stable, not overfit, and achieves decent, but not stellar, predictive power (F1 ~0.73, ROC-AUC ~0.7).
-	•	You’re probably limited more by input features and dataset ambiguity than by architecture or tuning.
-	•	To improve: add/engineer features, tune augmentations, possibly try a slightly more expressive model if your dataset can support it.
-	
-	-> create better larger dataSet
+    -> possibly try a slightly more expressive model	
 	-> add additional features to the model
-	-> use less ambigious train and val Samples
 	'''
