@@ -165,29 +165,41 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 - **Dynamic Market Regime Selection** – switch between pre-set symbol categories like "AI", "Big Caps", "Crypto", "
   Pharma", etc., via dropdown menu
 - **Market Regime Persistence** – UI remembers your last selected regime and restores it on launch
+- **Enhanced Stock Selection for Trades** – powerful filters and speedy selection tools designed for trade optimization
 
 ---
 
 ## 📊 Real-Time & Historical Data
 
-- **Multiple Time Ranges**:
-    - `1 min`, `3 min`, `5 min`, `10 min`, `30 min`, `1 h`, `4 h`, `1 day`, `3 days`, `1 week`, `2 weeks`, `1 month`
+- **Multiple Time Ranges**:  
+  `1 min`, `3 min`, `5 min`, `10 min`, `30 min`, `1 h`, `4 h`, `1 day`, `3 days`, `1 week`, `2 weeks`, `1 month`
 - **Chart Types** – Toggle between:
     - Candlestick (OHLC)
     - Line Chart
 - **Auto Refresh** – 1-second interval updates for live data
+- **Pre- and After-Hours Support** – handle off-session and extended hours data seamlessly
+- **Fast Chart Switching & Candle Loading** – instant transitions for high-velocity market monitoring
+- **Time-Independent Working** – analyze stocks across any session or timeframe, not just during regular market hours
+
+---
+
+## 🎨 UI & Usability
+
+- **Responsive Swing UI** – with three panels: Symbols, Chart, Hype
+- **Dark Mode for UI** – toggle full dark/light theme for comfortable day and night use
+- **Chart Dark Mode** – unified dark color scheme for all chart types
+- **Clean Layout & Menu Actions** – all core features accessible
+- **Rounded & Resizable Titled Borders** – modern visual design
+- **Color-Coded Symbol Entries**
+- **Quick Access to Fast Chart Switching** – optimized chart and panel transitions for speed
+- **Second-Based Framework for Fast Alerts** – ultra-responsive UI for high-speed market moves
 
 ---
 
 ## 📈 Price Analytics
 
 - **Percentage Change Calculator** – select any two points on the chart (with shaded region)
-- **Key Metrics Displayed**:
-    - Volume
-    - P/E Ratio
-    - P/E/G Ratio
-    - 52-Week High/Low
-    - Market Cap
+- **Key Metrics Displayed**: Volume, P/E Ratio, P/E/G Ratio, 52-Week High/Low, Market Cap
 
 ---
 
@@ -208,6 +220,7 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 - **Notification Sorting** – by date or % change
 - **Configurable Aggressiveness** – adapt alert sensitivity to your risk preference (0.1–2.0 multiplier)
 - **Liquidity-Aware Filtering** – notifications only fire when there’s enough volume to realistically trade the move
+- **Second-Based Framework for Fast Alerts** – sub-second alerting for high-frequency trading scenarios
 
 ---
 
@@ -222,6 +235,7 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
     - Real-time toggle
     - Aggressiveness level
     - Candle view toggle
+    - Theme (Dark/Light Mode)
 - **Cross-Device Config Reuse** – port settings easily between machines
 
 ---
@@ -237,44 +251,36 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 ## 🧠 Custom AI Support
 
 - **AI Hook** – integrate your own trained prediction engine
-
----
-
-## 🖥️ UI & Usability
-
-- **Responsive Swing UI** – with three panels:
-    - Symbols
-    - Chart
-    - Hype
-- **Visual Features**:
-    - Color-coded symbol entries
-    - Rounded and resizable titled borders
-    - Clean layout and menu actions for all core features
+- **Entry Prediction ML Model** – built-in ML model suggests optimal trade entries
+- **Uptrend ML Model** – detects and tracks uptrend momentum
+- **Variable Model Parameter Size** – fine-tune AI models for different strategies
 
 ---
 
 ## 🎯 Interactive Chart & Annotation Tools
 
 - **Two-Point %-Change Measurement** – click any two spots to drop start/end markers, shade the interval, and instantly
-  compute percentage change.
+  compute percentage change
 - **Custom Markers & Shading** – first marker in green; second marker colored by direction (green/up, red/down);
-  translucent region fill.
-- **Ad-hoc Analysis Mode** – markers reset automatically after each measurement so you can experiment freely.
+  translucent region fill
+- **Ad-hoc Analysis Mode** – markers reset automatically after each measurement so you can experiment freely
+- **Candle Aggregation** – aggregate candlesticks by custom intervals for more flexible chart analysis
 
 ---
 
 ## 🔄 Live Data Streaming & UI Refresh
 
 - **Real-Time Tick Ingestion** – new ticks after the notification timestamp are auto-appended to both OHLC and line
-  series.
-- **Auto-Repaint Swing UI** – chart panel repaints on the Event Dispatch Thread to ensure lag-free updates.
+  series
+- **Auto-Repaint Swing UI** – chart panel repaints on the Event Dispatch Thread to ensure lag-free updates
 
 ---
 
 ## 🔔 Enhanced Notification Window
 
-- **Always-On-Top Popup** – stays above all other windows; disposes automatically after timeout or via manual close.
-- **Rich Scrollable Content Pane** – word-wrapped text area for arbitrary message lengths.
+- **Always-On-Top Popup** – stays above all other windows; disposes automatically after timeout or via manual close
+- **Rich Scrollable Content Pane** – word-wrapped text area for arbitrary message lengths
+- **Notification History** - see if HypeTrain has fired already in the past 20 minutes
 - **Quick-Action Buttons**
     - “Open in Web Portal” → launches your trading-platform URL
     - “Open in Realtime SuperChart” → jumps back to main UI for deeper drill-downs
@@ -290,7 +296,7 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
     - Big Spikes: Leaf Green
     - Default Catch-All: Royal Purple
 - **Threshold-Driven Hype Alerts** – tie each config to custom volatility/volume thresholds so only meaningful events
-  trigger.
+  trigger
 
 ---
 
@@ -302,7 +308,7 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 
 ---
 
-## 🛑 Trading Execution — Live Discipline
+## 📖 Trading Guide & Discipline
 
 Stay tactical. **Obey the rules, protect the account.**
 
@@ -311,14 +317,14 @@ Stay tactical. **Obey the rules, protect the account.**
 ### Entry Rules
 
 - **Only enter** when the *next candle* closes **higher than the previous**.  
-  *(This avoids “catching a falling knife” and minimizes entry risk.)*
+  *(Avoid “catching a falling knife”; minimize entry risk.)*
 - **Never buy into a red candle** just because it “looks cheap.”
 
 ---
 
 ### Exit Rules
 
-- **Exit immediately** if the trend momentum **flattens out** — don’t wait for confirmation, **don’t hope**.
+- **Exit immediately** if the trend momentum **flattens out** — don’t wait for confirmation, **don’t hope**
 - **Sell after the first sharp drop** or, better, **during the drop** — not after.  
   *(Momentum dies fast. No mercy, no bag-holding.)*
 
@@ -327,9 +333,16 @@ Stay tactical. **Obey the rules, protect the account.**
 ### Mental Model
 
 - This system does **not** chase every pump.  
-  Only **clean, high-momentum entries** are allowed.
-- **Cut losers fast**. The goal is to stay in the game, not be a hero.
-- If the setup isn’t perfect, **do not trade**. Wait for the A+ scenario.
+  Only **clean, high-momentum entries** are allowed
+- **Cut losers fast**. The goal is to stay in the game, not be a hero
+- If the setup isn’t perfect, **do not trade**. Wait for the A+ scenario
+
+### Market-Specific Rules & Thresholds
+
+- Configure entry/exit criteria and alert levels per market regime (e.g., pre-market, after-hours, sector-specific
+  moves)
+
+**All features are engineered for speed, discipline, and tactical flexibility.**
 
 ---
 
@@ -468,27 +481,6 @@ You should only invest what you can afford to lose.
 
 Launch command to ensure app stays awake
 
-- sudo caffeinate nice -n -18 "/Users/greg/Library/Java/JavaVirtualMachines/openjdk-24.0.1/Contents/Home/bin/java"
-  -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -classpath
-  /Users/greg/Desktop/Hypetrain/target/classes:
-  /Users/greg/.m2/repository/org/jfree/jfreechart/1.5.5/jfreechart-1.5.5.jar:
-  /Users/greg/.m2/repository/com/toedter/jcalendar/1.4/jcalendar-1.4.jar:
-  /Users/greg/.m2/repository/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar:
-  /Users/greg/.m2/repository/com/squareup/okio/okio/3.6.0/okio-3.6.0.jar:
-  /Users/greg/.m2/repository/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar:
-  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.9.10/kotlin-stdlib-common-1.9.10.jar:
-  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.8.21/kotlin-stdlib-jdk8-1.8.21.jar:
-  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.8.21/kotlin-stdlib-1.8.21.jar:
-  /Users/greg/.m2/repository/org/jetbrains/annotations/13.0/annotations-13.0.jar:
-  /Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.8.21/kotlin-stdlib-jdk7-1.8.21.jar:
-  /Users/greg/.m2/repository/com/squareup/moshi/moshi-adapters/1.15.1/moshi-adapters-1.15.1.jar:
-  /Users/greg/.m2/repository/com/squareup/moshi/moshi/1.15.1/moshi-1.15.1.jar:
-  /Users/greg/.m2/repository/org/json/json/20240303/json-20240303.jar:
-  /Users/greg/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.20.0/onnxruntime-1.20.0.jar:
-  /Users/greg/.m2/repository/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar:
-  /Users/greg/.m2/repository/com/formdev/flatlaf/3.6/flatlaf-3.6.jar:
-  /Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar:
-  /Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar:
-  /Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar:
-  /Users/greg/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.19.0/jackson-datatype-jsr310-2.19.0.jar
-  org.crecker.mainUI
+```
+sudo caffeinate nice -n -18 "/Users/greg/Library/Java/JavaVirtualMachines/openjdk-24.0.1/Contents/Home/bin/java"  -Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 -classpath /Users/greg/Desktop/Hypetrain/target/classes:/Users/greg/.m2/repository/org/jfree/jfreechart/1.5.5/jfreechart-1.5.5.jar:/Users/greg/.m2/repository/com/toedter/jcalendar/1.4/jcalendar-1.4.jar:/Users/greg/.m2/repository/com/squareup/okhttp3/okhttp/4.12.0/okhttp-4.12.0.jar:/Users/greg/.m2/repository/com/squareup/okio/okio/3.6.0/okio-3.6.0.jar:/Users/greg/.m2/repository/com/squareup/okio/okio-jvm/3.6.0/okio-jvm-3.6.0.jar:/Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-common/1.9.10/kotlin-stdlib-common-1.9.10.jar:/Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk8/1.8.21/kotlin-stdlib-jdk8-1.8.21.jar:/Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib/1.8.21/kotlin-stdlib-1.8.21.jar:/Users/greg/.m2/repository/org/jetbrains/annotations/13.0/annotations-13.0.jar:/Users/greg/.m2/repository/org/jetbrains/kotlin/kotlin-stdlib-jdk7/1.8.21/kotlin-stdlib-jdk7-1.8.21.jar:/Users/greg/.m2/repository/com/squareup/moshi/moshi-adapters/1.15.1/moshi-adapters-1.15.1.jar:/Users/greg/.m2/repository/com/squareup/moshi/moshi/1.15.1/moshi-1.15.1.jar:/Users/greg/.m2/repository/org/json/json/20240303/json-20240303.jar:/Users/greg/.m2/repository/com/microsoft/onnxruntime/onnxruntime/1.20.0/onnxruntime-1.20.0.jar:/Users/greg/.m2/repository/org/apache/commons/commons-lang3/3.17.0/commons-lang3-3.17.0.jar:/Users/greg/.m2/repository/com/formdev/flatlaf/3.6/flatlaf-3.6.jar:/Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-databind/2.19.0/jackson-databind-2.19.0.jar:/Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-annotations/2.19.0/jackson-annotations-2.19.0.jar:/Users/greg/.m2/repository/com/fasterxml/jackson/core/jackson-core/2.19.0/jackson-core-2.19.0.jar:/Users/greg/.m2/repository/com/fasterxml/jackson/datatype/jackson-datatype-jsr310/2.19.0/jackson-datatype-jsr310-2.19.0.jar org.crecker.mainUI
+```

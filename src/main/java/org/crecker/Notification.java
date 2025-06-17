@@ -51,6 +51,7 @@ public class Notification {
     private final String content;               // Main textual content for this notification
     private final List<StockUnit> stockUnitList;// Stock data (price/time) relevant to this event
     private List<StockUnit> validationWindow;   // relevant for ML training
+    private List<StockUnit> normalizedList;     // lookback window after min-max normalization (prices & volume scaled to [0,1]) for charting and inference
     private final LocalDateTime localDateTime;  // Date/time for the notification event
     private final String symbol;                // Stock ticker symbol
     private final double change;                // Percent change in price that triggered this event
@@ -62,7 +63,7 @@ public class Notification {
 
     JLabel percentageChange;                    // Label for showing percentage difference between two points
     private JFrame notificationFrame;           // Frame/window displaying this notification
-    private ChartPanel chartPanel;              // Chart panel for the graph (JFreeChart)
+    private final ChartPanel chartPanel;        // Chart panel for the graph (JFreeChart)
 
     /**
      * Create a Notification instance for a specific event, including relevant stock data and type.
@@ -100,6 +101,7 @@ public class Notification {
         this.change = change;
         this.config = config;
         this.validationWindow = validationWindow;
+        this.normalizedList = null;
 
         /*
           config 1 gap filler   - deep orange
@@ -131,6 +133,37 @@ public class Notification {
 
         this.timeSeries = new TimeSeries(symbol + " Price");
         processTimeSeriesData(stockUnitList); // Populate for line chart
+
+        // initialize chart at the beginning
+        chartPanel = createChart();
+    }
+
+    /**
+     * Sets the list of normalized StockUnit instances for this notification.
+     * <p>
+     * This list typically represents the lookback window after min-max normalization,
+     * with price and volume values scaled into [0,1].
+     * </p>
+     *
+     * @param normalizedList a non-null List of {@link StockUnit} objects whose fields
+     *                       (open, high, low, close, volume) have been normalized.
+     */
+    public void setNormalizedList(List<StockUnit> normalizedList) {
+        this.normalizedList = normalizedList;
+    }
+
+    /**
+     * Retrieves the normalized StockUnit list for this notification.
+     * <p>
+     * This list contains the lookback window data after min-max scaling,
+     * ready for charting or further processing.
+     * </p>
+     *
+     * @return a List of {@link StockUnit} instances with normalized fields,
+     * or null if no normalization has been applied yet.
+     */
+    public List<StockUnit> getNormalizedList() {
+        return normalizedList;
     }
 
     /**
@@ -234,7 +267,7 @@ public class Notification {
      * @return XYPlot with candlestick renderer set.
      */
     @NotNull
-    private static XYPlot getXyPlot(JFreeChart chart) {
+    public static XYPlot getXyPlot(JFreeChart chart) {
         XYPlot plot = chart.getXYPlot();
 
         // Set up custom candlestick renderer for visual clarity
@@ -443,7 +476,6 @@ public class Notification {
         JPanel mainPanel = new JPanel(new BorderLayout());
 
         // Chart panel: line or candlestick chart, based on user setting
-        chartPanel = createChart();
         chartPanel.setPreferredSize(new Dimension(600, 320)); // Chart area size
 
         // Bottom panel for buttons and labels

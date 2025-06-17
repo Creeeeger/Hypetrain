@@ -75,40 +75,37 @@ public class mainDataHandler {
     );
 
     /**
-     * Feature‐wise scale factors for uptrend normalization.
+     * Ordered list of feature names matching the input tensor dimensions for the ONNX model.
      * <p>
-     * Each entry SCALE[i] is the multiplier applied to the raw feature raw[i] before adding the corresponding
-     * MIN_OFFSET[i], mapping the feature into the model’s expected input range.
-     * <p>
-     * Length must match {@code MIN_OFFSET.length} and the dimensionality of the uptrend feature vector.
+     * The model expects features in this exact sequence:
+     * <ol>
+     *   <li><b>close</b>: the closing price of the bar</li>
+     *   <li><b>ma_10</b>: the 10-bar moving average of closing prices</li>
+     *   <li><b>slope_5</b>: the linear regression slope over the last 5 closes</li>
+     *   <li><b>ret_1</b>: the percentage return from the previous close</li>
+     * </ol>
+     * </p>
      */
-    public static final float[] SCALE = new float[]{
-            0.01801671630143935F,
-            0.01801960973047726F,
-            0.28774831052895233F,
-            0.018337839468686796F,
-            0.051916361564781154F,
-            0.9605641212121067F,
-            0.9638088236888799F,
-    };
+    public static final List<String> FEATURE_KEYS = List.of(
+            "close",
+            "ma_10",
+            "slope_5",
+            "ret_1"
+    );
 
     /**
-     * Feature‐wise minimum offsets for uptrend normalization.
+     * Global mapping from stock symbol to its feature-wise min/max ranges.
      * <p>
-     * Each entry MIN_OFFSET[i] is added to raw[i] * SCALE[i], shifting the scaled feature into its final range.
-     * Negative values indicate that the feature’s minimum raw value must be offset downward after scaling.
-     * <p>
-     * Length must match {@code SCALE.length} and the dimensionality of the uptrend feature vector.
+     * Used by {@link #normalizeFeature(String, double, String)} to scale raw values into [0,1].
+     * The outer map key is the ticker symbol (e.g., "AAPL"), the next map key is the feature name
+     * (from {@link #FEATURE_KEYS}), and the innermost map contains two entries:
+     * <ul>
+     *   <li><b>"min"</b>: the lower bound observed or computed for that feature</li>
+     *   <li><b>"max"</b>: the upper bound observed or computed for that feature</li>
+     * </ul>
+     * </p>
      */
-    public static final float[] MIN_OFFSET = new float[]{
-            -0.17559073866891778F,
-            -0.1755092407676841F,
-            0.2132238906929827F,
-            -0.17973556167481536F,
-            0.0004783961582869928F,
-            0.021447494254260024F,
-            0.017624693281135022F,
-    };
+    public static final Map<String, Map<String, Map<String, Double>>> SYMBOL_FEATURE_RANGES = new ConcurrentHashMap<>();
 
     /**
      * Set of technical indicators that should be interpreted as binary (0 or 1) in the normalization process.
@@ -482,7 +479,7 @@ public class mainDataHandler {
         put("favourites", new String[]{ // These are my favourites and the ones working the best with the algorithm
                 "APLD", "HIMS", "IONQ", "OKLO", "PLTR", "QBTS", "QUBT",
                 "RGTI", "RKLB", "SMCI", "SMR", "SOUN", "TEM", "TTD", "U",
-                "META", "MSFT", "NVDA"
+                "META", "MSFT", "NVDA", "SBET", "NVTS", "TSLA", "AMD"
         });
     }};
 
@@ -2336,6 +2333,88 @@ public class mainDataHandler {
     }
 
     /**
+     * Precomputes robust min/max feature ranges for each symbol by sliding a fixed-length window
+     * over its historical price timeline.
+     * <p>
+     * For each symbol, we:
+     * <ol>
+     *   <li>Collect raw feature values from every window of length {@link #frameSize}.</li>
+     *   <li>Sort each feature’s values and take the 0.1st and 99.9th percentiles (to exclude outliers).</li>
+     *   <li>Fall back to absolute min/max if percentiles collapse to the same value, with an ε guard.</li>
+     *   <li>Store the resulting [min, max] for each feature under {@link #SYMBOL_FEATURE_RANGES}.</li>
+     * </ol>
+     * This supports stable min–max normalization at inference time.
+     *
+     * @param realData if true, uses the keys of {@link #symbolTimelines} (live data);
+     *                 if false, uses the static SYMBOLS list (e.g., backtest files).
+     */
+    public static void precomputeFeatureRanges(boolean realData) {
+        int requiredSize = frameSize;
+
+        // 1) Determine which symbols to process
+        List<String> symbolList = realData
+                ? new ArrayList<>(symbolTimelines.keySet())
+                : Arrays.stream(SYMBOLS)
+                .map(s -> s.toUpperCase().replace(".TXT", ""))
+                .toList();
+
+        for (String symbol : symbolList) {
+            List<StockUnit> timeline = symbolTimelines.get(symbol);
+            // Skip symbols with insufficient history
+            if (timeline == null || timeline.size() < requiredSize) {
+                continue;
+            }
+
+            // 2) Accumulate raw feature values across all sliding windows
+            //    Map: featureName → list of all raw values observed
+            Map<String, List<Float>> accum = new LinkedHashMap<>();
+            for (String key : FEATURE_KEYS) {
+                accum.put(key, new ArrayList<>());
+            }
+
+            // Slide window of length `requiredSize` across the timeline
+            for (int end = requiredSize - 1; end < timeline.size(); end++) {
+                List<StockUnit> window = timeline.subList(end - requiredSize + 1, end + 1);
+                float[] rawFeatures = computeFeaturesForSlope(window);
+                // Append each feature’s raw value to its accumulator
+                for (int i = 0; i < rawFeatures.length; i++) {
+                    accum.get(FEATURE_KEYS.get(i)).add(rawFeatures[i]);
+                }
+            }
+
+            // 3) Compute robust min/max (0.1% / 99.9% percentiles) for each feature
+            Map<String, Map<String, Double>> ranges = new LinkedHashMap<>();
+            for (String feat : FEATURE_KEYS) {
+                List<Float> vals = accum.get(feat);
+                Collections.sort(vals);
+                int n = vals.size();
+
+                // Determine percentile indices
+                int lowIdx = (int) (0.001 * n);
+                int highIdx = (int) (0.999 * n);
+
+                double lo = vals.get(Math.min(Math.max(lowIdx, 0), n - 1));
+                double hi = vals.get(Math.min(Math.max(highIdx, 0), n - 1));
+
+                // If percentiles collapse (no spread), fall back to hard min/max
+                if (hi <= lo) {
+                    lo = vals.get(0);
+                    hi = vals.get(n - 1);
+                    // Guard against zero range by adding a tiny epsilon
+                    if (hi <= lo) {
+                        hi = lo + 1e-6;
+                    }
+                }
+
+                ranges.put(feat, Map.of("min", lo, "max", hi));
+            }
+
+            // 4) Save computed ranges for use in normalizeFeature(...)
+            SYMBOL_FEATURE_RANGES.put(symbol, ranges);
+        }
+    }
+
+    /**
      * Normalizes a raw indicator value to the range [0, 1] for use in ML models or aggregation.
      * <p>
      * Uses robust min/max ranges calculated per-symbol (see {@link #precomputeIndicatorRanges}) to avoid skew from outliers.
@@ -2448,6 +2527,72 @@ public class mainDataHandler {
     }
 
     /**
+     * Scales a single feature value into the [0,1] range by applying min–max normalization.
+     * <p>
+     * This method looks up the precomputed minimum and maximum for the given symbol
+     * and feature, computes the ratio (rawValue – min)/(max – min), and clamps the result
+     * into [0,1]. It guards against missing ranges and degenerate (max ≤ min) intervals.
+     * </p>
+     *
+     * @param feature  The feature name (must be one of {@link #FEATURE_KEYS}).
+     * @param rawValue The unnormalized feature value to scale.
+     * @param symbol   The ticker symbol whose feature ranges should be used.
+     * @return A double in [0,1] representing the normalized feature.
+     * @throws IllegalStateException if no range is defined for the given symbol/feature.
+     */
+    public static double normalizeFeature(String feature, double rawValue, String symbol) {
+        // 1) Retrieve the map of feature→{min,max} for this symbol
+        Map<String, Map<String, Double>> featRanges = SYMBOL_FEATURE_RANGES.get(symbol);
+        if (featRanges == null || !featRanges.containsKey(feature)) {
+            throw new IllegalStateException("Missing ranges for " + symbol + "/" + feature);
+        }
+
+        // 2) Extract the min and max bounds
+        Map<String, Double> bounds = featRanges.get(feature);
+        double lo = bounds.get("min");
+        double hi = bounds.get("max");
+
+        // 3) Guard against degenerate range (avoid division by zero)
+        if (hi <= lo) {
+            return 0.0;
+        }
+
+        // 4) Compute the normalized ratio
+        double norm = (rawValue - lo) / (hi - lo);
+
+        // 5) Clamp to [0,1] to handle out-of-range raw values
+        return Math.max(0.0, Math.min(1.0, norm));
+    }
+
+
+    /**
+     * Applies min–max normalization across an entire raw feature vector for a specific symbol.
+     * <p>
+     * Iterates through the input array in the exact order of {@link #FEATURE_KEYS}, calls
+     * {@link #normalizeFeature(String, double, String)} for each entry, and returns a float[]
+     * of normalized values, all in [0,1], ready for model inference.
+     * </p>
+     *
+     * @param raw    An array of raw feature values whose length matches {@link #FEATURE_KEYS}.
+     * @param symbol The ticker symbol to select the appropriate normalization ranges.
+     * @return A float[] of normalized feature values (same length as {@code raw}).
+     */
+    public static float[] normalizeRawFeatures(float[] raw, String symbol) {
+        int n = raw.length;
+        float[] out = new float[n];
+
+        // Normalize each feature individually
+        for (int i = 0; i < n; i++) {
+            String featKey = FEATURE_KEYS.get(i);
+            double rawVal = raw[i];
+            // Delegate to normalizeFeature to handle lookup, scaling, and clipping
+            out[i] = (float) normalizeFeature(featKey, rawVal, symbol);
+        }
+
+        return out;
+    }
+
+    /**
      * Calculates a dynamically weighted "aggressiveness score" for a trade decision,
      * based on normalized feature activations and category-specific weights.
      * <p>
@@ -2512,283 +2657,51 @@ public class mainDataHandler {
         return baseAggressiveness * (1 + weightedScore);
     }
 
-    // 1) List all features in the exact order your ONNX model expects
-    public static final List<String> FEATURE_KEYS = List.of(
-            "close",       // 0
-            "pct_change",  // 1
-            "ma_10",       // 2
-            "std_10",      // 3
-            "up3",         // 4
-            "roc3_pos",    // 5
-            "slope_3",     // 6
-            "slope_5",     // 7
-            "slope_7",     // 8
-            "rsi_14",      // 9
-            "macd_line",   // 10
-            "macd_signal", // 11
-            "atr_14",      // 12
-            "obv"          // 13
-    );
-
-    // 2) Global map: symbol -> (feature -> { "min": x, "max": y })
-    public static final Map<String, Map<String, Map<String, Double>>> SYMBOL_FEATURE_RANGES =
-            new ConcurrentHashMap<>();
-
-    /**
-     * Slide a window of length frameSize over each symbol's timeline,
-     * compute raw features for each window, and build per-feature
-     * [1st,99th]-percentile min/max ranges.
-     */
-    public static void precomputeFeatureRanges(boolean realData) {
-        int requiredSize = frameSize;
-        // Build list of symbols to process
-        List<String> symbolList = realData
-                ? new ArrayList<>(symbolTimelines.keySet())
-                : Arrays.stream(SYMBOLS)
-                .map(s -> s.toUpperCase().replace(".TXT", ""))
-                .toList();
-
-        for (String symbol : symbolList) {
-            List<StockUnit> tl = symbolTimelines.get(symbol);
-            if (tl == null || tl.size() < requiredSize) continue;
-
-            // accumulate each feature’s values
-            Map<String, List<Float>> accum = new LinkedHashMap<>();
-            FEATURE_KEYS.forEach(k -> accum.put(k, new ArrayList<>()));
-
-            for (int i = requiredSize - 1; i < tl.size(); i++) {
-                List<StockUnit> window = tl.subList(i - requiredSize + 1, i + 1);
-                float[] raw = computeFeaturesForSlope(window);
-                for (int j = 0; j < raw.length; j++) {
-                    accum.get(FEATURE_KEYS.get(j)).add(raw[j]);
-                }
-            }
-
-            // compute robust min/max per feature
-            Map<String, Map<String, Double>> ranges = new LinkedHashMap<>();
-            for (String feat : FEATURE_KEYS) {
-                List<Float> vals = accum.get(feat);
-                Collections.sort(vals);
-                int n = vals.size();
-                double lo = vals.get((int) (0.01 * n));
-                double hi = vals.get((int) (0.99 * n));
-                // clip so hi>lo
-                if (hi <= lo) {
-                    lo = vals.get(0);
-                    hi = vals.get(n - 1);
-                    if (hi <= lo) {
-                        hi = lo + 1e-6;
-                    }
-                }
-                ranges.put(feat, Map.of("min", lo, "max", hi));
-            }
-            SYMBOL_FEATURE_RANGES.put(symbol, ranges);
+    public static float[] computeFeaturesForSlope(List<StockUnit> window) {
+        int n = window.size();
+        if (n == 0) {
+            throw new IllegalArgumentException("Window must contain at least one StockUnit");
         }
-    }
 
-    /**
-     * Normalize a single raw feature value into [0,1],
-     * looking up the symbol→feature range and clipping.
-     */
-    public static double normalizeFeature(String feature, double rawValue, String symbol) {
-        Map<String, Map<String, Double>> featRanges = SYMBOL_FEATURE_RANGES.get(symbol);
-        if (featRanges == null || !featRanges.containsKey(feature)) {
-            throw new IllegalStateException("Missing ranges for " + symbol + "/" + feature);
+        // 1) close
+        double close = window.get(n - 1).getClose();
+
+        // 2) ma_10: average of last up to 10 closes
+        int maLength = Math.min(10, n);
+        double sum = 0.0;
+        for (int i = n - maLength; i < n; i++) {
+            sum += window.get(i).getClose();
         }
-        Map<String, Double> range = featRanges.get(feature);
-        double lo = range.get("min"), hi = range.get("max");
-        if (hi <= lo) return 0.0;
-        double norm = (rawValue - lo) / (hi - lo);
-        return Math.max(0.0, Math.min(1.0, norm));
-    }
 
-    /**
-     * Given the full raw feature vector and its symbol,
-     * returns a normalized float[] ready for model inference.
-     */
-    public static float[] normalizeRawFeatures(float[] raw, String symbol) {
-        int n = raw.length;
-        float[] out = new float[n];
-        for (int i = 0; i < n; i++) {
-            out[i] = (float) normalizeFeature(FEATURE_KEYS.get(i), raw[i], symbol);
+        double ma10 = sum / maLength;
+
+        // 3) slope_5: slope of last up to 5 closes
+        int slopeLen = Math.min(5, n);
+
+        // x = 0,1,2,...,slopeLen-1; y = close prices
+        double xSum = 0, x2Sum = 0, ySum = 0, xySum = 0;
+        for (int i = 0; i < slopeLen; i++) {
+            double y = window.get(n - slopeLen + i).getClose();
+            xSum += i;
+            x2Sum += (double) i * (double) i;
+            ySum += y;
+            xySum += (double) i * y;
         }
-        return out;
-    }
 
-    /**
-     * Compute the eight raw feature values expected by the ONNX model, using Java Streams
-     * instead of manual for‑loops.
-     * <p>
-     * Order of features written into the output array must match the SCALE / MIN_OFFSET
-     * constants generated during model training:
-     * 0  open
-     * 1  close
-     * 2  pct_change (vs previous bar)
-     * 3  ma_10      (SMA of closing price over the last 10 bars, inclusive)
-     * 4  std_10     (sample std‑dev of closing price over the last 10 bars)
-     * 5  volatility (sample std‑dev of closing price over the last 12 bars)
-     * 6  up3        (1 if all last 3 closes are higher than the one before)
-     * 7  roc3_pos   (1 if 3‑bar rate‑of‑change is positive)
-     */
-    public static float[] computeFeaturesForSlope(List<StockUnit> stocks) {
-        final int T = stocks.size();
-        if (T == 0) throw new IllegalArgumentException("Empty input");
+        double denom = slopeLen * x2Sum - xSum * xSum;
+        double slope5 = (denom == 0)
+                ? 0
+                : (slopeLen * xySum - xSum * ySum) / denom;
 
-        // extract primitive arrays
-        double[] closes = stocks.stream().mapToDouble(StockUnit::getClose).toArray();
-        double[] highs = stocks.stream().mapToDouble(StockUnit::getHigh).toArray();
-        double[] lows = stocks.stream().mapToDouble(StockUnit::getLow).toArray();
-        double[] volumes = stocks.stream()
-                .mapToDouble(s -> s.getVolume())
-                .toArray();
-
-        // last‐bar scalars
-        float close = (float) closes[T - 1];
-        float pctChange = T > 1
-                ? (float) ((closes[T - 1] / closes[T - 2]) - 1.0)
-                : 0f;
-
-        // rolling‐10 mean & std‐dev
-        double[] w10 = slice(closes, T - 10, T);
-        float ma10 = (float) mean(w10);
-        float std10 = (float) stddev(w10, ma10);
-
-        // up3
-        int ups = 0;
-        for (int i = Math.max(1, T - 3); i < T; i++)
-            if (closes[i] > closes[i - 1]) ups++;
-        float up3 = (ups == 3) ? 1f : 0f;
-
-        // roc3_pos
-        float roc3Pos = (T > 3 && closes[T - 1] / closes[T - 4] - 1.0 > 0) ? 1f : 0f;
-
-        // slopes
-        float slope3 = computeSlope(slice(closes, T - 3, T));
-        float slope5 = computeSlope(slice(closes, T - 5, T));
-        float slope7 = computeSlope(slice(closes, T - 7, T));
-
-        // rsi_14 (simple SMA‐based, match your Python)
-        float rsi14 = computeRsi14(closes);
-
-        // MACD
-        float[] macdRes = computeMacd(closes);
-        float macdLine = macdRes[0];
-        float macdSignal = macdRes[1];
-
-        // ATR 14
-        float atr14 = computeAtr(highs, lows, closes, 14);
-
-        // OBV
-        float obv = computeObv(closes, volumes);
+        // 4) ret_1: percentage change from previous close
+        double ret1 = window.get(n - 1).getPercentageChange();
 
         return new float[]{
-                close, pctChange, ma10, std10,
-                up3, roc3Pos,
-                slope3, slope5, slope7,
-                rsi14,
-                macdLine, macdSignal,
-                atr14, obv
+                (float) close,
+                (float) ma10,
+                (float) slope5,
+                (float) ret1
         };
-    }
-    
-    private static double[] slice(double[] a, int from, int to) {
-        int start = Math.max(0, from);
-        int end = Math.min(a.length, to);
-        return Arrays.copyOfRange(a, start, end);
-    }
-
-    private static double mean(double[] a) {
-        return a.length == 0 ? 0 : Arrays.stream(a).average().orElse(0.0);
-    }
-
-    private static double stddev(double[] a, double mean) {
-        if (a.length <= 1) return 0;
-        double sumsq = Arrays.stream(a)
-                .map(v -> (v - mean) * (v - mean))
-                .sum();
-        // sample std‐dev
-        return Math.sqrt(sumsq / (a.length - 1));
-    }
-
-    private static float computeSlope(double[] y) {
-        int n = y.length;
-        if (n < 2) return 0f;
-        double sx = 0, sy = 0, sxy = 0, sxx = 0;
-        for (int i = 0; i < n; i++) {
-            sx += i;
-            sy += y[i];
-            sxy += i * y[i];
-            sxx += i * i;
-        }
-        double denom = n * sxx - sx * sx;
-        return denom == 0 ? 0f
-                : (float) ((n * sxy - sx * sy) / denom);
-    }
-
-    private static float computeRsi14(double[] closes) {
-        int n = closes.length;
-        if (n < 2) return 0f;
-        double[] up = new double[n];
-        double[] down = new double[n];
-        for (int i = 1; i < n; i++) {
-            double d = closes[i] - closes[i - 1];
-            up[i] = Math.max(d, 0);
-            down[i] = Math.max(-d, 0);
-        }
-        // simple SMA over 14
-        double avgUp = Arrays.stream(slice(up, n - 14, n)).average().orElse(0);
-        double avgDown = Arrays.stream(slice(down, n - 14, n)).average().orElse(0);
-        double rs = avgDown == 0 ? Double.POSITIVE_INFINITY : avgUp / avgDown;
-        return avgDown == 0 ? 100f : (float) (100 - (100 / (1 + rs)));
-    }
-
-    private static float[] computeMacd(double[] closes) {
-        int n = closes.length;
-        if (n < 2) return new float[]{0f, 0f};
-
-        double[] ema12 = ema(closes, 12);
-        double[] ema26 = ema(closes, 26);
-        double[] macd = new double[n];
-        for (int i = 0; i < n; i++) macd[i] = ema12[i] - ema26[i];
-
-        double[] signal = ema(macd, 9);
-        return new float[]{
-                (float) macd[n - 1],
-                (float) signal[n - 1]
-        };
-    }
-
-    private static double[] ema(double[] data, int period) {
-        int n = data.length;
-        double[] out = new double[n];
-        double alpha = 2.0 / (period + 1);
-        out[0] = data[0];
-        for (int i = 1; i < n; i++) {
-            out[i] = alpha * data[i] + (1 - alpha) * out[i - 1];
-        }
-        return out;
-    }
-
-    private static float computeAtr(double[] highs, double[] lows, double[] closes, int period) {
-        int n = closes.length;
-        if (n == 0) return 0f;
-        double[] trs = new double[n];
-        trs[0] = highs[0] - lows[0];
-        for (int i = 1; i < n; i++) {
-            double hl = highs[i] - lows[i];
-            double hc = Math.abs(highs[i] - closes[i - 1]);
-            double lc = Math.abs(lows[i] - closes[i - 1]);
-            trs[i] = Math.max(hl, Math.max(hc, lc));
-        }
-        return (float) mean(slice(trs, n - period, n));
-    }
-
-    private static float computeObv(double[] closes, double[] vols) {
-        double obv = 0;
-        for (int i = 1; i < closes.length; i++) {
-            obv += Math.signum(closes[i] - closes[i - 1]) * vols[i];
-        }
-        return (float) obv;
     }
 
     /**
@@ -2826,7 +2739,13 @@ public class mainDataHandler {
         double uptrendPrediction = predictUptrend(featureUptrend, symbol);
 
         // 6. Update the prediction time series for charting purposes (timestamp = last bar in frame)
-        predictSeries.addOrUpdate(new Second(stocks.get(stocks.size() - 1).getDateDate()), uptrendPrediction);
+        if (SYMBOLS.length > 1) {
+            if (SYMBOLS[0].equals(symbol)) {
+                predictSeries.addOrUpdate(new Second(stocks.get(stocks.size() - 1).getDateDate()), uptrendPrediction);
+            }
+        } else {
+            predictSeries.addOrUpdate(new Second(stocks.get(stocks.size() - 1).getDateDate()), uptrendPrediction);
+        }
 
         // 7. Combine both ML scores and technical signals to generate actionable notifications
         return evaluateResult(
@@ -3630,42 +3549,6 @@ public class mainDataHandler {
                         changeUp2 >= getThreshold(symbol) * manualAggressiveness &&  // 2-bar momentum strong enough
                         changeUp3 >= getThreshold(symbol) * manualAggressiveness; // 3-bar momentum strong enough
 
-//        System.out.printf(
-//                "Triggered=%b | spike=%d | gain=%.2f/%.2f?%b | normGain=%.2f/0.85?%b | " +
-//                        "dynAggro=%.2f/%.2f?%b | pred=%.2f/0.9?%b | keltner=%d | " +
-//                        "m2=%.2f/%.2f?%b | m3=%.2f/%.2f?%b | Date=%s%n",
-//                isTriggered,
-//
-//                // spike
-//                (int) features[4],
-//
-//                // cumulative gain vs threshold
-//                features[5], cumulativeThreshold, features[5] >= cumulativeThreshold,
-//
-//                // normalized gain vs fixed threshold
-//                normalizedFeatures[5], normalizedFeatures[5] >= 0.85,
-//
-//                // dynamicAggro vs threshold
-//                dynamicAggro, threshold, dynamicAggro >= threshold,
-//
-//                // prediction vs 0.9
-//                prediction, prediction >= 0.9,
-//
-//                // Keltner breakout flag
-//                (int) features[6],
-//
-//                // 2-bar momentum vs computed threshold
-//                changeUp2, getThreshold(symbol) * manualAggressiveness,
-//                changeUp2 >= getThreshold(symbol) * manualAggressiveness,
-//
-//                // 3-bar momentum vs computed threshold
-//                changeUp3, getThreshold(symbol) * manualAggressiveness,
-//                changeUp3 >= getThreshold(symbol) * manualAggressiveness,
-//
-//                // date
-//                stocks.get(stocks.size() - 1).getDateDate()
-//        );
-
         int notificationCode = -1; // -1 means no notification
 
         // === 6. Only if all strict spike conditions are satisfied, trigger a classic alert notification ===
@@ -3798,14 +3681,7 @@ public class mainDataHandler {
         boolean bigEnoughGain = percentChange >= minChange;
         boolean enoughGreen = greenRatio >= minGreen;
 
-        // Consolidate all conditions into the final uptrend verdict
-        boolean isUptrend = bigEnoughGain && enoughGreen && noBigPullback;
-//        System.out.printf(
-//                "Decision: percentOK=%b, greenOK=%b, pullbackOK=%b "
-//                        + "→ isInUptrend=%b%n",
-//                bigEnoughGain, enoughGreen, noBigPullback, isUptrend);
-
-        return isUptrend;
+        return bigEnoughGain && enoughGreen && noBigPullback;
     }
 
 
@@ -4069,7 +3945,6 @@ public class mainDataHandler {
         if (stocks == null || stocks.size() < Math.max(window + 1, barsToCheck)) {
             return false;
         }
-        System.out.println(stocks.get(stocks.size() - 1).getDateDate());
 
         // 2️⃣ Fundamental trend filter
         boolean fundamentalTrend = isInUptrend(stocks, window, minChangePct, minGreenRatio);
@@ -4217,10 +4092,8 @@ public class mainDataHandler {
             dbg.append("➡️ Final pass: No flats detected => ✅ pass\n");
         } else if (numFlat == 1) {
             ok = hasBigPump;
-            dbg.append("➡️ Final pass: One flat detected and big pump "
-                    + (hasBigPump ? "found" : "not found")
-                    + (ok ? " => ✅ pass" : " => ❌ fail")
-                    + "\n");
+            dbg.append("➡️ Final pass: One flat detected and big pump ").append(hasBigPump ? "found" : "not found")
+                    .append(ok ? " => ✅ pass" : " => ❌ fail").append("\n");
         } else {
             ok = false;
             dbg.append("➡️ Final pass: More than one flat => ❌ fail\n");

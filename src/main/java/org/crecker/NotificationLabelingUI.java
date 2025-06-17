@@ -16,6 +16,8 @@ import org.jfree.data.xy.OHLCDataItem;
 import javax.swing.*;
 import java.awt.*;
 import java.io.IOException;
+import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
@@ -211,12 +213,29 @@ public class NotificationLabelingUI extends JFrame {
                 notifications.size()        // Total count
         ));
 
-        // Create a candlestick chart for this notification using historical and future windows
-        JFreeChart chart = createCandlestickChart(
-                notif.getStockUnitList(),           // Historical list of StockUnit
-                notif.getValidationWindow()         // Future‐window list (up to 10 bars)
-        );
-        chartPanel.setChart(chart);             // Set chart into the panel for display
+        // 1) Extract the raw historical and future windows from the notification
+        List<StockUnit> rawHist = notif.getStockUnitList();     // past price data leading up to the event
+        List<StockUnit> rawFuture = notif.getValidationWindow();  // subsequent data for validation or simulation
+
+        // 2) Limit the history to the most recent 20 bars (or fewer, if less data is available)
+        //    This sliding window ensures a consistent lookback length for both normalization and charting.
+        int size = rawHist.size();
+        int fromIdx = Math.max(0, size - 20);
+        List<StockUnit> recentHist = rawHist.subList(fromIdx, size);
+
+        // 3) Normalize the selected historical window using a min-max scaler per symbol
+        //    normalizeWindowMinMax(...) returns a new list of StockUnit objects whose
+        //    price fields have been scaled into [0,1], preserving relative movement shapes.
+        List<StockUnit> normHist = normalizeWindowMinMax(recentHist);
+        notif.setNormalizedList(normHist);  // store back into the notification for downstream use
+
+        // 4) Build a combined candlestick chart covering both history and future windows
+        //    - The chart’s Y-axis is fixed to [0,1] so that every window uses the same vertical scale.
+        //    - recentHist provides the lookback candles, rawFuture provides forward candles for context.
+        JFreeChart chart = createCandlestickChart(recentHist, rawFuture);
+
+        // 5) Display the chart in the existing ChartPanel UI component
+        chartPanel.setChart(chart);
     }
 
     /**
@@ -353,5 +372,93 @@ public class NotificationLabelingUI extends JFrame {
 
         // Return the fully constructed and styled chart
         return chart;
+    }
+
+    /**
+     * Performs min-max normalization on a sliding window of StockUnit data.
+     * <p>
+     * This routine rescales each bar’s open, high, low, and close prices to the [0,1] range
+     * based on the window’s overall low and high, and similarly rescales volume to [0,1]
+     * based on the window’s min and max volumes.
+     * It returns a new list of StockUnit instances (via the Builder) with normalized
+     * price and volume fields, preserving the original percentageChange and timestamp.
+     * </p>
+     *
+     * @param window A non-null List of {@link StockUnit} objects to normalize.
+     *               If the list is empty, returns an empty List immediately.
+     * @return A new List of StockUnit where:
+     * <ul>
+     *   <li>open, high, low, close are mapped as (value - minLow)/(maxHigh - minLow)</li>
+     *   <li>volume is mapped as (volume - minVolume)/(maxVolume - minVolume)</li>
+     *   <li>percentageChange and timestamp are carried through unchanged</li>
+     * </ul>
+     */
+    public static List<StockUnit> normalizeWindowMinMax(List<StockUnit> window) {
+        // If the input list is empty, nothing to do — return an empty result immediately.
+        if (window.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        // 1) Scan the entire window to find the price and volume extremes.
+        double windowMin = Double.POSITIVE_INFINITY;
+        double windowMax = Double.NEGATIVE_INFINITY;
+        double volMin = Double.POSITIVE_INFINITY;
+        double volMax = Double.NEGATIVE_INFINITY;
+
+        for (StockUnit u : window) {
+            // For prices, consider the low as the floor and the high as the ceiling.
+            windowMin = Math.min(windowMin, u.getLow());
+            windowMax = Math.max(windowMax, u.getHigh());
+
+            // For volume, track its own min/max.
+            volMin = Math.min(volMin, u.getVolume());
+            volMax = Math.max(volMax, u.getVolume());
+        }
+
+        // 2) Compute the raw ranges and protect against division by zero.
+        double priceRange = windowMax - windowMin;
+        if (priceRange <= 0) {
+            // If all bars have identical low/high, use a tiny epsilon to avoid zero division.
+            priceRange = 1e-6;
+        }
+        double volRange = volMax - volMin;
+        if (volRange <= 0) {
+            volRange = 1e-6;
+        }
+
+        // 3) Prepare to build the normalized output list.
+        List<StockUnit> out = new ArrayList<>(window.size());
+        DateTimeFormatter fmt = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+
+        // 4) Normalize each bar individually and rebuild via the Builder.
+        for (StockUnit u : window) {
+            // Map each price into [0, 1] relative to windowMin and windowMax.
+            float no = (float) ((u.getOpen() - windowMin) / priceRange);
+            float nh = (float) ((u.getHigh() - windowMin) / priceRange);
+            float nl = (float) ((u.getLow() - windowMin) / priceRange);
+            float nc = (float) ((u.getClose() - windowMin) / priceRange);
+
+            // Map volume into [0, 1] relative to its own min/max.
+            float nv = (float) ((u.getVolume() - volMin) / volRange);
+
+            // Preserve and reformat timestamp for consistency.
+            LocalDateTime barTime = u.getLocalDateTimeDate();
+            String formattedTime = barTime.format(fmt);
+
+            // Create a new, immutable StockUnit with normalized price/volume fields.
+            out.add(new StockUnit.Builder()
+                    .symbol(u.getSymbol())
+                    .open(no)
+                    .high(nh)
+                    .low(nl)
+                    .close(nc)
+                    .volume(nv)
+                    .percentageChange(u.getPercentageChange())  // keeps original movement %
+                    .time(formattedTime)                         // consistent text timestamp
+                    .build());
+        }
+
+        // 5) Return the fully normalized window.
+        return out;
     }
 }
