@@ -486,6 +486,7 @@ public class mainUI extends JFrame {
 
         // Refresh the chart view with the latest settings (default to 3-day window)
         refreshChartType(false);
+
         // Fetch all available ticker metadata for searching and UI
         fetchTickerMap();
 
@@ -819,6 +820,11 @@ public class mainUI extends JFrame {
                     .getChart()
                     .getXYPlot();
 
+            XYPlot previewPlot = notification
+                    .getPreviewChartPanel()
+                    .getChart()
+                    .getXYPlot();
+
             // Iterate through the existing notification history for this symbol
             for (Notification not : notificationHistory.get(symbol)) {
                 // Compute the marker timestamp:
@@ -850,11 +856,14 @@ public class mainUI extends JFrame {
                 // Add the marker to the domain (time) axis on the foreground layer
                 // index 0: default layer, ensuring it appears on top of chart content
                 plot.addDomainMarker(0, marker, Layer.FOREGROUND);
+                previewPlot.addDomainMarker(0, marker, Layer.FOREGROUND);
             }
 
             // Finally, add the new notification object to the list model,
             // so it appears in the UI component (e.g., hype panel or list)
             notificationListModel.addElement(notification);
+
+            sortNotifications(false);
         });
 
         // Compose the text body for the system notification
@@ -2855,111 +2864,17 @@ public class mainUI extends JFrame {
                                         TimeSeries series = notification.getTimeSeries();
                                         series.addOrUpdate(new Second(tickDate), close);
 
-                                        // Only attempt to update chart if it's currently visible
+                                        // Only attempt to update preview chart if it’s currently visible
+                                        ChartPanel previewPanel = notification.getPreviewChartPanel();
+
+                                        // Apply axis‐window, Y‐scaling and CURRENT_PRICE marker updates to the preview
+                                        annotateChart(previewPanel, start, tickDate, series, ohlcSeries, notification, close);
+
+                                        // Only attempt to update the full chart if it’s currently visible
                                         ChartPanel chartPanel = notification.getChartPanel();
-                                        if (chartPanel != null) {
-                                            // Obtain the chart plot (where axes and data are drawn)
-                                            XYPlot plot = chartPanel.getChart().getXYPlot();
 
-                                            // The X-axis for time (dates) in this chart
-                                            DateAxis axis = (DateAxis) plot.getDomainAxis();
-
-                                            // === Move X-axis window ===
-                                            // Adjust the horizontal axis so the chart view always includes the newest point
-                                            // The window shows everything from 'start' to 'tickDate'
-                                            axis.setRange(start, new Date(tickDate.getTime() + 60 * 1000));
-
-                                            // === Prepare for Y-axis dynamic scaling ===
-                                            // Trackers for min and max Y values (for axis range)
-                                            double minY = Double.MAX_VALUE;
-                                            double maxY = -Double.MAX_VALUE;
-
-                                            // === Efficient scan of close values in visible TimeSeries window ===
-                                            // Use binary search to find the subset of indices to scan
-                                            int firstSeriesIdx = findFirstTimeSeriesIndexAfter(start, series);
-                                            int lastSeriesIdx = findLastTimeSeriesIndexBefore(tickDate, series);
-
-                                            for (int j = firstSeriesIdx; j <= lastSeriesIdx; j++) {
-                                                double closeValue = series.getValue(j).doubleValue();
-                                                minY = Math.min(minY, closeValue);
-                                                maxY = Math.max(maxY, closeValue);
-                                            }
-
-                                            // === Efficient scan of OHLC values in visible window ===
-                                            // Again, use binary search to restrict scan to visible data only
-                                            int firstOhlcIdx = findFirstOHLCIndexAfter(start, ohlcSeries);
-                                            int lastOhlcIdx = findLastOHLCIndexBefore(tickDate, ohlcSeries);
-
-                                            for (int k = firstOhlcIdx; k <= lastOhlcIdx; k++) {
-                                                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
-                                                minY = Math.min(minY, item.getLowValue());
-                                                maxY = Math.max(maxY, item.getHighValue());
-                                            }
-
-                                            // === Update the Y-axis range if at least one valid data point is in the window ===
-                                            if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
-                                                ValueAxis yAxis = plot.getRangeAxis();
-                                                double margin = 0.01; // 1% margin for visual padding above/below data
-                                                double range = maxY - minY;
-
-                                                if (range == 0) {
-                                                    // Special case: All values are the same (flat line).
-                                                    // Use a fixed small margin (±0.01) so the line doesn't sit on the chart edge.
-                                                    yAxis.setRange(minY - 0.01, maxY + 0.01);
-                                                } else {
-                                                    // Standard case: Add a 2% margin above and below the min/max for better readability.
-                                                    // This prevents the chart from looking cramped and ensures the data is not flush with the axis.
-                                                    yAxis.setRange(
-                                                            minY - range * margin, // Lower bound: 1% below minimum
-                                                            maxY + range * margin  // Upper bound: 1% above maximum
-                                                    );
-                                                }
-                                            }
-
-                                            // === Redraw chart with the newly updated axis ranges and datasets ===
-                                            chartPanel.repaint();
-
-                                            // ======================== DRAW THE CURRENT CLOSE PRICE LINE ========================
-
-                                            // Use the most recent close value to draw a marker showing the "current price" on the Y axis.
-                                            // (This visually indicates the latest tick for the notification mini-chart.)
-
-                                            // --- REMOVE PREVIOUS "CURRENT_PRICE" MARKERS (if any) ---
-                                            // We only ever want one current price marker displayed per chart, so remove all existing ones first.
-                                            Collection<?> existingMarkers = plot.getRangeMarkers(Layer.FOREGROUND); // Get all foreground markers
-                                            List<ValueMarker> toRemove = new ArrayList<>(); // List for collecting markers that need removal
-
-                                            if (existingMarkers != null) {
-                                                // Loop through each marker and check if it's a ValueMarker with the "CURRENT_PRICE" label
-                                                for (Object obj : existingMarkers) {
-                                                    if (obj instanceof ValueMarker marker && "CURRENT_PRICE".equals(marker.getLabel())) {
-                                                        toRemove.add(marker); // Add it to the removal list
-                                                    }
-                                                }
-                                                // Remove all identified "CURRENT_PRICE" markers from the plot (should be at most one, but robust to bugs)
-                                                for (ValueMarker marker : toRemove) {
-                                                    plot.removeRangeMarker(marker, Layer.FOREGROUND);
-                                                }
-                                            }
-
-                                            // --- ADD THE NEW "CURRENT_PRICE" MARKER ---
-                                            // Determine the marker color based on price movement compared to the previous close for this symbol.
-                                            String symbol = notification.getSymbol(); // The stock symbol for this notification
-                                            Double notifLastClose = notificationLastClose.get(symbol); // Get the last close, may be null if first tick
-
-                                            // Create a new ValueMarker at the latest close value, with color showing price movement (green/up, red/down, gray/flat)
-                                            ValueMarker priceMarker = getValueMarker(notifLastClose, close);
-
-                                            // Add the new marker to the chart in the foreground layer (so it appears on top)
-                                            plot.addRangeMarker(priceMarker, Layer.FOREGROUND);
-
-                                            // Update the per-symbol last close mapping for the next tick,
-                                            // ensuring the next marker correctly reflects movement since this close.
-                                            notificationLastClose.put(symbol, close);
-
-                                            // === Redraw chart ===
-                                            chartPanel.repaint();
-                                        }
+                                        // Apply the same annotation logic to the full chart
+                                        annotateChart(chartPanel, start, tickDate, series, ohlcSeries, notification, close);
                                     } catch (Exception ex) {
                                         // Log any unexpected error during the notification update
                                         ex.printStackTrace();
@@ -2973,6 +2888,129 @@ public class mainUI extends JFrame {
                     ex.printStackTrace();
                 }
             }, 0, 5, TimeUnit.SECONDS); // Start immediately, repeat every 5 second
+        }
+    }
+
+    /**
+     * Refreshes a live JFreeChart inside the given ChartPanel by:
+     * 1. Shifting the time‐axis window to include the newest tick.
+     * 2. Scanning both the TimeSeries and OHLCSeries for visible Y‐values,
+     * then resizing the value‐axis to fit with a small margin.
+     * 3. Removing any previous “CURRENT_PRICE” markers and adding a new one
+     * at the latest close price (colour‐coded by up/down/flat).
+     * 4. Repainting the panel.
+     *
+     * @param chartPanel   the ChartPanel to update; if null, this method returns immediately
+     * @param start        the Date at which the visible window begins (oldest point)
+     * @param tickDate     the Date of the newest data point (latest tick)
+     * @param series       the TimeSeries of closing prices, used to compute Y‐range
+     * @param ohlcSeries   the OHLCSeries of minute‐aggregated candles, used to compute Y‐range
+     * @param notification the Notification containing symbol info and last‐close map key
+     * @param close        the latest closing price to draw the “CURRENT_PRICE” marker
+     */
+    private static void annotateChart(ChartPanel chartPanel, Date start, Date tickDate, TimeSeries series, OHLCSeries ohlcSeries, Notification notification, double close) {
+        if (chartPanel != null) {
+            // Obtain the chart plot (where axes and data are drawn)
+            XYPlot plot = chartPanel.getChart().getXYPlot();
+
+            // The X-axis for time (dates) in this chart
+            DateAxis axis = (DateAxis) plot.getDomainAxis();
+
+            // === Move X-axis window ===
+            // Adjust the horizontal axis so the chart view always includes the newest point
+            // The window shows everything from 'start' to 'tickDate'
+            axis.setRange(start, new Date(tickDate.getTime() + 60 * 1000));
+
+            // === Prepare for Y-axis dynamic scaling ===
+            // Trackers for min and max Y values (for axis range)
+            double minY = Double.MAX_VALUE;
+            double maxY = -Double.MAX_VALUE;
+
+            // === Efficient scan of close values in visible TimeSeries window ===
+            // Use binary search to find the subset of indices to scan
+            int firstSeriesIdx = findFirstTimeSeriesIndexAfter(start, series);
+            int lastSeriesIdx = findLastTimeSeriesIndexBefore(tickDate, series);
+
+            for (int j = firstSeriesIdx; j <= lastSeriesIdx; j++) {
+                double closeValue = series.getValue(j).doubleValue();
+                minY = Math.min(minY, closeValue);
+                maxY = Math.max(maxY, closeValue);
+            }
+
+            // === Efficient scan of OHLC values in visible window ===
+            // Again, use binary search to restrict scan to visible data only
+            int firstOhlcIdx = findFirstOHLCIndexAfter(start, ohlcSeries);
+            int lastOhlcIdx = findLastOHLCIndexBefore(tickDate, ohlcSeries);
+
+            for (int k = firstOhlcIdx; k <= lastOhlcIdx; k++) {
+                OHLCItem item = (OHLCItem) ohlcSeries.getDataItem(k);
+                minY = Math.min(minY, item.getLowValue());
+                maxY = Math.max(maxY, item.getHighValue());
+            }
+
+            // === Update the Y-axis range if at least one valid data point is in the window ===
+            if (minY != Double.MAX_VALUE && maxY != -Double.MAX_VALUE) {
+                ValueAxis yAxis = plot.getRangeAxis();
+                double margin = 0.01; // 1% margin for visual padding above/below data
+                double range = maxY - minY;
+
+                if (range == 0) {
+                    // Special case: All values are the same (flat line).
+                    // Use a fixed small margin (±0.01) so the line doesn't sit on the chart edge.
+                    yAxis.setRange(minY - 0.01, maxY + 0.01);
+                } else {
+                    // Standard case: Add a 2% margin above and below the min/max for better readability.
+                    // This prevents the chart from looking cramped and ensures the data is not flush with the axis.
+                    yAxis.setRange(
+                            minY - range * margin, // Lower bound: 1% below minimum
+                            maxY + range * margin  // Upper bound: 1% above maximum
+                    );
+                }
+            }
+
+            // === Redraw chart with the newly updated axis ranges and datasets ===
+            chartPanel.repaint();
+
+            // ======================== DRAW THE CURRENT CLOSE PRICE LINE ========================
+
+            // Use the most recent close value to draw a marker showing the "current price" on the Y axis.
+            // (This visually indicates the latest tick for the notification mini-chart.)
+
+            // --- REMOVE PREVIOUS "CURRENT_PRICE" MARKERS (if any) ---
+            // We only ever want one current price marker displayed per chart, so remove all existing ones first.
+            Collection<?> existingMarkers = plot.getRangeMarkers(Layer.FOREGROUND); // Get all foreground markers
+            List<ValueMarker> toRemove = new ArrayList<>(); // List for collecting markers that need removal
+
+            if (existingMarkers != null) {
+                // Loop through each marker and check if it's a ValueMarker with the "CURRENT_PRICE" label
+                for (Object obj : existingMarkers) {
+                    if (obj instanceof ValueMarker marker && "CURRENT_PRICE".equals(marker.getLabel())) {
+                        toRemove.add(marker); // Add it to the removal list
+                    }
+                }
+                // Remove all identified "CURRENT_PRICE" markers from the plot (should be at most one, but robust to bugs)
+                for (ValueMarker marker : toRemove) {
+                    plot.removeRangeMarker(marker, Layer.FOREGROUND);
+                }
+            }
+
+            // --- ADD THE NEW "CURRENT_PRICE" MARKER ---
+            // Determine the marker color based on price movement compared to the previous close for this symbol.
+            String symbol = notification.getSymbol(); // The stock symbol for this notification
+            Double notifLastClose = notificationLastClose.get(symbol); // Get the last close, may be null if first tick
+
+            // Create a new ValueMarker at the latest close value, with color showing price movement (green/up, red/down, gray/flat)
+            ValueMarker priceMarker = getValueMarker(notifLastClose, close);
+
+            // Add the new marker to the chart in the foreground layer (so it appears on top)
+            plot.addRangeMarker(priceMarker, Layer.FOREGROUND);
+
+            // Update the per-symbol last close mapping for the next tick,
+            // ensuring the next marker correctly reflects movement since this close.
+            notificationLastClose.put(symbol, close);
+
+            // === Redraw chart ===
+            chartPanel.repaint();
         }
     }
 
@@ -3361,64 +3399,156 @@ public class mainUI extends JFrame {
      * @return A ready-to-use JPanel, fully laid out and containing all subcomponents for notifications and logs.
      */
     public JPanel createHypePanel() {
-        // The outermost vertical panel that holds everything in the hype section
+        // === Create & Configure Outer Panel ===
+        // Instantiate the main container that holds notification components
         JPanel panel = new JPanel();
-        // Set fixed width to avoid resizing when adding lots of notifications/logs
-        panel.setPreferredSize(new Dimension(300, 0)); // (width, height)
-        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS)); // Stack children vertically
 
-        // Top label for notification section
-        JLabel notifications = new JLabel("Hype notifications");
-        panel.add(notifications); // Add label at the top
+        // Set a fixed preferred width of 450px to ensure consistent layout,
+        // height remains dynamic (0) so the panel grows/shrinks based on content
+        panel.setPreferredSize(new Dimension(450, 0));
 
-        // === Notification list setup ===
-        // (Re)initialize the model that holds the Notification objects for the list
+        // Apply a vertical BoxLayout so child components are stacked top-to-bottom
+        // BoxLayout respects each component's max/min/preferred sizes
+        panel.setLayout(new BoxLayout(panel, BoxLayout.Y_AXIS));
+
+        // === Add Header Label ===
+        // Create a JLabel for the section title
+        JLabel notificationsLabel = new JLabel("Hype Notifications");
+
+        // Center the label horizontally within the BoxLayout
+        notificationsLabel.setAlignmentX(Component.CENTER_ALIGNMENT);
+
+        // Make text bold and increase size to 16 points for visibility
+        notificationsLabel.setFont(notificationsLabel.getFont().deriveFont(Font.BOLD, 16f));
+
+        // Add 10px space below this label to separate it visually from the list
+        notificationsLabel.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+        panel.add(notificationsLabel);
+
+        // === Initialize Notification List Model ===
+        // DefaultListModel holds Notification objects; dynamic add/remove operations
         notificationListModel = new DefaultListModel<>();
-        // Create the actual JList UI component to display notifications, backed by the above model
-        notificationList = new JList<>(notificationListModel);
-        notificationList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Only one notification can be selected at a time
 
-        // Attach a mouse listener for notification list interaction
+        // Create JList UI component bound to our model of Notification objects
+        notificationList = new JList<>(notificationListModel);
+
+        // Restrict selection to a single item for clarity in user interaction
+        notificationList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+        // Configure each list cell to have a consistent size:
+        // width = 430px, height = 110px (approx. four lines of text + padding)
+        notificationList.setFixedCellWidth(420);
+        notificationList.setFixedCellHeight(110);
+
+        // === Add MouseListener for Click Events ===
         notificationList.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                // Optionally re-sort the notifications if shouldSort is enabled
+                // If sorting is toggled on, re-sort the list by current sort criteria
                 if (shouldSort) {
                     sortNotifications(globalByChange); // Sort by %change or by time, depending on user preference
                 }
-                // Double-click to open full notification details
+
+                // Handle double-click: open detailed view for the clicked notification
                 if (e.getClickCount() == 2) {
+                    // Determine which cell was clicked
                     int index = notificationList.locationToIndex(e.getPoint());
                     if (index != -1) {
                         Notification clickedNotification = notificationListModel.getElementAt(index);
-                        openNotification(clickedNotification); // Open the clicked notification in its window
+                        // Trigger user-defined method to display full notification details
+                        openNotification(clickedNotification);
                     }
                 }
             }
         });
 
-        // Use a custom cell renderer for notification appearance in the list
-        notificationList.setCellRenderer((list, value, index, isSelected, cellHasFocus) -> {
-            // Each notification is displayed as a colored label
-            JLabel label = new JLabel(value.getTitle(), JLabel.CENTER); // Centered notification title
+        // === Define Cell Renderer for Custom Appearance ===
+        notificationList.setCellRenderer(
+                (JList<? extends Notification> list, Notification value,
+                 int index, boolean isSelected, boolean cellHasFocus) -> {
 
-            // Set the background color for the notification (indicates type or importance)
-            label.setOpaque(true); // Needed for background color to show up
-            label.setBackground(value.getColor());
+                    // Retrieve standard cell dimensions for layout calculations
+                    int cellWidth = list.getFixedCellWidth();
+                    int cellHeight = list.getFixedCellHeight();
 
-            // Give a nice thick black border with rounded corners
-            label.setBorder(BorderFactory.createLineBorder(Color.BLACK, 2, true));
-            // Set the text color based on selection (white for selected, black for normal)
-            label.setForeground(isSelected ? Color.WHITE : Color.BLACK);
+                    // Reserve 25% width for text, 75% for chart display
+                    int textWidth = (int) (cellWidth * 0.25);
+                    int chartWidth = cellWidth - textWidth;
 
-            return label; // This label is displayed for the notification cell
-        });
+                    // Create a panel to hold both text and chart side by side
+                    JPanel cellPanel = new JPanel(new BorderLayout(10, 10));  // 10px gaps between regions
+                    cellPanel.setOpaque(true);  // must be opaque for background color
 
-        // Place the notification JList inside a scroll pane, for handling many alerts
+                    // Outer border shows a black rounded outline and internal padding
+                    cellPanel.setBorder(
+                            BorderFactory.createCompoundBorder(
+                                    BorderFactory.createLineBorder(Color.BLACK, 2, true),  // 2px thick rounded
+                                    BorderFactory.createEmptyBorder(5, 5, 5, 5)  // 5px padding on all sides
+                            )
+                    );
+
+                    // Highlight selected cell or use notification-specific color
+                    Color bg = isSelected
+                            ? list.getSelectionBackground()
+                            : value.getColor();
+                    cellPanel.setBackground(bg);
+
+                    // === Left Region: Text Content ===
+                    JTextArea textArea = new JTextArea(4, 1);
+                    textArea.setText(value.getTitle());  // Notification title/text
+                    textArea.setFont(textArea.getFont().deriveFont(Font.BOLD, 14f));
+                    textArea.setLineWrap(true);
+                    textArea.setWrapStyleWord(true);  // wrap at word boundaries
+                    textArea.setOpaque(false);        // transparent background
+                    textArea.setEditable(false);      // read-only
+                    textArea.setForeground(isSelected ? Color.WHITE : Color.BLACK);
+                    textArea.setBorder(BorderFactory.createEmptyBorder());
+
+                    // Fix size so layout doesn’t shift at runtime
+                    textArea.setPreferredSize(new Dimension(textWidth, cellHeight));
+                    cellPanel.add(textArea, BorderLayout.WEST);
+
+                    // === Right Region: Chart Display ===
+                    ChartPanel previewPanel = value.getPreviewChartPanel();
+                    JFreeChart chart = previewPanel.getChart();
+
+                    // Remove surrounding legend panel
+                    chart.removeLegend();
+
+                    // Clear chart title text
+                    chart.setTitle((String) null);
+
+                    // Hide axes lines and labels
+                    XYPlot plot = chart.getXYPlot();
+                    plot.getDomainAxis().setVisible(false);
+                    plot.getRangeAxis().setVisible(false);
+                    plot.setOutlineVisible(false);
+
+                    // Turn off interactivity controls (zoom/pan), but maintain marker drawing
+                    previewPanel.setDomainZoomable(false);
+                    previewPanel.setRangeZoomable(false);
+                    previewPanel.setMouseWheelEnabled(false);
+                    previewPanel.setPopupMenu(null);
+
+                    // Constrain panel size to reserved chart area
+                    previewPanel.setPreferredSize(new Dimension(chartWidth, cellHeight));
+                    previewPanel.setBorder(BorderFactory.createLineBorder(Color.GRAY));
+                    cellPanel.add(previewPanel, BorderLayout.CENTER);
+
+                    return cellPanel;
+                }
+        );
+
+        // === Wrap the Notification List in a Scroll Pane ===
         JScrollPane scrollPane = new JScrollPane(notificationList);
-        scrollPane.setPreferredSize(new Dimension(200, 100)); // Reasonable height for short lists
-        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE)); // Allow it to grow tall if needed
+
+        // Provide an initial view size, but allow expansion
+        scrollPane.setPreferredSize(new Dimension(300, 200));
+        scrollPane.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
         panel.add(scrollPane);
+
+        // Add vertical spacing below the scroll area
+        panel.add(Box.createRigidArea(new Dimension(0, 10)));
 
         // === Logging Area Setup ===
         // This area shows system, debug, or info messages to the user
@@ -3448,7 +3578,6 @@ public class mainUI extends JFrame {
 
         // (Redundant add, but safe: ensures log area is always included and padded)
         panel.add(logScrollPane);
-        panel.add(Box.createRigidArea(new Dimension(0, 10))); // More space at bottom
 
         // Add a bold border/title to visually separate this panel in the main UI
         panel.setBorder(BorderFactory.createTitledBorder("Notifications"));
@@ -3617,7 +3746,7 @@ public class mainUI extends JFrame {
      *
      * @param byChange If true, sorts by percentage change (descending); if false, sorts by date (most recent first).
      */
-    public void sortNotifications(boolean byChange) {
+    public static void sortNotifications(boolean byChange) {
         // Remember user sorting preference (used by mouse listener for auto-sorting)
         globalByChange = byChange;
 
@@ -4005,7 +4134,7 @@ public class mainUI extends JFrame {
      * <p>
      * Constructed with the sort type, and can be wired to a menu item directly.
      */
-    public class eventSortNotifications implements ActionListener {
+    public static class eventSortNotifications implements ActionListener {
         boolean byChange;
 
         /**

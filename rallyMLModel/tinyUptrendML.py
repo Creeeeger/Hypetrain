@@ -98,7 +98,7 @@ def fit_minmax_scaler(X_train: np.ndarray, X_val: np.ndarray, eps: float = 1e-6)
     X_train_scaled = (X_train - feature_mins) / feature_ranges
     X_val_scaled = (X_val - feature_mins) / feature_ranges
 
-    return X_train_scaled, X_val_scaled, feature_mins, feature_ranges
+    return X_train_scaled, X_val_scaled, feature_mins, feature_maxs, feature_ranges
 
 
 def build_model(seq_len: int, n_feats: int):
@@ -206,11 +206,13 @@ if __name__ == "__main__":
     model.layers[-1].bias.assign([b0])
     print(model.summary())
 
-    X_train, X_val, min_vals, ranges = fit_minmax_scaler(X_train, X_val)
+    X_train, X_val, min_vals, max_vals, ranges = fit_minmax_scaler(X_train, X_val)
     print(FEATURES)
     print(ranges)
     print(min_vals)
+    print(max_vals)
     print(f"X_train shape: {X_train.shape}")
+    exit()
 
     # Training
     with tf.device('/CPU:0'):
@@ -245,7 +247,7 @@ if __name__ == "__main__":
 
         X_test, y_test = make_sequences(test_df)
 
-        X_test, X_test_val, min_vals, ranges = fit_minmax_scaler(X_test, X_test)
+        X_test, X_test_val, min_vals, max, ranges = fit_minmax_scaler(X_test, X_test)
 
         print(X_test)
 

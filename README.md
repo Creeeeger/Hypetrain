@@ -214,6 +214,7 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 ## 🔔 Notifications & “Hype” Alerts
 
 - **In-App Notifications** – auto-expire after 20 minutes or duplicate
+- **Preview** - all markers and the Realtime chart are shown in the notifications preview
 - **System Notifications** – support for macOS & Windows
 - **Hype Mode** – scan for rallying stocks
 - **Check for Rallies** – open a popup with potential candidates
