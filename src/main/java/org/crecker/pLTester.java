@@ -147,12 +147,6 @@ public class pLTester {
 
         // Run the primary Profit/Loss analysis workflow
         PLAnalysis();
-
-        // Uncomment any of these to start real-time data collection for a given symbol:
-        // realTimeDataCollector("RGTI");
-        // realTimeDataCollector("QBTS");
-        // realTimeDataCollector("QUBT");
-        // realTimeDataCollector("IONQ");
     }
 
     /**
@@ -488,8 +482,10 @@ public class pLTester {
                     .getChart()
                     .getXYPlot();
 
-            // Remove any previously added vertical (domain) markers so we start fresh:
-            notifPlot.clearDomainMarkers();
+            XYPlot previewPlot = notification
+                    .getPreviewChartPanel()
+                    .getChart()
+                    .getXYPlot();
 
             // Determine "now" as the UTC instant of this notification (for pruning old events):
             ZoneId notifZone = ZoneId.of("America/New_York");
@@ -514,6 +510,7 @@ public class pLTester {
                 StockUnit lastBar = old.getStockUnitList().get(old.getStockUnitList().size() - 1);
                 ValueMarker marker = getValueMarker(old, lastBar);
                 notifPlot.addDomainMarker(marker);
+                previewPlot.addDomainMarker(marker);
             }
 
             // --- FIND TRADE ENTRY INDEX ---
@@ -1582,6 +1579,7 @@ public class pLTester {
             if (index != null && index < timeline.size()) {
                 StockUnit unit = timeline.get(index);
                 ValueMarker marker = getValueMarker(notification, unit);
+                marker.setValue(marker.getValue() - 30000);
                 plot.addDomainMarker(marker); // Draws a vertical colored line at the event time
             }
         }

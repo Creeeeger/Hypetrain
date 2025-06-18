@@ -64,6 +64,7 @@ public class Notification {
     JLabel percentageChange;                    // Label for showing percentage difference between two points
     private JFrame notificationFrame;           // Frame/window displaying this notification
     private final ChartPanel chartPanel;        // Chart panel for the graph (JFreeChart)
+    private final ChartPanel previewChartPanel; // Preview chart for notification
 
     /**
      * Create a Notification instance for a specific event, including relevant stock data and type.
@@ -134,8 +135,9 @@ public class Notification {
         this.timeSeries = new TimeSeries(symbol + " Price");
         processTimeSeriesData(stockUnitList); // Populate for line chart
 
-        // initialize chart at the beginning
+        // initialize charts at the beginning
         chartPanel = createChart();
+        previewChartPanel = createChart();
     }
 
     /**
@@ -365,6 +367,15 @@ public class Notification {
     }
 
     /**
+     * Gets the current chart panel component used for displaying the preview graph.
+     *
+     * @return The ChartPanel showing the JFreeChart.
+     */
+    public ChartPanel getPreviewChartPanel() {
+        return previewChartPanel;
+    }
+
+    /**
      * Gets the time series (close prices) for use in line chart mode.
      *
      * @return TimeSeries containing close price vs. time.
@@ -449,7 +460,8 @@ public class Notification {
      * Ensures thread-safety for UI updates.
      */
     private void updateUI() {
-        SwingUtilities.invokeLater(() -> chartPanel.repaint());
+        SwingUtilities.invokeLater(chartPanel::repaint);
+        SwingUtilities.invokeLater(previewChartPanel::repaint);
     }
 
     /**
