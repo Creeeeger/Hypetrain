@@ -543,7 +543,7 @@ public class pLTester {
             notifPlot.addRangeMarker(priceMarker);
 
             // --- 3) FINALLY, SHOW THE NOTIFICATION POPUP ---
-            // Now that the chart is annotated, display your notification UI:
+            // Now that the chart is annotated, display notification UI:
             notification.showNotification();
 
             while (offset < totalMinutes) {
@@ -898,7 +898,7 @@ public class pLTester {
         try (BufferedReader reader = new BufferedReader(new FileReader(filePath))) {
             String line;
             while ((line = reader.readLine()) != null) {
-                sb.append(line); // Append each line (file may be minified or pretty-printed)
+                sb.append(line); // Append each line
             }
         }
 
@@ -1272,6 +1272,8 @@ public class pLTester {
                     // Redraw overlays to show the new label region
                     chartPanel.repaint();
                     e.consume();
+                } else {
+                    chart.getXYPlot().getRangeAxis(1).setRange(0, 1);
                 }
 
                 // Restore built-in zoom, pan, and mouse wheel when finished
@@ -1320,7 +1322,7 @@ public class pLTester {
         chartPanel.setFocusable(true);
         chartPanel.requestFocusInWindow();
 
-        // Return the fully interactive panel for display in your JFrame
+        // Return the fully interactive panel for display
         return chartPanel;
     }
 

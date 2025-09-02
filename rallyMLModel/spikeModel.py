@@ -329,7 +329,7 @@ def build_model(input_shape):
     # Regularizer to keep the model in check — prevents overfitting by adding a small penalty on weights
     l2s = regularizers.L2(0.0001)
 
-    # Input layer: flexible sequence length and number of features, ready to accept your time-series data
+    # Input layer: flexible sequence length and number of features, ready to accept time-series data
     inputs = Input(shape=input_shape)
 
     # ========== CNN Layers — Feature Extractors 🚀 ==========
@@ -468,7 +468,7 @@ if __name__ == "__main__":
     # Disable oneDNN optimizations to avoid possible inconsistencies
     os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
-    # Disable GPU devices to speed up training on CPU (as explained in your comments)
+    # Disable GPU devices to speed up training on CPU (as explained in comments)
     tf.config.set_visible_devices([], 'GPU')
 
     # Start the training process with data from CSV file

@@ -251,7 +251,7 @@ A fully-featured real-time and historical stock analytics tool built for fast, i
 
 ## 🧠 Custom AI Support
 
-- **AI Hook** – integrate your own trained prediction engine
+- **AI Hook** – integrate own trained prediction engine
 - **Entry Prediction ML Model** – built-in ML model suggests optimal trade entries
 - **Uptrend ML Model** – detects and tracks uptrend momentum
 - **Variable Model Parameter Size** – fine-tune AI models for different strategies
@@ -397,7 +397,7 @@ Stay tactical. **Obey the rules, protect the account.**
 
 ---
 
-## 📈 A. Trend Following (Your Current Setup)
+## 📈 A. Trend Following (Current Setup)
 
 ### ⏱ 1-Minute Timeframe
 
@@ -413,7 +413,7 @@ Stay tactical. **Obey the rules, protect the account.**
 
 ---
 
-## 🔄 B. Mean Reversion (Your Spike Detection)
+## 🔄 B. Mean Reversion (Spike Detection)
 
 ### ⏱ 1-Minute Timeframe
 
