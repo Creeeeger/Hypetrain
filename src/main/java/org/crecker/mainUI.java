@@ -1029,7 +1029,6 @@ public class mainUI extends JFrame {
             // Show a popup notification balloon with the given title and message
             trayIcon.displayMessage(title, message, TrayIcon.MessageType.INFO);
 
-            // (Note: Icon remains until application exits, or you explicitly remove it.)
         } catch (Exception e) {
             // Print any exceptions (e.g., file not found, security exceptions) for debugging
             e.printStackTrace();
@@ -1334,7 +1333,7 @@ public class mainUI extends JFrame {
                         Map<RegularTimePeriod, AggregatedStockData> aggregatedData = getAggregatedData(choice, zone);
                         double spikeThreshold = 0.01; // Limit wicks/spikes to 1% outside of open/close range to prevent visual outliers.
 
-                        // Before you start adding bars, disable notifications for better performance.
+                        // Before start adding bars, disable notifications for better performance.
                         ohlcSeries.setNotify(false); // Pause automatic chart updates during bulk data addition.
 
                         // For each aggregated period, clamp the high/low as needed, and add the OHLC bar to the series.
@@ -1630,7 +1629,7 @@ public class mainUI extends JFrame {
 
         // Filter to only include data after the given start date (for the visible chart window)
         // Defensive copy to avoid ConcurrentModificationException
-        List<StockUnit> filteredStocks = new ArrayList<>(stockUnitList) // Defensive copy (optional, if you want to avoid changing original)
+        List<StockUnit> filteredStocks = new ArrayList<>(stockUnitList) // Defensive copy
                 .parallelStream()
                 .filter(stock -> stock.getDateDate().after(startDate))      // Keep only stocks after the startDate
                 .sorted(Comparator.comparing(StockUnit::getDateDate))       // Sort ascending by date
@@ -3010,7 +3009,7 @@ public class mainUI extends JFrame {
             notificationLastClose.put(symbol, close);
 
             // === Redraw chart ===
-            chartPanel.repaint();
+            SwingUtilities.invokeLater(chartPanel::repaint);
         }
     }
 
@@ -3167,7 +3166,7 @@ public class mainUI extends JFrame {
         chartPlaceholder = new JPanel(new BorderLayout());
         // Give it a border for visual clarity and set a preferred size for appearance
         chartPlaceholder.setBorder(BorderFactory.createLineBorder(Color.BLACK));
-        chartPlaceholder.setPreferredSize(new Dimension(600, 400));
+        chartPlaceholder.setPreferredSize(new Dimension(500, 400));
 
         // Create a special JPanel that automatically replaces previous content when adding new chart panels
         chartPlaceholder = new JPanel(new BorderLayout()) {
@@ -3202,20 +3201,20 @@ public class mainUI extends JFrame {
         JList<News> newsList = (JList<News>) newsScrollPane.getViewport().getView();
 
         // -- Custom rendering for news items
-        newsList.setCellRenderer(new NotificationRenderer());
+        newsList.setCellRenderer(new NewsRenderer());
 
         // -- Set a fixed row height so all news items fit their two-line HTML display
         JLabel dummyLabel = new JLabel("<html>Line1<br>Line2</html>");
         dummyLabel.setFont(newsList.getFont());
-        int rowHeight = dummyLabel.getPreferredSize().height + 5; // Extra 5px padding
+        int rowHeight = dummyLabel.getPreferredSize().height + 40; // Extra 40px padding
         newsList.setFixedCellHeight(rowHeight);
 
         // ---- News Panel Container (news + overview button) ----
         JPanel newsContainerPanel = new JPanel(new BorderLayout());
-        newsContainerPanel.setPreferredSize(new Dimension(200, 400));
+        newsContainerPanel.setPreferredSize(new Dimension(300, 400));
 
         // Adjust news scroll area for the space required by the button
-        newsScrollPane.setPreferredSize(new Dimension(200, 380));
+        newsScrollPane.setPreferredSize(new Dimension(300, 400));
 
         // Button at the bottom of the news pane, opens the company overview dialog
         JButton overviewButton = getOverviewButton();
@@ -3308,7 +3307,7 @@ public class mainUI extends JFrame {
     private JScrollPane getNewsScrollPane() {
         // Create a JList for news articles using the model for this session
         JList<News> NewsList = new JList<>(NewsListModel);
-        NewsList.setCellRenderer(new NotificationRenderer()); // Use your custom renderer
+        NewsList.setCellRenderer(new NewsRenderer()); // Use custom renderer
         NewsList.setSelectionMode(ListSelectionModel.SINGLE_SELECTION); // Only allow one article selected at a time
 
         // Add a mouse listener for user interaction (clicks)
@@ -3617,7 +3616,7 @@ public class mainUI extends JFrame {
      * @param sentimentForTicker The sentiment analysis result associated with the news article,
      *                           or {@code null} if not available. Used for sentiment coloring and badges.
      */
-    public void addNews(String title, String content, String url, NewsResponse.TickerSentiment sentimentForTicker) {
+    public static void addNews(String title, String content, String url, NewsResponse.TickerSentiment sentimentForTicker) {
         // Each news item is stored as a News object in the model,
         // which is rendered by the JList in the GUI.
         NewsListModel.addElement(new News(title, content, url, sentimentForTicker));
@@ -4151,12 +4150,12 @@ public class mainUI extends JFrame {
     }
 
     /**
-     * <h2>NotificationRenderer</h2>
+     * <h2>NewsRenderer</h2>
      * Custom ListCellRenderer for displaying {@link News} objects in a JList
-     * as stylized notification cards, using NotificationPanel for layout.
+     * as stylized News cards, using NotificationPanel for layout.
      * Handles theme colors, selection highlighting, and sentiment-based borders.
      */
-    public static class NotificationRenderer implements ListCellRenderer<News> {
+    public static class NewsRenderer implements ListCellRenderer<News> {
 
         /**
          * Configures and returns the component used to render each News item in the list.

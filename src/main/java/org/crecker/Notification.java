@@ -597,7 +597,7 @@ public class Notification {
      *
      * @return a configured JButton labeled "Show Trading Rules", which opens the styled rules dialog on click.
      *
-     * <p><b>Usage:</b> Attach the returned button to your Swing GUI. Requires a valid {@code notificationFrame} as the dialog parent.
+     * <p><b>Usage:</b> Attach the returned button to Swing GUI. Requires a valid {@code notificationFrame} as the dialog parent.
      */
     @NotNull
     private JButton getShowRulesBtn() {

@@ -55,6 +55,8 @@ import static org.crecker.pLTester.*;
  */
 public class mainDataHandler {
 
+    private static boolean useParallelFetch = true; //use old serial stock after stock fetch or new parralel fetch
+
     /**
      * The ordered list of all technical indicator keys that will be extracted from each window of stock data.
      * <ul>
@@ -1458,7 +1460,7 @@ public class mainDataHandler {
                         .entitlement("realtime")
                         .onSuccess(e -> {
                             try {
-                                // Parse and store in-memory (and maybe to disk if your handleSuccess does so)
+                                // Parse and store in-memory
                                 handleSuccess((TimeSeriesResponse) e);
 
                                 // Extract all StockUnits (bars) from response, annotate with symbol.
@@ -1519,249 +1521,136 @@ public class mainDataHandler {
                 // precompute for uptrend ML
                 precomputeFeatureRanges(true);
 
-                // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
-                while (!Thread.currentThread().isInterrupted()) {
-                    // ======= (A) START OR STOP the second–framework thread exactly once =======
-                    if (useSecondFramework) {
-                        // If the flag is true, we want to ensure the second framework thread is running.
-                        // Only start it if it isn't already created or if the previous one has died.
-                        if (secondFrameworkThread == null || !secondFrameworkThread.isAlive()) {
-                            // Create a new Thread assigned to run the second-framework loop.
-                            secondFrameworkThread = new Thread(() -> {
-                                // The thread’s name can help with debugging/logging.
-                            }, "SecondFrameworkThread");
+                if (useParallelFetch) {
+                    // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
+                    while (!Thread.currentThread().isInterrupted()) {
 
-                            // Inside the thread’s Runnable, we perform continuous polling as long as:
-                            //  1) useSecondFramework remains true, and
-                            //  2) this thread has not been interrupted.
-                            secondFrameworkThread = new Thread(() -> {
-                                // Loop condition: keep running until the flag flips off or we’re interrupted.
-                                while (useSecondFramework && !Thread.currentThread().isInterrupted()) {
-                                    try {
-                                        // Create a thread-safe collection to accumulate all matches for this polling round.
-                                        List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
-
-                                        // Take a snapshot of the symbols set at this moment to avoid concurrent modification.
-                                        List<String> symbolsSnapshot = new ArrayList<>(symbols);
-
-                                        // Compute how many batches of up to 100 symbols we need (100 is the API limit).
-                                        int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
-
-                                        // A CountDownLatch lets us wait until every asynchronous batch request has completed.
-                                        CountDownLatch latch = new CountDownLatch(totalBatches);
-
-                                        // Split symbols into sublists (batches) of size ≤ 100.
-                                        for (int i = 0; i < totalBatches; i++) {
-                                            // Determine start index for this batch.
-                                            int start = i * 100;
-                                            // Determine end index, ensuring we don’t exceed list size.
-                                            int end = Math.min((i + 1) * 100, symbolsSnapshot.size());
-
-                                            // Extract the sublist of symbols for this batch.
-                                            List<String> batchSymbols = symbolsSnapshot.subList(start, end);
-
-                                            // Join the symbols into a comma-separated string and uppercase them (per API requirements).
-                                            String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
-
-                                            // Fire off an asynchronous AlphaVantage request for this batch.
-                                            AlphaVantage.api()
-                                                    .Realtime()                  // Real-time data endpoint
-                                                    .setSymbols(symbolsBatch)    // Set the batch of symbols
-                                                    .entitlement("realtime")     // Specify entitlement token/flag
-                                                    .onSuccess(response -> {
-                                                        // On successful response: collect all matches into our list.
-                                                        matches.addAll(response.getMatches());
-                                                        // Signal that this batch is done by counting down the latch.
-                                                        latch.countDown();
-                                                    })
-                                                    .onFailure(e -> {
-                                                        // If an error occurs, handle/log it but still count down so latch can proceed.
-                                                        handleFailure(e);
-                                                        latch.countDown();
-                                                    })
-                                                    .fetch();  // Actually send the HTTP request asynchronously
-                                        }
-
-                                        // Wait up to 5 seconds for all batch requests to complete.
-                                        // If not every batch finishes within 5 seconds, we log a warning and move on.
-                                        if (!latch.await(5, TimeUnit.SECONDS)) {
-                                            logTextArea.append("Warning: Timed out waiting for data in second framework\n");
-                                        }
-
-                                        // At this point, 'matches' contains all successful responses for this round.
-                                        // Process them (e.g., update internal data structures, trigger analytics, etc.).
-                                        processStockData(matches);
-
-                                        // After processing, pause 5 seconds to enforce rate-limiting before next poll.
-                                        Thread.sleep(5000);
-
-                                    } catch (InterruptedException ex) {
-                                        // If we’re interrupted (either because useSecondFramework became false or someone called interrupt()):
-                                        // 1) Re-set the interrupt flag so higher-level code knows we were interrupted.
-                                        Thread.currentThread().interrupt();
-                                        // 2) Log that we’re exiting cleanly.
-                                        logTextArea.append("Second framework thread interrupted, exiting\n");
-                                        // 3) Break out of the while-loop so the thread can terminate.
-                                        break;
-
-                                    } catch (Exception ex) {
-                                        // Catch any other exception to prevent the thread from dying silently.
-                                        ex.printStackTrace();
-                                        logTextArea.append("Error in second framework: " + ex.getMessage() + "\n");
-                                        // Loop condition still holds (unless useSecondFramework is flipped), so we continue.
-                                    }
-                                }
-                                // Once we exit the loop, perform any final cleanup if necessary.
-                                logTextArea.append("Second framework thread has stopped.\n");
-                            }, "SecondFrameworkThread");
-
-                            // Start the newly created thread so it begins executing its run() method.
-                            secondFrameworkThread.start();
-                        }
-
-                    } else {
-                        // If useSecondFramework is false, we must ensure the background thread stops immediately.
-                        if (secondFrameworkThread != null && secondFrameworkThread.isAlive()) {
-                            // Interrupt the thread; this triggers InterruptedException or causes the loop condition to fail.
-                            secondFrameworkThread.interrupt();
-                            // Clear our reference so a new thread could be spawned later if the flag is turned on again.
-                            secondFrameworkThread = null;
-                        }
-                    }
-
-                    // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
-                    // --- Create a CountDownLatch with a count equal to the number of symbols we want to fetch ---
-                    // Each symbol's asynchronous API call will decrement this latch when finished (success or failure).
-                    CountDownLatch latch = new CountDownLatch(symbols.size());
-                    Set<String> pendingSymbols = Collections.newSetFromMap(new ConcurrentHashMap<>());
-                    pendingSymbols.addAll(symbols); // Initialize with all symbols
-
-                    try {
-                        // Loop through all symbols that need to be updated in real-time.
-                        for (String symbol : symbols) {
-                            // Asynchronously fetch the latest intraday data for each symbol from AlphaVantage.
-                            AlphaVantage.api()
-                                    .timeSeries()
-                                    .intraday()
-                                    .forSymbol(symbol)                       // Set the symbol (e.g., "AAPL")
-                                    .interval(Interval.ONE_MIN)              // 1-minute resolution
-                                    .outputSize(OutputSize.COMPACT)          // Only recent bars (smallest payload)
-                                    .entitlement("realtime")                 // Specify real-time data entitlement
-                                    .onSuccess(response -> {                 // Success callback (executed for each API call)
-                                        // Parse the response as a time series and extract all bars for the symbol
-                                        TimeSeriesResponse tsResponse = (TimeSeriesResponse) response;
-                                        List<StockUnit> stockUnits = tsResponse.getStockUnits();
-
-                                        if (!stockUnits.isEmpty()) {
-                                            // AlphaVantage API returns newest bars first; reverse to chronological order (oldest → newest)
-                                            List<StockUnit> reversedUnits = new ArrayList<>(stockUnits);
-                                            Collections.reverse(reversedUnits);
-
-                                            // Tag each bar with the symbol for clarity/tracking
-                                            reversedUnits.forEach(e -> e.setSymbol(symbol));
-
-                                            // Ensure thread-safe update of the global timeline map
-                                            synchronized (symbolTimelines) {
-                                                // Retrieve the current timeline for this symbol, or create a new one if missing/empty
-                                                List<StockUnit> timeline = symbolTimelines.get(symbol);
-                                                if (timeline == null || timeline.isEmpty()) {
-                                                    timeline = new ArrayList<>();
-                                                    symbolTimelines.put(symbol, timeline);
-                                                }
-
-                                                // === Compute the “last fully closed minute” in US/Eastern time zone ===
-                                                // We ignore the local clock entirely and base everything on US/Eastern.
-                                                ZoneId eastern = ZoneId.of("US/Eastern");
-
-                                                // 1. Get the current moment in US/Eastern.
-                                                ZonedDateTime nowEastern = ZonedDateTime.now(eastern);
-
-                                                // 2. Truncate to the start of the current minute, then subtract one minute
-                                                //    to land exactly on the previous full minute boundary.
-                                                //    Example: If it’s 11:01:05 US/Eastern now, then
-                                                //      nowEastern.truncatedTo(MINUTES) → 11:01:00
-                                                //      minusMinutes(1)               → 11:00:00
-                                                ZonedDateTime lastFullEastern = nowEastern
-                                                        .truncatedTo(ChronoUnit.MINUTES)
-                                                        .minusMinutes(1);
-
-                                                // 3. Convert that ZonedDateTime back to a LocalDateTime.
-                                                //    This `cutoffEasternLdt` represents the latest timestamp we consider “complete.”
-                                                //    Any bar stamped after this (e.g. 11:01:00 when i  t’s 11:01:05) is still in-progress and must be skipped.
-                                                LocalDateTime cutoffEasternLdt = lastFullEastern.toLocalDateTime();
-
-                                                // === Filter the reversedUnits list so we only take bars that are both:
-                                                //       A) Newer than whatever we already have stored for this symbol.
-                                                //       B) At or before the last fully closed Eastern-minute cutoff ===
-                                                // We’ll collect these into newBars and then append them to our existing timeline.
-                                                List<StockUnit> finalTimeline = timeline; // alias for clarity
-
-                                                List<StockUnit> newBars = reversedUnits.stream()
-                                                        .filter(unit -> {
-                                                            // 1) Interpret the bar’s timestamp as a LocalDateTime in US/Eastern.
-                                                            LocalDateTime barTime = unit.getLocalDateTimeDate(); // assumed parsed in US/Eastern
-
-                                                            // --- A) Don’t re-add any bar that’s not strictly newer than our stored data ---
-                                                            // If our current timeline is empty, newestStored == null → allow any bar.
-                                                            // Otherwise, compare: only accept future bars (barTime > newestStored).
-                                                            LocalDateTime newestStored = finalTimeline.isEmpty()
-                                                                    ? null
-                                                                    : finalTimeline.get(finalTimeline.size() - 1).getLocalDateTimeDate();
-
-                                                            boolean isAfterNewest = (newestStored == null)
-                                                                    || barTime.isAfter(newestStored);
-
-                                                            // --- B) Only accept bars at or before the last fully closed US/Eastern minute ---
-                                                            // If barTime is “after” cutoffEasternLdt, that means it’s still in-progress.
-                                                            // For example, if cutoffEasternLdt = 11:00:00, any bar with barTime = 11:01:00 will be rejected.
-                                                            boolean isAtOrBeforeFull = !barTime.isAfter(cutoffEasternLdt);
-
-                                                            // Return true only if BOTH conditions are satisfied:
-                                                            return isAfterNewest && isAtOrBeforeFull;
-                                                        })
-                                                        .toList();
-
-                                                // After filtering, newBars contains only completed bars up through the last full Eastern minute.
-                                                // You can now add them to the timeline:
-                                                timeline.addAll(newBars);
-                                            }
-                                        }
-
-                                        pendingSymbols.remove(symbol);
-                                        // Signal that this symbol's fetch is complete (success).
-                                        latch.countDown();
-                                    })
-                                    .onFailure(e -> {
-                                        // On API failure, log which symbol failed (and still signal completion)
-                                        logTextArea.append("Failed for symbol in Main Loop: " + symbol + " " + e.getMessage() + " \n");
-                                        pendingSymbols.remove(symbol);
-                                        latch.countDown();
-                                    })
-                                    .fetch(); // Start the async request
-                        }
-
-                        long startTime = System.nanoTime();
-
-                        // --- Wait for all fetches to complete (or timeout after 50 seconds) ---
-                        // The main thread blocks here until all symbol requests finish or timeout is reached.
-                        if (!latch.await(50, TimeUnit.SECONDS)) {
-                            // If not all latches counted down, warn the user (could be slow API or network)
-                            logTextArea.append("Warning: Timed out waiting for some data in Main Loop\n");
-
-                            // Log timed out symbols
-                            logTextArea.append("Timed out symbols: " + pendingSymbols + "\n");
-                            logTextArea.append("Number of timed out symbols: " + pendingSymbols.size() + "\n");
-                        }
-
-                        // Log the number of processed stock entries for debugging/feedback.
-                        logTextArea.append("Processed " + symbols.size() + " valid stock entries\n");
-                        long endTime = System.nanoTime();
-                        long durationMs = (endTime - startTime) / 1_000_000; // convert nanoseconds to milliseconds
-
-                        System.out.println("Execution time: " + durationMs + " ms\n");
+                        // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
+                        // --- Create a CountDownLatch with a count equal to the number of symbols we want to fetch ---
+                        // Each symbol's asynchronous API call will decrement this latch when finished (success or failure).
+                        CountDownLatch latch = new CountDownLatch(symbols.size());
+                        Set<String> pendingSymbols = Collections.newSetFromMap(new ConcurrentHashMap<>());
+                        pendingSymbols.addAll(symbols); // Initialize with all symbols
 
                         // === One‐time “dry run” to seed both predictor buffers with historical data ===
                         if (!firstTimeComputed) {
+                            // Loop through all symbols that need to be updated in real-time.
+                            for (String symbol : symbols) {
+                                // Asynchronously fetch the latest intraday data for each symbol from AlphaVantage.
+                                AlphaVantage.api()
+                                        .timeSeries()
+                                        .intraday()
+                                        .forSymbol(symbol)                       // Set the symbol (e.g., "AAPL")
+                                        .interval(Interval.ONE_MIN)              // 1-minute resolution
+                                        .outputSize(OutputSize.COMPACT)          // Only recent bars (smallest payload)
+                                        .entitlement("realtime")                 // Specify real-time data entitlement
+                                        .onSuccess(response -> {                 // Success callback (executed for each API call)
+                                            // Parse the response as a time series and extract all bars for the symbol
+                                            TimeSeriesResponse tsResponse = (TimeSeriesResponse) response;
+                                            List<StockUnit> stockUnits = tsResponse.getStockUnits();
+
+                                            if (!stockUnits.isEmpty()) {
+                                                // AlphaVantage API returns newest bars first; reverse to chronological order (oldest → newest)
+                                                List<StockUnit> reversedUnits = new ArrayList<>(stockUnits);
+                                                Collections.reverse(reversedUnits);
+
+                                                // Tag each bar with the symbol for clarity/tracking
+                                                reversedUnits.forEach(e -> e.setSymbol(symbol));
+
+                                                // Ensure thread-safe update of the global timeline map
+                                                synchronized (symbolTimelines) {
+                                                    // Retrieve the current timeline for this symbol, or create a new one if missing/empty
+                                                    List<StockUnit> timeline = symbolTimelines.get(symbol);
+                                                    if (timeline == null || timeline.isEmpty()) {
+                                                        timeline = new ArrayList<>();
+                                                        symbolTimelines.put(symbol, timeline);
+                                                    }
+
+                                                    // === Compute the “last fully closed minute” in US/Eastern time zone ===
+                                                    // We ignore the local clock entirely and base everything on US/Eastern.
+                                                    ZoneId eastern = ZoneId.of("US/Eastern");
+
+                                                    // 1. Get the current moment in US/Eastern.
+                                                    ZonedDateTime nowEastern = ZonedDateTime.now(eastern);
+
+                                                    // 2. Truncate to the start of the current minute, then subtract one minute
+                                                    //    to land exactly on the previous full minute boundary.
+                                                    //    Example: If it’s 11:01:05 US/Eastern now, then
+                                                    //      nowEastern.truncatedTo(MINUTES) → 11:01:00
+                                                    //      minusMinutes(1)               → 11:00:00
+                                                    ZonedDateTime lastFullEastern = nowEastern
+                                                            .truncatedTo(ChronoUnit.MINUTES)
+                                                            .minusMinutes(1);
+
+                                                    // 3. Convert that ZonedDateTime back to a LocalDateTime.
+                                                    //    This `cutoffEasternLdt` represents the latest timestamp we consider “complete.”
+                                                    //    Any bar stamped after this (e.g. 11:01:00 when i  t’s 11:01:05) is still in-progress and must be skipped.
+                                                    LocalDateTime cutoffEasternLdt = lastFullEastern.toLocalDateTime();
+
+                                                    // === Filter the reversedUnits list so we only take bars that are both:
+                                                    //       A) Newer than whatever we already have stored for this symbol.
+                                                    //       B) At or before the last fully closed Eastern-minute cutoff ===
+                                                    // We’ll collect these into newBars and then append them to our existing timeline.
+                                                    List<StockUnit> finalTimeline = timeline; // alias for clarity
+
+                                                    List<StockUnit> newBars = reversedUnits.stream()
+                                                            .filter(unit -> {
+                                                                // 1) Interpret the bar’s timestamp as a LocalDateTime in US/Eastern.
+                                                                LocalDateTime barTime = unit.getLocalDateTimeDate(); // assumed parsed in US/Eastern
+
+                                                                // --- A) Don’t re-add any bar that’s not strictly newer than our stored data ---
+                                                                // If our current timeline is empty, newestStored == null → allow any bar.
+                                                                // Otherwise, compare: only accept future bars (barTime > newestStored).
+                                                                LocalDateTime newestStored = finalTimeline.isEmpty()
+                                                                        ? null
+                                                                        : finalTimeline.get(finalTimeline.size() - 1).getLocalDateTimeDate();
+
+                                                                boolean isAfterNewest = (newestStored == null)
+                                                                        || barTime.isAfter(newestStored);
+
+                                                                // --- B) Only accept bars at or before the last fully closed US/Eastern minute ---
+                                                                // If barTime is “after” cutoffEasternLdt, that means it’s still in-progress.
+                                                                // For example, if cutoffEasternLdt = 11:00:00, any bar with barTime = 11:01:00 will be rejected.
+                                                                boolean isAtOrBeforeFull = !barTime.isAfter(cutoffEasternLdt);
+
+                                                                // Return true only if BOTH conditions are satisfied:
+                                                                return isAfterNewest && isAtOrBeforeFull;
+                                                            })
+                                                            .toList();
+
+                                                    // After filtering, newBars contains only completed bars up through the last full Eastern minute.
+                                                    // You can now add them to the timeline:
+                                                    timeline.addAll(newBars);
+                                                }
+                                            }
+
+                                            pendingSymbols.remove(symbol);
+                                            // Signal that this symbol's fetch is complete (success).
+                                            latch.countDown();
+                                        })
+                                        .onFailure(e -> {
+                                            // On API failure, log which symbol failed (and still signal completion)
+                                            logTextArea.append("Failed for symbol in Main Loop: " + symbol + " " + e.getMessage() + " \n");
+                                            pendingSymbols.remove(symbol);
+                                            latch.countDown();
+                                        })
+                                        .fetch(); // Start the async request
+                            }
+
+                            // --- Wait for all fetches to complete (or timeout after 50 seconds) ---
+                            // The main thread blocks here until all symbol requests finish or timeout is reached.
+                            if (!latch.await(55, TimeUnit.SECONDS)) {
+                                // If not all latches counted down, warn the user (could be slow API or network)
+                                logTextArea.append("Warning: Timed out waiting for some data in Main Loop\n");
+
+                                // Log timed out symbols
+                                logTextArea.append("Timed out symbols: " + pendingSymbols + "\n");
+                                logTextArea.append("Number of timed out symbols: " + pendingSymbols.size() + "\n");
+                            }
+
+                            // Log the number of processed stock entries for debugging/feedback.
+                            logTextArea.append("Processed " + symbols.size() + " valid stock entries\n");
+
                             // 1. Compute percentage changes across the full history
                             calculateStockPercentageChange(false);
 
@@ -1794,57 +1683,589 @@ public class mainDataHandler {
                             firstTimeComputed = true;
                         }
 
-                        // After all updates, recalculate the percentage change for each symbol,
-                        // so UI indicators and trading logic reflect the latest market conditions.
-                        // ===== After all symbol fetches complete, before recalculating percentage changes =====
-                        calculateStockPercentageChange(true);
 
-                        // ====== Rate limiting: Sleep for 60 seconds before polling again ======
-                        // ======= SLEEP UNTIL THE NEXT FULL MINUTE =======
+                        // ======= (A) START OR STOP the second–framework thread exactly once =======
+                        if (useSecondFramework) {
+                            // If the flag is true, we want to ensure the second framework thread is running.
+                            // Only start it if it isn't already created or if the previous one has died.
+                            if (secondFrameworkThread == null || !secondFrameworkThread.isAlive()) {
+                                // Create a new Thread assigned to run the second-framework loop.
+                                secondFrameworkThread = new Thread(() -> {
+                                    // The thread’s name can help with debugging/logging.
+                                }, "SecondFrameworkThread");
 
-                        // Get the current system time in milliseconds since epoch
-                        long currentMillis = System.currentTimeMillis();
+                                // Inside the thread’s Runnable, we perform continuous polling as long as:
+                                //  1) useSecondFramework remains true, and
+                                //  2) this thread has not been interrupted.
+                                secondFrameworkThread = new Thread(() -> {
+                                    // Loop condition: keep running until the flag flips off or we’re interrupted.
+                                    while (useSecondFramework && !Thread.currentThread().isInterrupted()) {
+                                        try {
+                                            // Create a thread-safe collection to accumulate all matches for this polling round.
+                                            List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
 
-                        // Calculate the timestamp (in millis) of the next full minute boundary
-                        // E.g., if now is 12:34:45.789, nextMinuteMillis will be 12:35:00.000
-                        long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000 + 2000;
+                                            // Take a snapshot of the symbols set at this moment to avoid concurrent modification.
+                                            List<String> symbolsSnapshot = new ArrayList<>(symbols);
 
-                        // Compute how many milliseconds to sleep to reach the next full minute
-                        long sleepTime = nextMinuteMillis - currentMillis;
+                                            // Compute how many batches of up to 100 symbols we need (100 is the API limit).
+                                            int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
 
-                        // clean up the map to save memory
-                        trimSymbolTimelines(300);
+                                            // A CountDownLatch lets us wait until every asynchronous batch request has completed.
+                                            CountDownLatch latch2 = new CountDownLatch(totalBatches);
 
-                        // Only sleep if we're not already exactly at a full minute
-                        if (sleepTime > 0) {
-                            try {
-                                // Log the next fetch timestamp (for debugging/monitoring)
-                                Instant fetchTime = Instant.ofEpochMilli(nextMinuteMillis);
-                                System.out.println("[INFO] Next fetch scheduled at: " + fetchTime);
-                                logTextArea.append("Next fetch scheduled at: " + fetchTime + "\n");
+                                            // Split symbols into sublists (batches) of size ≤ 100.
+                                            for (int i = 0; i < totalBatches; i++) {
+                                                // Determine start index for this batch.
+                                                int start = i * 100;
+                                                // Determine end index, ensuring we don’t exceed list size.
+                                                int end = Math.min((i + 1) * 100, symbolsSnapshot.size());
 
-                                // Sleep until the calculated next full minute
-                                Thread.sleep(sleepTime);
-                            } catch (InterruptedException e) {
-                                // Handle interruption (e.g., if shutting down)
-                                Thread.currentThread().interrupt();
-                                logTextArea.append("Data pull interrupted during sleep\n");
-                                break;
+                                                // Extract the sublist of symbols for this batch.
+                                                List<String> batchSymbols = symbolsSnapshot.subList(start, end);
+
+                                                // Join the symbols into a comma-separated string and uppercase them (per API requirements).
+                                                String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
+                                                // Fire off an asynchronous AlphaVantage request for this batch.
+                                                AlphaVantage.api()
+                                                        .Realtime()                  // Real-time data endpoint
+                                                        .setSymbols(symbolsBatch)    // Set the batch of symbols
+                                                        .entitlement("realtime")     // Specify entitlement token/flag
+                                                        .onSuccess(response -> {
+                                                            // On successful response: collect all matches into our list.
+                                                            matches.addAll(response.getMatches());
+                                                            // Signal that this batch is done by counting down the latch.
+                                                            latch2.countDown();
+                                                        })
+                                                        .onFailure(e -> {
+                                                            // If an error occurs, handle/log it but still count down so latch can proceed.
+                                                            handleFailure(e);
+                                                            latch2.countDown();
+                                                        })
+                                                        .fetch();  // Actually send the HTTP request asynchronously
+                                            }
+
+                                            // Wait up to 5 seconds for all batch requests to complete.
+                                            // If not every batch finishes within 5 seconds, we log a warning and move on.
+                                            if (!latch2.await(5, TimeUnit.SECONDS)) {
+                                                logTextArea.append("Warning: Timed out waiting for data in second framework\n");
+                                            }
+
+                                            // At this point, 'matches' contains all successful responses for this round.
+                                            // Process them (e.g., update internal data structures, trigger analytics, etc.).
+                                            processStockData(matches);
+
+                                            // After processing, pause 5 seconds to enforce rate-limiting before next poll.
+                                            Thread.sleep(5000);
+
+                                        } catch (InterruptedException ex) {
+                                            // If we’re interrupted (either because useSecondFramework became false or someone called interrupt()):
+                                            // 1) Re-set the interrupt flag so higher-level code knows we were interrupted.
+                                            Thread.currentThread().interrupt();
+                                            // 2) Log that we’re exiting cleanly.
+                                            logTextArea.append("Second framework thread interrupted, exiting\n");
+                                            // 3) Break out of the while-loop so the thread can terminate.
+                                            break;
+
+                                        } catch (Exception ex) {
+                                            // Catch any other exception to prevent the thread from dying silently.
+                                            ex.printStackTrace();
+                                            logTextArea.append("Error in second framework: " + ex.getMessage() + "\n");
+                                            // Loop condition still holds (unless useSecondFramework is flipped), so we continue.
+                                        }
+                                    }
+                                    // Once we exit the loop, perform any final cleanup if necessary.
+                                    logTextArea.append("Second framework thread has stopped.\n");
+                                }, "SecondFrameworkThread");
+
+                                // Start the newly created thread so it begins executing its run() method.
+                                secondFrameworkThread.start();
+                            }
+
+                        } else {
+                            // If useSecondFramework is false, we must ensure the background thread stops immediately.
+                            if (secondFrameworkThread != null && secondFrameworkThread.isAlive()) {
+                                // Interrupt the thread; this triggers InterruptedException or causes the loop condition to fail.
+                                secondFrameworkThread.interrupt();
+                                // Clear our reference so a new thread could be spawned later if the flag is turned on again.
+                                secondFrameworkThread = null;
                             }
                         }
-                    } catch (InterruptedException e) {
-                        // If thread is interrupted (shutdown requested), exit loop cleanly.
-                        e.printStackTrace();
-                        Thread.currentThread().interrupt();
-                        logTextArea.append("Data pull interrupted in main loop\n");
-                        break;
-                    } catch (Exception e) {
-                        // Any error: print/log and keep the background thread running.
-                        e.printStackTrace();
-                        logTextArea.append("Error during data pull in main loop: " + e.getMessage() + "\n");
+
+                        try {
+                            try {
+                                // Create a thread-safe collection to accumulate all matches for this polling round.
+                                List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
+
+                                // Take a snapshot of the symbols set at this moment to avoid concurrent modification.
+                                List<String> symbolsSnapshot = new ArrayList<>(symbols);
+
+                                // Compute how many batches of up to 100 symbols we need (100 is the API limit).
+                                int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
+
+                                // A CountDownLatch lets us wait until every asynchronous batch request has completed.
+                                CountDownLatch latch1 = new CountDownLatch(totalBatches);
+
+                                // Split symbols into sublists (batches) of size ≤ 100.
+                                for (int i = 0; i < totalBatches; i++) {
+                                    // Determine start index for this batch.
+                                    int start = i * 100;
+
+                                    // Determine end index, ensuring we don’t exceed list size.
+                                    int end = Math.min((i + 1) * 100, symbolsSnapshot.size());
+
+                                    // Extract the sublist of symbols for this batch.
+                                    List<String> batchSymbols = symbolsSnapshot.subList(start, end);
+
+                                    // Join the symbols into a comma-separated string and uppercase them (per API requirements).
+                                    String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
+                                    // Fire off an asynchronous AlphaVantage request for this batch.
+                                    AlphaVantage.api()
+                                            .Realtime()                  // Real-time data endpoint
+                                            .setSymbols(symbolsBatch)    // Set the batch of symbols
+                                            .entitlement("realtime")     // Specify entitlement token/flag
+                                            .onSuccess(response -> {
+                                                // On successful response: collect all matches into our list.
+                                                matches.addAll(response.getMatches());
+                                                // Signal that this batch is done by counting down the latch.
+                                                latch1.countDown();
+                                            })
+                                            .onFailure(e -> {
+                                                // If an error occurs, handle/log it but still count down so latch can proceed.
+                                                handleFailure(e);
+                                                latch1.countDown();
+                                            })
+                                            .fetch();  // Actually send the HTTP request asynchronously
+                                }
+
+                                // Wait up to 8 seconds for all batch requests to complete.
+                                // If not every batch finishes within 5 seconds, we log a warning and move on.
+                                if (!latch1.await(8, TimeUnit.SECONDS)) {
+                                    logTextArea.append("Warning: Timed out waiting for data in second framework\n");
+                                }
+
+                                // Process each real-time match entry individually
+                                for (RealTimeResponse.RealTimeMatch match : matches) {
+                                    // Ensure symbol keys are always uppercase for consistency in data structures
+                                    String symbol = match.getSymbol().toUpperCase();
+
+                                    // Decide whether to use extended-hours (pre-/post-market) data for this tick; fallback to regular hours if not available
+                                    boolean extended = useExtended(match);
+
+                                    LocalDateTime matchTime = LocalDateTime.parse(
+                                            match.getTimestamp(),
+                                            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.SSS")
+                                    );
+
+                                    String formattedTime = matchTime.atZone(ZoneId.of("US/Eastern"))
+                                            .truncatedTo(ChronoUnit.MINUTES)
+                                            .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss"));
+
+                                    // For a real-time tick, only the "close" price is meaningful; set all OHLC fields to the same value for this tick
+                                    double close = extended ? match.getExtendedHoursQuote() : match.getClose();
+                                    double open = extended ? match.getExtendedHoursQuote() : match.getOpen();
+                                    double high = extended ? match.getExtendedHoursQuote() : match.getHigh();
+                                    double low = extended ? match.getExtendedHoursQuote() : match.getLow();
+                                    double volume = match.getVolume(); // Extended-hours volume is often zero or not reported, but use what’s available
+
+                                    // Build the StockUnit object with all relevant data for this instant
+                                    StockUnit unit = new StockUnit.Builder()
+                                            .symbol(symbol)
+                                            .open(open)
+                                            .high(high)
+                                            .low(low)
+                                            .close(close)
+                                            .time(formattedTime)
+                                            .volume(volume)
+                                            .build();
+
+                                    synchronized (symbolTimelines) {
+                                        symbolTimelines
+                                                .computeIfAbsent(symbol, k -> Collections.synchronizedList(new ArrayList<>()))
+                                                .add(unit);
+                                    }
+                                }
+
+                            } catch (Exception ex) {
+                                // Catch any other exception to prevent the thread from dying silently.
+                                ex.printStackTrace();
+                            }
+
+                            // After all updates, recalculate the percentage change for each symbol,
+                            // so UI indicators and trading logic reflect the latest market conditions.
+                            // ===== After all symbol fetches complete, before recalculating percentage changes =====
+                            calculateStockPercentageChange(true);
+
+                            // ====== Rate limiting: Sleep for 60 seconds before polling again ======
+                            // ======= SLEEP UNTIL THE NEXT FULL MINUTE =======
+
+                            // Get the current system time in milliseconds since epoch
+                            long currentMillis = System.currentTimeMillis();
+
+                            // Calculate the timestamp (in millis) of the next full minute boundary
+                            // E.g., if now is 12:34:45.789, nextMinuteMillis will be 12:35:00.000
+                            long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000;
+
+                            // Compute how many milliseconds to sleep to reach the next full minute
+                            long sleepTime = nextMinuteMillis - currentMillis;
+
+                            // clean up the map to save memory
+                            trimSymbolTimelines(300);
+
+                            // Only sleep if we're not already exactly at a full minute
+                            if (sleepTime > 0) {
+                                try {
+                                    // Log the next fetch timestamp (for debugging/monitoring)
+                                    Instant fetchTime = Instant.ofEpochMilli(nextMinuteMillis);
+                                    System.out.println("[INFO] Next fetch scheduled at: " + fetchTime);
+                                    logTextArea.append("Next fetch scheduled at: " + fetchTime + "\n");
+
+                                    // Sleep until the calculated next full minute
+                                    Thread.sleep(sleepTime);
+                                } catch (InterruptedException e) {
+                                    // Handle interruption (e.g., if shutting down)
+                                    Thread.currentThread().interrupt();
+                                    logTextArea.append("Data pull interrupted during sleep\n");
+                                    break;
+                                }
+                            }
+                        } catch (Exception e) {
+                            // Any error: print/log and keep the background thread running.
+                            e.printStackTrace();
+                            logTextArea.append("Error during data pull in main loop: " + e.getMessage() + "\n");
+                        }
+                        // Always scroll UI log to show the latest event.
+                        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
                     }
-                    // Always scroll UI log to show the latest event.
-                    logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                } else {
+                    // ===== MAIN REAL-TIME DATA LOOP (continues as long as thread is not interrupted) =====
+                    while (!Thread.currentThread().isInterrupted()) {
+                        // ======= (A) START OR STOP the second–framework thread exactly once =======
+                        if (useSecondFramework) {
+                            // If the flag is true, we want to ensure the second framework thread is running.
+                            // Only start it if it isn't already created or if the previous one has died.
+                            if (secondFrameworkThread == null || !secondFrameworkThread.isAlive()) {
+                                // Create a new Thread assigned to run the second-framework loop.
+                                secondFrameworkThread = new Thread(() -> {
+                                    // The thread’s name can help with debugging/logging.
+                                }, "SecondFrameworkThread");
+
+                                // Inside the thread’s Runnable, we perform continuous polling as long as:
+                                //  1) useSecondFramework remains true, and
+                                //  2) this thread has not been interrupted.
+                                secondFrameworkThread = new Thread(() -> {
+                                    // Loop condition: keep running until the flag flips off or we’re interrupted.
+                                    while (useSecondFramework && !Thread.currentThread().isInterrupted()) {
+                                        try {
+                                            // Create a thread-safe collection to accumulate all matches for this polling round.
+                                            List<RealTimeResponse.RealTimeMatch> matches = new CopyOnWriteArrayList<>();
+
+                                            // Take a snapshot of the symbols set at this moment to avoid concurrent modification.
+                                            List<String> symbolsSnapshot = new ArrayList<>(symbols);
+
+                                            // Compute how many batches of up to 100 symbols we need (100 is the API limit).
+                                            int totalBatches = (int) Math.ceil(symbolsSnapshot.size() / 100.0);
+
+                                            // A CountDownLatch lets us wait until every asynchronous batch request has completed.
+                                            CountDownLatch latch = new CountDownLatch(totalBatches);
+
+                                            // Split symbols into sublists (batches) of size ≤ 100.
+                                            for (int i = 0; i < totalBatches; i++) {
+                                                // Determine start index for this batch.
+                                                int start = i * 100;
+                                                // Determine end index, ensuring we don’t exceed list size.
+                                                int end = Math.min((i + 1) * 100, symbolsSnapshot.size());
+
+                                                // Extract the sublist of symbols for this batch.
+                                                List<String> batchSymbols = symbolsSnapshot.subList(start, end);
+
+                                                // Join the symbols into a comma-separated string and uppercase them (per API requirements).
+                                                String symbolsBatch = String.join(",", batchSymbols).toUpperCase();
+
+                                                // Fire off an asynchronous AlphaVantage request for this batch.
+                                                AlphaVantage.api()
+                                                        .Realtime()                  // Real-time data endpoint
+                                                        .setSymbols(symbolsBatch)    // Set the batch of symbols
+                                                        .entitlement("realtime")     // Specify entitlement token/flag
+                                                        .onSuccess(response -> {
+                                                            // On successful response: collect all matches into our list.
+                                                            matches.addAll(response.getMatches());
+                                                            // Signal that this batch is done by counting down the latch.
+                                                            latch.countDown();
+                                                        })
+                                                        .onFailure(e -> {
+                                                            // If an error occurs, handle/log it but still count down so latch can proceed.
+                                                            handleFailure(e);
+                                                            latch.countDown();
+                                                        })
+                                                        .fetch();  // Actually send the HTTP request asynchronously
+                                            }
+
+                                            // Wait up to 5 seconds for all batch requests to complete.
+                                            // If not every batch finishes within 5 seconds, we log a warning and move on.
+                                            if (!latch.await(5, TimeUnit.SECONDS)) {
+                                                logTextArea.append("Warning: Timed out waiting for data in second framework\n");
+                                            }
+
+                                            // At this point, 'matches' contains all successful responses for this round.
+                                            // Process them (e.g., update internal data structures, trigger analytics, etc.).
+                                            processStockData(matches);
+
+                                            // After processing, pause 5 seconds to enforce rate-limiting before next poll.
+                                            Thread.sleep(5000);
+
+                                        } catch (InterruptedException ex) {
+                                            // If we’re interrupted (either because useSecondFramework became false or someone called interrupt()):
+                                            // 1) Re-set the interrupt flag so higher-level code knows we were interrupted.
+                                            Thread.currentThread().interrupt();
+                                            // 2) Log that we’re exiting cleanly.
+                                            logTextArea.append("Second framework thread interrupted, exiting\n");
+                                            // 3) Break out of the while-loop so the thread can terminate.
+                                            break;
+
+                                        } catch (Exception ex) {
+                                            // Catch any other exception to prevent the thread from dying silently.
+                                            ex.printStackTrace();
+                                            logTextArea.append("Error in second framework: " + ex.getMessage() + "\n");
+                                            // Loop condition still holds (unless useSecondFramework is flipped), so we continue.
+                                        }
+                                    }
+                                    // Once we exit the loop, perform any final cleanup if necessary.
+                                    logTextArea.append("Second framework thread has stopped.\n");
+                                }, "SecondFrameworkThread");
+
+                                // Start the newly created thread so it begins executing its run() method.
+                                secondFrameworkThread.start();
+                            }
+
+                        } else {
+                            // If useSecondFramework is false, we must ensure the background thread stops immediately.
+                            if (secondFrameworkThread != null && secondFrameworkThread.isAlive()) {
+                                // Interrupt the thread; this triggers InterruptedException or causes the loop condition to fail.
+                                secondFrameworkThread.interrupt();
+                                // Clear our reference so a new thread could be spawned later if the flag is turned on again.
+                                secondFrameworkThread = null;
+                            }
+                        }
+
+                        // This loop keeps running until the thread is explicitly interrupted (e.g., via cancellation).
+                        // --- Create a CountDownLatch with a count equal to the number of symbols we want to fetch ---
+                        // Each symbol's asynchronous API call will decrement this latch when finished (success or failure).
+                        CountDownLatch latch = new CountDownLatch(symbols.size());
+                        Set<String> pendingSymbols = Collections.newSetFromMap(new ConcurrentHashMap<>());
+                        pendingSymbols.addAll(symbols); // Initialize with all symbols
+
+                        try {
+                            // Loop through all symbols that need to be updated in real-time.
+                            for (String symbol : symbols) {
+                                // Asynchronously fetch the latest intraday data for each symbol from AlphaVantage.
+                                AlphaVantage.api()
+                                        .timeSeries()
+                                        .intraday()
+                                        .forSymbol(symbol)                       // Set the symbol (e.g., "AAPL")
+                                        .interval(Interval.ONE_MIN)              // 1-minute resolution
+                                        .outputSize(OutputSize.COMPACT)          // Only recent bars (smallest payload)
+                                        .entitlement("realtime")                 // Specify real-time data entitlement
+                                        .onSuccess(response -> {                 // Success callback (executed for each API call)
+                                            // Parse the response as a time series and extract all bars for the symbol
+                                            TimeSeriesResponse tsResponse = (TimeSeriesResponse) response;
+                                            List<StockUnit> stockUnits = tsResponse.getStockUnits();
+
+                                            if (!stockUnits.isEmpty()) {
+                                                // AlphaVantage API returns newest bars first; reverse to chronological order (oldest → newest)
+                                                List<StockUnit> reversedUnits = new ArrayList<>(stockUnits);
+                                                Collections.reverse(reversedUnits);
+
+                                                // Tag each bar with the symbol for clarity/tracking
+                                                reversedUnits.forEach(e -> e.setSymbol(symbol));
+
+                                                // Ensure thread-safe update of the global timeline map
+                                                synchronized (symbolTimelines) {
+                                                    // Retrieve the current timeline for this symbol, or create a new one if missing/empty
+                                                    List<StockUnit> timeline = symbolTimelines.get(symbol);
+                                                    if (timeline == null || timeline.isEmpty()) {
+                                                        timeline = new ArrayList<>();
+                                                        symbolTimelines.put(symbol, timeline);
+                                                    }
+
+                                                    // === Compute the “last fully closed minute” in US/Eastern time zone ===
+                                                    // We ignore the local clock entirely and base everything on US/Eastern.
+                                                    ZoneId eastern = ZoneId.of("US/Eastern");
+
+                                                    // 1. Get the current moment in US/Eastern.
+                                                    ZonedDateTime nowEastern = ZonedDateTime.now(eastern);
+
+                                                    // 2. Truncate to the start of the current minute, then subtract one minute
+                                                    //    to land exactly on the previous full minute boundary.
+                                                    //    Example: If it’s 11:01:05 US/Eastern now, then
+                                                    //      nowEastern.truncatedTo(MINUTES) → 11:01:00
+                                                    //      minusMinutes(1)               → 11:00:00
+                                                    ZonedDateTime lastFullEastern = nowEastern
+                                                            .truncatedTo(ChronoUnit.MINUTES)
+                                                            .minusMinutes(1);
+
+                                                    // 3. Convert that ZonedDateTime back to a LocalDateTime.
+                                                    //    This `cutoffEasternLdt` represents the latest timestamp we consider “complete.”
+                                                    //    Any bar stamped after this (e.g. 11:01:00 when i  t’s 11:01:05) is still in-progress and must be skipped.
+                                                    LocalDateTime cutoffEasternLdt = lastFullEastern.toLocalDateTime();
+
+                                                    // === Filter the reversedUnits list so we only take bars that are both:
+                                                    //       A) Newer than whatever we already have stored for this symbol.
+                                                    //       B) At or before the last fully closed Eastern-minute cutoff ===
+                                                    // We’ll collect these into newBars and then append them to our existing timeline.
+                                                    List<StockUnit> finalTimeline = timeline; // alias for clarity
+
+                                                    List<StockUnit> newBars = reversedUnits.stream()
+                                                            .filter(unit -> {
+                                                                // 1) Interpret the bar’s timestamp as a LocalDateTime in US/Eastern.
+                                                                LocalDateTime barTime = unit.getLocalDateTimeDate(); // assumed parsed in US/Eastern
+
+                                                                // --- A) Don’t re-add any bar that’s not strictly newer than our stored data ---
+                                                                // If our current timeline is empty, newestStored == null → allow any bar.
+                                                                // Otherwise, compare: only accept future bars (barTime > newestStored).
+                                                                LocalDateTime newestStored = finalTimeline.isEmpty()
+                                                                        ? null
+                                                                        : finalTimeline.get(finalTimeline.size() - 1).getLocalDateTimeDate();
+
+                                                                boolean isAfterNewest = (newestStored == null)
+                                                                        || barTime.isAfter(newestStored);
+
+                                                                // --- B) Only accept bars at or before the last fully closed US/Eastern minute ---
+                                                                // If barTime is “after” cutoffEasternLdt, that means it’s still in-progress.
+                                                                // For example, if cutoffEasternLdt = 11:00:00, any bar with barTime = 11:01:00 will be rejected.
+                                                                boolean isAtOrBeforeFull = !barTime.isAfter(cutoffEasternLdt);
+
+                                                                // Return true only if BOTH conditions are satisfied:
+                                                                return isAfterNewest && isAtOrBeforeFull;
+                                                            })
+                                                            .toList();
+
+                                                    // After filtering, newBars contains only completed bars up through the last full Eastern minute.
+                                                    // You can now add them to the timeline:
+                                                    timeline.addAll(newBars);
+                                                }
+                                            }
+
+                                            pendingSymbols.remove(symbol);
+                                            // Signal that this symbol's fetch is complete (success).
+                                            latch.countDown();
+                                        })
+                                        .onFailure(e -> {
+                                            // On API failure, log which symbol failed (and still signal completion)
+                                            logTextArea.append("Failed for symbol in Main Loop: " + symbol + " " + e.getMessage() + " \n");
+                                            pendingSymbols.remove(symbol);
+                                            latch.countDown();
+                                        })
+                                        .fetch(); // Start the async request
+                            }
+
+                            long startTime = System.nanoTime();
+
+                            // --- Wait for all fetches to complete (or timeout after 50 seconds) ---
+                            // The main thread blocks here until all symbol requests finish or timeout is reached.
+                            if (!latch.await(50, TimeUnit.SECONDS)) {
+                                // If not all latches counted down, warn the user (could be slow API or network)
+                                logTextArea.append("Warning: Timed out waiting for some data in Main Loop\n");
+
+                                // Log timed out symbols
+                                logTextArea.append("Timed out symbols: " + pendingSymbols + "\n");
+                                logTextArea.append("Number of timed out symbols: " + pendingSymbols.size() + "\n");
+                            }
+
+                            // Log the number of processed stock entries for debugging/feedback.
+                            logTextArea.append("Processed " + symbols.size() + " valid stock entries\n");
+                            long endTime = System.nanoTime();
+                            long durationMs = (endTime - startTime) / 1_000_000; // convert nanoseconds to milliseconds
+
+                            System.out.println("Execution time: " + durationMs + " ms\n");
+
+                            // === One‐time “dry run” to seed both predictor buffers with historical data ===
+                            if (!firstTimeComputed) {
+                                // 1. Compute percentage changes across the full history
+                                calculateStockPercentageChange(false);
+
+                                // 2. Lock the timeline map so no new data races occur during seeding
+                                synchronized (symbolTimelines) {
+                                    // 3. Iterate over every symbol that has been loaded into memory
+                                    symbolTimelines.keySet().forEach(symbol -> {
+                                        List<StockUnit> timeLine = symbolTimelines.get(symbol);
+
+                                        // 4. Ensure we have at least two full windows of data (2 × buffer size)
+                                        if (timeLine.size() >= 30 * 2) {
+                                            // 5. Slide a window of length 30 from “oldest needed” up to the most recent 29
+                                            for (int start = timeLine.size() - 30 * 2; start <= timeLine.size() - 31; start++) {
+                                                // 5a. Extract a 30‐bar slice for feature computation
+                                                List<StockUnit> window = timeLine.subList(start, start + 30);
+
+                                                // 5b. Normalize features for the main entry predictor and feed them in
+                                                float[] mainFeatures = normalizeFeatures(computeFeatures(window, symbol), symbol);
+                                                predict(mainFeatures, symbol);          // Populates the 28‐step buffer
+
+                                                // 5c. Normalize slope‐based features for the uptrend predictor and feed them in
+                                                float[] upFeatures = normalizeRawFeatures(computeFeaturesForSlope(window), symbol);
+                                                predictUptrend(upFeatures, symbol);    // Populates the 30‐step uptrend buffer
+                                            }
+                                        }
+                                    });
+                                }
+
+                                // 6. Flip the flag so we never run this seeding block again
+                                firstTimeComputed = true;
+                            }
+
+                            // After all updates, recalculate the percentage change for each symbol,
+                            // so UI indicators and trading logic reflect the latest market conditions.
+                            // ===== After all symbol fetches complete, before recalculating percentage changes =====
+                            calculateStockPercentageChange(true);
+
+                            // ====== Rate limiting: Sleep for 60 seconds before polling again ======
+                            // ======= SLEEP UNTIL THE NEXT FULL MINUTE =======
+
+                            // Get the current system time in milliseconds since epoch
+                            long currentMillis = System.currentTimeMillis();
+
+                            // Calculate the timestamp (in millis) of the next full minute boundary
+                            // E.g., if now is 12:34:45.789, nextMinuteMillis will be 12:35:00.000
+                            long nextMinuteMillis = ((currentMillis / 60000) + 1) * 60000 + 2000;
+
+                            // Compute how many milliseconds to sleep to reach the next full minute
+                            long sleepTime = nextMinuteMillis - currentMillis;
+
+                            // clean up the map to save memory
+                            trimSymbolTimelines(300);
+
+                            // Only sleep if we're not already exactly at a full minute
+                            if (sleepTime > 0) {
+                                try {
+                                    // Log the next fetch timestamp (for debugging/monitoring)
+                                    Instant fetchTime = Instant.ofEpochMilli(nextMinuteMillis);
+                                    System.out.println("[INFO] Next fetch scheduled at: " + fetchTime);
+                                    logTextArea.append("Next fetch scheduled at: " + fetchTime + "\n");
+
+                                    // Sleep until the calculated next full minute
+                                    Thread.sleep(sleepTime);
+                                } catch (InterruptedException e) {
+                                    // Handle interruption (e.g., if shutting down)
+                                    Thread.currentThread().interrupt();
+                                    logTextArea.append("Data pull interrupted during sleep\n");
+                                    break;
+                                }
+                            }
+                        } catch (InterruptedException e) {
+                            // If thread is interrupted (shutdown requested), exit loop cleanly.
+                            e.printStackTrace();
+                            Thread.currentThread().interrupt();
+                            logTextArea.append("Data pull interrupted in main loop\n");
+                            break;
+                        } catch (Exception e) {
+                            // Any error: print/log and keep the background thread running.
+                            e.printStackTrace();
+                            logTextArea.append("Error during data pull in main loop: " + e.getMessage() + "\n");
+                        }
+                        // Always scroll UI log to show the latest event.
+                        logTextArea.setCaretPosition(logTextArea.getDocument().getLength());
+                    }
                 }
             } catch (InterruptedException e) {
                 // This is only reached if the whole background thread is interrupted while waiting for data.
@@ -2079,7 +2500,7 @@ public class mainDataHandler {
                 int startIndex = findTimeIndex(timeline, startTime);
 
                 if (startIndex < 0) {
-                    // No bar ≥ startTime—force it to the front or back, depending on your semantics.
+                    // No bar ≥ startTime—force it to the front or back
                     startIndex = 0; // (or timeline.size(), if you want to backfill from “end”)
                 }
 
@@ -2411,6 +2832,11 @@ public class mainDataHandler {
 
             // 4) Save computed ranges for use in normalizeFeature(...)
             SYMBOL_FEATURE_RANGES.put(symbol, ranges);
+            System.out.println(symbol);
+            for (String key : SYMBOL_FEATURE_RANGES.get(symbol).keySet()) {
+                Map<String, Double> map = SYMBOL_FEATURE_RANGES.get(symbol).get(key);
+                System.out.println(key + String.format(" min: %.3f", map.get("min")) + String.format(" max %.3f", map.get("max")));
+            }
         }
     }
 
@@ -2438,7 +2864,6 @@ public class mainDataHandler {
             range = symbolRanges.get(indicator);
         } catch (Exception e) {
             e.printStackTrace();
-            System.out.println(symbol);
         }
 
         if (range == null) {
@@ -2693,8 +3118,9 @@ public class mainDataHandler {
                 ? 0
                 : (slopeLen * xySum - xSum * ySum) / denom;
 
-        // 4) ret_1: percentage change from previous close
-        double ret1 = window.get(n - 1).getPercentageChange();
+        // 4) ret_1: percentage change from previous close / 100 since python uses / 100 for
+        // the change where we use the actual change for human readability
+        double ret1 = window.get(n - 1).getPercentageChange() / 100;
 
         return new float[]{
                 (float) close,
@@ -3951,9 +4377,9 @@ public class mainDataHandler {
         dbg.append(String.format("📊 Fundamental trend: %s\n", fundamentalTrend ? "✅" : "❌"));
 
         // 2.5 ML-based trend filter
-//        double mlThreshold = 0.0;
-//        boolean mlTrendOk = uptrendPrediction >= mlThreshold;
-//        dbg.append(String.format("🤖 ML uptrend score: %.2f (thr = %.2f): %s\n", uptrendPrediction, mlThreshold, mlTrendOk ? "✅" : "❌"));
+        double mlThreshold = 0.8;
+        boolean mlTrendOk = uptrendPrediction >= mlThreshold;
+        dbg.append(String.format("🤖 ML uptrend score: %.2f (thr = %.2f): %s\n", uptrendPrediction, mlThreshold, mlTrendOk ? "✅" : "❌"));
 
         // block only if BOTH fundamental AND ML say “no”
         if (!fundamentalTrend) {// && !mlTrendOk) {
