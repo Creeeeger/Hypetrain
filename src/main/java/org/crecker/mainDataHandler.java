@@ -1375,8 +1375,7 @@ public class mainDataHandler {
                             notification.getLocalDateTime(),
                             notification.getSymbol(),
                             notification.getChange(),
-                            5,
-                            new ArrayList<>()
+                            5
                     );
                 }
             }
@@ -2358,7 +2357,6 @@ public class mainDataHandler {
                                 //   symbol: same stock ticker
                                 //   change: same percentage change
                                 //   config: reuse the original notification’s config code
-                                //   validationWindow: carry forward the already‐computed validation window
                                 addNotification(
                                         "ℙ: " + String.format("%.2f ", prediction) + notification.getTitle() + " Amt: " + name,
                                         notification.getContent(),
@@ -2366,8 +2364,7 @@ public class mainDataHandler {
                                         notification.getLocalDateTime(),
                                         notification.getSymbol(),
                                         notification.getChange(),
-                                        notification.getConfig(),
-                                        notification.getValidationWindow()
+                                        notification.getConfig()
                                 );
                             }
                         }
@@ -3811,7 +3808,7 @@ public class mainDataHandler {
             createNotification(
                     symbol, changeUp3, alertsList,
                     stocks, stocks.get(stocks.size() - 1).getLocalDateTimeDate(),
-                    prediction, notificationCode, new ArrayList<>()
+                    prediction, notificationCode
             );
         }
     }
@@ -4091,7 +4088,7 @@ public class mainDataHandler {
             if (baseCondition && isLiquiditySufficient(stocks, liquidityLookBack, requiredNotional)) {
                 createNotification(symbol, deviation, alertsList, stocks,
                         stocks.get(endIndex - 1).getLocalDateTimeDate(),
-                        prediction, 1, new ArrayList<>()); // config=1 means "gap fill"
+                        prediction, 1); // config=1 means "gap fill"
             }
         }
     }
@@ -5115,58 +5112,53 @@ public class mainDataHandler {
      * Helper to create and add a Notification for a specific stock event.
      * Adds a formatted notification message to alertsList depending on config.
      *
-     * @param symbol           The stock symbol for the event.
-     * @param totalChange      The triggering percent change (spike or dip, etc).
-     * @param alertsList       The shared list to store created notifications.
-     * @param stockUnitList    The time series (bars) associated with the event.
-     * @param date             The date/time of the event (LocalDateTime).
-     * @param prediction       Model prediction value (if available).
-     * @param config           Type of event:
-     *                         1 = gap filler,
-     *                         2 = R-line spike,
-     *                         3 = spike.
-     *                         4 = uptrend movement
-     *                         5 = Second based spike
-     * @param validationWindow A list of subsequent bars immediately following the event,
-     *                         used to label or train the ML model. Must contain at least
-     *                         VALIDATE_SIZE bars. The first VALIDATE_SIZE entries are used
-     *                         to decide if the initial signal was “good” (e.g., price moved
-     *                         above a threshold) or “bad” (e.g., price failed to move).
+     * @param symbol        The stock symbol for the event.
+     * @param totalChange   The triggering percent change (spike or dip, etc).
+     * @param alertsList    The shared list to store created notifications.
+     * @param stockUnitList The time series (bars) associated with the event.
+     * @param date          The date/time of the event (LocalDateTime).
+     * @param prediction    Model prediction value (if available).
+     * @param config        Type of event:
+     *                      1 = gap filler,
+     *                      2 = R-line spike,
+     *                      3 = spike.
+     *                      4 = uptrend movement
+     *                      5 = Second based spike
      */
     private static void createNotification(String symbol, double totalChange, List<Notification> alertsList,
                                            List<StockUnit> stockUnitList, LocalDateTime date,
-                                           double prediction, int config, List<StockUnit> validationWindow) {
+                                           double prediction, int config) {
         // Depending on config, use different message formats for type of event
         if (config == 1) {
             // Gap fill (move filling a previous price gap)
             alertsList.add(new Notification(
                     String.format("Gap %s ↓↑ %.2f, %s", symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Fill the gap at the %s", date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 1, validationWindow));
+                    stockUnitList, date, symbol, totalChange, 1));
         } else if (config == 2) {
             // R-line spike (upward price movement with caution warning since close to previous bar hence might be the top and reverse point)
             alertsList.add(new Notification(
                     String.format("%.2f%% %s R-Line %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("R-Line Spike Proceed with caution by %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 2, validationWindow));
+                    stockUnitList, date, symbol, totalChange, 2));
         } else if (config == 3) {
             // Upward spike (sharp increase)
             alertsList.add(new Notification(
                     String.format("%.2f%% %s ↑ %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Increased by %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 3, validationWindow));
+                    stockUnitList, date, symbol, totalChange, 3));
         } else if (config == 4) {
             // Uptrend movement which is not categorized as a hardcore spike
             alertsList.add(new Notification(
                     String.format("%.2f%% %s Uptrend %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Uptrend slope: %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 4, validationWindow));
+                    stockUnitList, date, symbol, totalChange, 4));
         } else if (config == 5) {
             // Second based pre predicted spike
             alertsList.add(new Notification(
                     String.format("%.2f%% %s Second Spike %.2f, %s", totalChange, symbol, prediction, date.format(DateTimeFormatter.ofPattern("HH:mm:ss"))),
                     String.format("Second based spike: %.2f%% at the %s", totalChange, date.format(DateTimeFormatter.ofPattern("dd-MM-yyyy HH:mm:ss"))),
-                    stockUnitList, date, symbol, totalChange, 5, validationWindow));
+                    stockUnitList, date, symbol, totalChange, 5));
         }
     }
 

@@ -125,7 +125,7 @@ public class pLTester {
     /**
      * Toggle to enable or disable dumping of labeled generated notifications to disk.
      */
-    static boolean dump = false;
+    static boolean dump = true;
 
     /**
      * Application entry point.
@@ -162,25 +162,39 @@ public class pLTester {
     }
 
     /**
-     * Appends a list of Notification objects to the "notifications.json" file,
+     * Appends a list of {@link Notification} objects to the {@code notifications.json} file,
      * writing each notification as a single-line JSON object (newline-delimited),
      * rather than as a pretty-printed JSON array.
      * <p>
      * Each JSON object will contain the following keys:
      * <ul>
-     *     <li><b>notificationId</b>: a unique incremental identifier in the form "notif_0", "notif_1", etc.</li>
-     *     <li><b>symbol</b>: the stock symbol associated with this notification; if the Notification.getSymbol()
-     *         returns null, the JSON will contain null (no fallback string).</li>
-     *     <li><b>target</b>: the integer ML label (e.g., 0 or 1) assigned to this notification.</li>
-     *     <li><b>lookbackWindow</b>: an array of historical StockUnit data points. Each element in this array
-     *         is an object with keys "date", "open", "high", "low", "close", "volume".</li>
+     *     <li><b>notificationId</b>: a unique incremental identifier in the form
+     *         {@code notif_0}, {@code notif_1}, etc.</li>
+     *     <li><b>symbol</b>: the stock symbol associated with this notification; if
+     *         {@link Notification#getSymbol()} returns {@code null}, the JSON will contain
+     *         {@code null} (no fallback string).</li>
+     *     <li><b>target</b>: the integer ML label (e.g., 0, 1, 2) assigned to this notification.</li>
+     *     <li><b>normalized50before</b>, <b>normalized30before</b>, <b>normalized20before</b>,
+     *         <b>normalized15before</b>: arrays of normalized candlestick bars from the lookback
+     *         window prior to the event. Each element is an object with keys:
+     *         {@code date}, {@code open}, {@code high}, {@code low}, {@code close}, {@code volume}.
+     *         Values are normalized to [0,1] using min–max scaling.</li>
+     *     <li><b>beforeWindow</b>: up to 50 raw (unnormalized) candlestick bars immediately
+     *         before the event. Same object structure as normalized windows, but with raw values.</li>
+     *     <li><b>afterWindow</b>: up to 50 raw (unnormalized) candlestick bars immediately
+     *         after the event. Same object structure as normalized windows, but with raw values.</li>
      * </ul>
      *
      * @param newNotifications the list of Notification objects to append. Each Notification must provide:
      *                         <ul>
-     *                             <li>{@link Notification#getNormalizedList()} for lookback data</li>
-     *                             <li>{@link Notification#getSymbol()} for the stock symbol (maybe null)</li>
-     *                             <li>{@link Notification#getTarget()} for the integer label</li>
+     *                             <li>{@link Notification#getSymbol()} for the stock symbol (may be null)</li>
+     *                             <li>{@link Notification#getTarget()} for the integer ML label</li>
+     *                             <li>{@link Notification#getBeforeWindow()} for the raw lookback bars</li>
+     *                             <li>{@link Notification#getAfterWindow()} for the raw forward bars</li>
+     *                             <li>{@link Notification#getNormalized15before()},
+     *                                 {@link Notification#getNormalized20before()},
+     *                                 {@link Notification#getNormalized30before()},
+     *                                 {@link Notification#getNormalized50before()} for the normalized lookbacks</li>
      *                         </ul>
      * @throws IOException if an I/O error occurs while reading from or writing to the file. This includes:
      *                     <ul>
@@ -252,44 +266,42 @@ public class pLTester {
         }
 
         // -------------------------------------------------------------
-        // 4. Prepare new notifications: convert each Notification to a Map
+        // 4. Prepare new notifications: convert each Notification into a Map
         // -------------------------------------------------------------
-        // DateTimeFormatter to convert LocalDateTime to strings like "2025-05-30 09:05:00"
+        // The resulting Map is JSON-friendly and can be appended to allNotifications.
+        // Each map contains metadata (ID, symbol, target) and multiple serialized
+        // candlestick windows (raw and normalized).
+
+        // Formatter used to serialize LocalDateTime into a string
+        // Example format: "2025-05-30 09:05:00"
         DateTimeFormatter dtf = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
         for (Notification n : newNotifications) {
-            // Increment maxId so that each new Notification gets a fresh unique ID.
+            // --- Assign a unique ID to this notification ---
             maxId++;
             Map<String, Object> notificationMap = new LinkedHashMap<>();
 
-            // 4a. Add "notificationId" -> "notif_<maxId>"
-            notificationMap.put("notificationId", "notif_" + maxId);
+            // Core notification metadata
+            notificationMap.put("notificationId", "notif_" + maxId);  // unique identifier
+            notificationMap.put("symbol", n.getSymbol());             // stock symbol (e.g., "AAPL")
+            notificationMap.put("target", n.getTarget());             // ML target label (e.g., 0 or 1 or 2)
 
-            // 4b. Add "symbol" -> the stock symbol (maybe null if Notification.getSymbol() returns null)
-            notificationMap.put("symbol", n.getSymbol());
+            // --- Attach normalized lookback windows ---
+            // Each of these contains past candlestick data normalized to [0,1].
+            // Multiple lengths are included (15, 20, 30, 50) for flexible model training.
+            notificationMap.put("normalized50before", serializeWindow(n.getNormalized50before(), dtf));
+            notificationMap.put("normalized30before", serializeWindow(n.getNormalized30before(), dtf));
+            notificationMap.put("normalized20before", serializeWindow(n.getNormalized20before(), dtf));
+            notificationMap.put("normalized15before", serializeWindow(n.getNormalized15before(), dtf));
 
-            // 4c. Add "target" -> the integer label from the ML model (e.g., 0 or 1)
-            notificationMap.put("target", n.getTarget());
+            // --- Attach raw before/after windows ---
+            // beforeWindow = up to 50 bars immediately before the event
+            // afterWindow  = up to 50 bars immediately after the event
+            // These are unnormalized OHLCV bars, useful for charting or validation.
+            notificationMap.put("beforeWindow", serializeWindow(n.getBeforeWindow(), dtf));
+            notificationMap.put("afterWindow", serializeWindow(n.getAfterWindow(), dtf));
 
-            // -------------------------------------------------------------
-            // 4d. Serialize lookbackWindow: List<StockUnit> -> List<Map<String, Object>>
-            // -------------------------------------------------------------
-            List<Map<String, Object>> lookbackList = new ArrayList<>();
-            for (StockUnit u : n.getNormalizedList()) {
-                // For each StockUnit, build a Map of its fields:
-                // "date" formatted as a string, "open", "high", "low", "close", "volume"
-                Map<String, Object> barMap = new LinkedHashMap<>();
-                barMap.put("date", dtf.format(u.getLocalDateTimeDate()));
-                barMap.put("open", u.getOpen());
-                barMap.put("high", u.getHigh());
-                barMap.put("low", u.getLow());
-                barMap.put("close", u.getClose());
-                barMap.put("volume", u.getVolume());
-                lookbackList.add(barMap);
-            }
-            notificationMap.put("lookbackWindow", lookbackList);
-
-            // Add the fully built notificationMap to the cumulative list
+            // Add the fully constructed map to the cumulative collection
             allNotifications.add(notificationMap);
         }
 
@@ -311,6 +323,51 @@ public class pLTester {
         // 6. Log how many notifications were written
         // -------------------------------------------------------------
         System.out.println("Dumped " + allNotifications.size() + " notifications (one JSON object per line)");
+    }
+
+    /**
+     * Serializes a list of {@link StockUnit} objects into a JSON-friendly structure.
+     * <p>
+     * Each {@code StockUnit} bar is converted into a {@link Map} with the following keys:
+     * <ul>
+     *   <li><b>date</b>   – formatted timestamp of the bar</li>
+     *   <li><b>open</b>   – opening price</li>
+     *   <li><b>high</b>   – highest price</li>
+     *   <li><b>low</b>    – lowest price</li>
+     *   <li><b>close</b>  – closing price</li>
+     *   <li><b>volume</b> – trading volume</li>
+     * </ul>
+     * This makes the time series portable for JSON serialization or API output.
+     *
+     * @param window the list of StockUnit bars to serialize; may be {@code null}
+     * @param dtf    the formatter used to convert LocalDateTime into a String
+     * @return a list of maps, one per bar, suitable for JSON export
+     */
+    private static List<Map<String, Object>> serializeWindow(List<StockUnit> window, DateTimeFormatter dtf) {
+        List<Map<String, Object>> out = new ArrayList<>();
+
+        // Defensive: if no window is provided, return an empty list (not null).
+        if (window == null) return out;
+
+        // Convert each StockUnit candlestick into a key-value map.
+        for (StockUnit u : window) {
+            Map<String, Object> barMap = new LinkedHashMap<>();
+
+            // Format the timestamp consistently for serialization
+            barMap.put("date", dtf.format(u.getLocalDateTimeDate()));
+
+            // Include OHLC and volume values
+            barMap.put("open", u.getOpen());
+            barMap.put("high", u.getHigh());
+            barMap.put("low", u.getLow());
+            barMap.put("close", u.getClose());
+            barMap.put("volume", u.getVolume());
+
+            // Add to the output list
+            out.add(barMap);
+        }
+
+        return out;
     }
 
     /**
@@ -396,18 +453,23 @@ public class pLTester {
                 // corresponding exactly to notifyTime (e.g., the bar that triggered this alert).
                 Integer baseIndex = getIndexForTime(symbol, notifyTime);
 
-                // --- BUILD THE VALIDATION WINDOW (NEXT 10 BARS AFTER THE ALERT) ---
-                // We want to grab up to 10 bars immediately after the event for labeling.
-                // endIndex = baseIndex + 11 ensures subList covers (baseIndex+1) through (baseIndex+10).
+                // --- BUILD THE VALIDATION WINDOW (NEXT 50 BARS AFTER THE ALERT) ---
+                // We want to grab up to 50 bars immediately after the event for labeling.
+                // endIndex = baseIndex + 51 ensures subList covers (baseIndex+1) through (baseIndex+50).
                 // Use Math.min to avoid going past the end of the list.
-                int endIndex = Math.min(baseIndex + 11, timeline.size());
+                int endIndex = Math.min(baseIndex + 51, timeline.size());
 
                 // subList(fromIndex, toIndex) returns elements at indices [fromIndex to toIndex-1].
-                // So this gives exactly the 10 bars right after baseIndex, or fewer if near end.
+                // So this gives exactly the 50 bars right after baseIndex, or fewer if near end.
                 List<StockUnit> validationWindow = timeline.subList(baseIndex + 1, endIndex);
 
-                // Attach that list of up-to-10 subsequent bars to the notification.
-                notification.setValidationWindow(validationWindow);
+                // Attach that list of up-to-50 subsequent bars to the notification.
+                notification.setAfterWindow(validationWindow);
+
+                // --- BUILD THE BEFORE WINDOW (UP TO 50 BARS BEFORE THE ALERT) ---
+                int startIndex = Math.max(0, baseIndex - 50);
+                List<StockUnit> beforeWindow = timeline.subList(startIndex, baseIndex + 1);
+                notification.setBeforeWindow(beforeWindow);
             }
 
             LocalTime cutoffStart = LocalTime.of(4, 0);

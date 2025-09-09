@@ -727,16 +727,9 @@ public class mainUI extends JFrame {
      * @param symbol           The ticker symbol relevant to this notification.
      * @param change           The percentage change (used for sorting/visual cues).
      * @param config           Additional configuration parameter for Notification object.
-     * @param validationWindow A list of subsequent StockUnit bars immediately following the event,
-     *                         used for machine learning labeling or backtesting. This window should
-     *                         contain at least {@code frameSize} entries. The first {@code frameSize}
-     *                         bars are examined to determine whether the original signal was
-     *                         “good” (e.g., price moved above a threshold) or “bad” (e.g., price failed
-     *                         to follow through). If fewer than {@code frameSize} bars are present,
-     *                         the notification may be skipped or marked invalid.
      */
     public static void addNotification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime,
-                                       String symbol, double change, int config, List<StockUnit> validationWindow) {
+                                       String symbol, double change, int config) {
 
         // 1) Define the time zone for interpreting stored LocalDateTime values,
         //    and capture the current instant in UTC for pruning logic.
@@ -759,8 +752,7 @@ public class mainUI extends JFrame {
                     localDateTime,   // naive LocalDateTime in US/Eastern
                     symbol,          // stock symbol key
                     change,          // percentage change or other metric
-                    config,          // configuration code for styling/logic
-                    validationWindow // future window for ML validation
+                    config          // configuration code for styling/logic
             );
 
             // 2c) Add the newly created notification to the history
@@ -810,8 +802,7 @@ public class mainUI extends JFrame {
                     localDateTime,     // Timestamp of the event, as a LocalDateTime
                     symbol,            // Stock symbol identifier
                     change,            // Percentage change or relevant metric
-                    config,            // Configuration code (used for marker styling)
-                    validationWindow   // Future window of StockUnit bars for validation
+                    config            // Configuration code (used for marker styling)
             );
 
             // Retrieve the XYPlot from the notification’s chart panel

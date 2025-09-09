@@ -50,8 +50,6 @@ public class Notification {
     private String title;                       // The notification's display title
     private final String content;               // Main textual content for this notification
     private final List<StockUnit> stockUnitList;// Stock data (price/time) relevant to this event
-    private List<StockUnit> validationWindow;   // relevant for ML training
-    private List<StockUnit> normalizedList;     // lookback window after min-max normalization (prices & volume scaled to [0,1]) for charting and inference
     private final LocalDateTime localDateTime;  // Date/time for the notification event
     private final String symbol;                // Stock ticker symbol
     private final double change;                // Percent change in price that triggered this event
@@ -59,7 +57,15 @@ public class Notification {
     private final Color color;                  // Notification highlight color (from config)
     private final TimeSeries timeSeries;        // For line charts
     private final OHLCSeries ohlcSeries;        // For candlestick charts
-    private int target = 0;                     // ML label
+
+    // ML variables
+    private List<StockUnit> beforeWindow;         // relevant for ML training
+    private List<StockUnit> afterWindow;          // relevant for ML training
+    private List<StockUnit> normalized50before;   // relevant for ML training
+    private List<StockUnit> normalized30before;   // relevant for ML training
+    private List<StockUnit> normalized20before;   // relevant for ML training
+    private List<StockUnit> normalized15before;   // relevant for ML training
+    private int target = 0;                       // ML label
 
     JLabel percentageChange;                    // Label for showing percentage difference between two points
     private JFrame notificationFrame;           // Frame/window displaying this notification
@@ -69,31 +75,24 @@ public class Notification {
     /**
      * Create a Notification instance for a specific event, including relevant stock data and type.
      *
-     * @param title            Title of the notification window.
-     * @param content          Description or explanation of the event.
-     * @param stockUnitList    List of StockUnit objects (price/time).
-     * @param localDateTime    Time of the event.
-     * @param symbol           Stock symbol this notification refers to.
-     * @param change           Percentage change for the notification (e.g., dip/spike).
-     * @param config           Event type code, which determines the visual highlight color:
-     *                         <ul>
-     *                           <li>1 – Gap filler (deep orange)</li>
-     *                           <li>2 – R-line spike (blue)</li>
-     *                           <li>3 – Spike (green)</li>
-     *                           <li>4 – Uptrend (royal purple)</li>
-     *                           <li>5 – Second-based alarm (alarm red)</li>
-     *                           <li>Other – Gray</li>
-     *                         </ul>
-     *                         <p>Use bright colors to enhance text visibility.</p>
-     * @param validationWindow A list of subsequent bars immediately following this event,
-     *                         used as the ML training/labeling window. It must contain at least
-     *                         {@code frameSize} entries. The first {@code frameSize} bars of this
-     *                         list are examined to determine whether the initial signal was
-     *                         “good” (e.g., price moved above a threshold) or “bad” (e.g., price
-     *                         failed to follow through). If fewer than {@code frameSize} bars are
-     *                         available, the notification is skipped or labeled as invalid.
+     * @param title         Title of the notification window.
+     * @param content       Description or explanation of the event.
+     * @param stockUnitList List of StockUnit objects (price/time).
+     * @param localDateTime Time of the event.
+     * @param symbol        Stock symbol this notification refers to.
+     * @param change        Percentage change for the notification (e.g., dip/spike).
+     * @param config        Event type code, which determines the visual highlight color:
+     *                      <ul>
+     *                        <li>1 – Gap filler (deep orange)</li>
+     *                        <li>2 – R-line spike (blue)</li>
+     *                        <li>3 – Spike (green)</li>
+     *                        <li>4 – Uptrend (royal purple)</li>
+     *                        <li>5 – Second-based alarm (alarm red)</li>
+     *                        <li>Other – Gray</li>
+     *                      </ul>
+     *                      <p>Use bright colors to enhance text visibility.</p>
      */
-    public Notification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config, List<StockUnit> validationWindow) {
+    public Notification(String title, String content, List<StockUnit> stockUnitList, LocalDateTime localDateTime, String symbol, double change, int config) {
         this.title = title;
         this.content = content;
         this.stockUnitList = stockUnitList;
@@ -101,8 +100,12 @@ public class Notification {
         this.symbol = symbol;
         this.change = change;
         this.config = config;
-        this.validationWindow = validationWindow;
-        this.normalizedList = null;
+        this.beforeWindow = null;
+        this.afterWindow = null;
+        this.normalized50before = null;
+        this.normalized30before = null;
+        this.normalized20before = null;
+        this.normalized15before = null;
 
         /*
           config 1 gap filler   - deep orange
@@ -141,31 +144,127 @@ public class Notification {
     }
 
     /**
-     * Sets the list of normalized StockUnit instances for this notification.
-     * <p>
-     * This list typically represents the lookback window after min-max normalization,
-     * with price and volume values scaled into [0,1].
-     * </p>
+     * Sets the raw before window of StockUnit bars.
+     * This window contains up to 50 bars immediately preceding
+     * the notification trigger bar.
      *
-     * @param normalizedList a non-null List of {@link StockUnit} objects whose fields
-     *                       (open, high, low, close, volume) have been normalized.
+     * @param beforeWindow the list of StockUnit objects before the notification
      */
-    public void setNormalizedList(List<StockUnit> normalizedList) {
-        this.normalizedList = normalizedList;
+    public void setBeforeWindow(List<StockUnit> beforeWindow) {
+        this.beforeWindow = beforeWindow;
     }
 
     /**
-     * Retrieves the normalized StockUnit list for this notification.
-     * <p>
-     * This list contains the lookback window data after min-max scaling,
-     * ready for charting or further processing.
-     * </p>
+     * Sets the raw after window of StockUnit bars.
+     * This window contains up to 50 bars immediately following
+     * the notification trigger bar.
      *
-     * @return a List of {@link StockUnit} instances with normalized fields,
-     * or null if no normalization has been applied yet.
+     * @param afterWindow the list of StockUnit objects after the notification
      */
-    public List<StockUnit> getNormalizedList() {
-        return normalizedList;
+    public void setAfterWindow(List<StockUnit> afterWindow) {
+        this.afterWindow = afterWindow;
+    }
+
+    /**
+     * Sets the normalized 50-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @param normalized50before the normalized list of 50 StockUnit objects before the notification
+     */
+    public void setNormalized50before(List<StockUnit> normalized50before) {
+        this.normalized50before = normalized50before;
+    }
+
+    /**
+     * Sets the normalized 30-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @param normalized30before the normalized list of 30 StockUnit objects before the notification
+     */
+    public void setNormalized30before(List<StockUnit> normalized30before) {
+        this.normalized30before = normalized30before;
+    }
+
+    /**
+     * Sets the normalized 20-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @param normalized20before the normalized list of 20 StockUnit objects before the notification
+     */
+    public void setNormalized20before(List<StockUnit> normalized20before) {
+        this.normalized20before = normalized20before;
+    }
+
+    /**
+     * Sets the normalized 15-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @param normalized15before the normalized list of 15 StockUnit objects before the notification
+     */
+    public void setNormalized15before(List<StockUnit> normalized15before) {
+        this.normalized15before = normalized15before;
+    }
+
+    /**
+     * Returns the raw before window of StockUnit bars.
+     * This window contains up to 50 bars immediately preceding
+     * the notification trigger bar.
+     *
+     * @return the list of StockUnit objects before the notification
+     */
+    public List<StockUnit> getBeforeWindow() {
+        return beforeWindow;
+    }
+
+    /**
+     * Returns the raw after window of StockUnit bars.
+     * This window contains up to 50 bars immediately following
+     * the notification trigger bar.
+     *
+     * @return the list of StockUnit objects after the notification
+     */
+    public List<StockUnit> getAfterWindow() {
+        return afterWindow;
+    }
+
+    /**
+     * Returns the normalized 50-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @return the normalized list of 50 StockUnit objects before the notification
+     */
+    public List<StockUnit> getNormalized50before() {
+        return normalized50before;
+    }
+
+    /**
+     * Returns the normalized 30-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @return the normalized list of 30 StockUnit objects before the notification
+     */
+    public List<StockUnit> getNormalized30before() {
+        return normalized30before;
+    }
+
+    /**
+     * Returns the normalized 20-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @return the normalized list of 20 StockUnit objects before the notification
+     */
+    public List<StockUnit> getNormalized20before() {
+        return normalized20before;
+    }
+
+    /**
+     * Returns the normalized 15-bar lookback window prior to the notification.
+     * Values are scaled to [0,1] using min–max normalization.
+     *
+     * @return the normalized list of 15 StockUnit objects before the notification
+     */
+    public List<StockUnit> getNormalized15before() {
+        return normalized15before;
     }
 
     /**
@@ -211,30 +310,6 @@ public class Notification {
      */
     public void setTitle(String title) {
         this.title = title;
-    }
-
-    /**
-     * Sets the validation window for this stock to the specified list of {@link StockUnit} objects.
-     * <p>
-     * This replaces any existing data in the validation window. The provided list should contain
-     * all StockUnit entries relevant to the desired validation period.
-     *
-     * @param validationWindow the list of {@link StockUnit} objects to set as the validation window; must not be null
-     */
-    public void setValidationWindow(List<StockUnit> validationWindow) {
-        this.validationWindow = validationWindow;
-    }
-
-    /**
-     * Returns the list of {@link StockUnit} objects representing the validation window for this stock.
-     * <p>
-     * The validation window contains all StockUnit entries within the relevant validation period,
-     * typically used for model validation, performance checks, or backtesting.
-     *
-     * @return a list of {@link StockUnit} objects in the validation window
-     */
-    public List<StockUnit> getValidationWindow() {
-        return validationWindow;
     }
 
     /**
@@ -351,7 +426,7 @@ public class Notification {
     /**
      * Returns the configuration integer (type code) for this notification.
      *
-     * @return Config value indicating the type of event (used for color, etc).
+     * @return Config value indicating the type of event (used for color, etc.).
      */
     public int getConfig() {
         return config;
