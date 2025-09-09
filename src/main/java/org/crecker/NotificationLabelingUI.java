@@ -19,6 +19,7 @@ import java.io.IOException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 
@@ -60,6 +61,11 @@ public class NotificationLabelingUI extends JFrame {
      * Button to skip labeling the current notification.
      */
     private final JButton skipButton;
+
+    /**
+     * Button to mark a notification as "Neutral".
+     */
+    private final JButton neutralButton;
 
     /**
      * Button to mark a notification as "Bad".
@@ -125,36 +131,38 @@ public class NotificationLabelingUI extends JFrame {
         goodButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
         goodButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
 
-        skipButton = new JButton("Skip");                       // Skip label
-        styleButton(skipButton, new Color(0x888888));            // Gray background
-        skipButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
-        skipButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
+        neutralButton = new JButton("neutral");                       // neutral label
+        styleButton(neutralButton, new Color(0x998F954E));            // yellow background
+        neutralButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
+        neutralButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
 
         badButton = new JButton("Bad");                         // Bad label
         styleButton(badButton, new Color(0xCC0000));             // Dark red background
         badButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
         badButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
 
+        skipButton = new JButton("Skip");                       // Skip label
+        styleButton(skipButton, new Color(0x888888));            // Gray background
+        skipButton.setMaximumSize(new Dimension(150, 60));       // Force larger size
+        skipButton.setAlignmentX(Component.CENTER_ALIGNMENT);     // Center in panel
+
         // Add buttons with spacing between them
         buttonPanel.add(goodButton);
         buttonPanel.add(Box.createRigidArea(new Dimension(0, 10)));
-        buttonPanel.add(skipButton);
+        buttonPanel.add(neutralButton);
         buttonPanel.add(Box.createRigidArea(new Dimension(0, 10)));
         buttonPanel.add(badButton);
+        buttonPanel.add(Box.createRigidArea(new Dimension(0, 10)));
+        buttonPanel.add(skipButton);
 
         // Add the button panel to the east side for easy reach
         add(buttonPanel, BorderLayout.EAST);
 
         // --- Wire up button actions to label or skip ---
-        goodButton.addActionListener(
-                e -> labelCurrentNotification(1)
-        );                                                        // 1 = Good
-        badButton.addActionListener(
-                e -> labelCurrentNotification(0)
-        );                                                        // 0 = Bad
-        skipButton.addActionListener(
-                e -> skipCurrentNotification()
-        );                                                        // Skip
+        goodButton.addActionListener(e -> labelCurrentNotification(2));   // 2 = Good
+        neutralButton.addActionListener(e -> labelCurrentNotification(1));// 1 = Neutral
+        badButton.addActionListener(e -> labelCurrentNotification(0));    // 0 = Bad
+        skipButton.addActionListener(e -> skipCurrentNotification());               // Skip
 
         // Finalize frame layout and show first notification
         pack();                                                   // Arrange components
@@ -198,6 +206,7 @@ public class NotificationLabelingUI extends JFrame {
             counterLabel.setText("All notifications labeled!"); // Show final text
             chartPanel.setChart(null);                           // Clear any existing chart
             goodButton.setEnabled(false);                        // Disable Good button
+            neutralButton.setEnabled(false);                        // Disable Good button
             skipButton.setEnabled(false);
             badButton.setEnabled(false);                         // Disable Bad button
             return;                                               // Done
@@ -214,27 +223,53 @@ public class NotificationLabelingUI extends JFrame {
         ));
 
         // 1) Extract the raw historical and future windows from the notification
-        List<StockUnit> rawHist = notif.getStockUnitList();     // past price data leading up to the event
-        List<StockUnit> rawFuture = notif.getValidationWindow();  // subsequent data for validation or simulation
+        //    - beforeWindow = the bars leading up to the alert (lookback history)
+        //    - afterWindow  = the bars following the alert (future context/validation)
+        List<StockUnit> rawHist = notif.getBeforeWindow();
+        List<StockUnit> rawFuture = notif.getAfterWindow();
 
-        // 2) Limit the history to the most recent 20 bars (or fewer, if less data is available)
-        //    This sliding window ensures a consistent lookback length for both normalization and charting.
+        // 2) From the historical lookback, slice out the most recent N bars.
+        //    This provides multiple different window lengths (15, 20, 30, 50).
+        //    - Using Math.max ensures we never request a negative index if
+        //      there are fewer than N bars available.
+        //    - Indexing: list[0] = oldest, list[size-1] = most recent.
         int size = rawHist.size();
-        int fromIdx = Math.max(0, size - 20);
-        List<StockUnit> recentHist = rawHist.subList(fromIdx, size);
+        int from15 = Math.max(0, size - 15);
+        int from20 = Math.max(0, size - 20);
+        int from30 = Math.max(0, size - 30);
+        int from50 = Math.max(0, size - 50);
 
-        // 3) Normalize the selected historical window using a min-max scaler per symbol
-        //    normalizeWindowMinMax(...) returns a new list of StockUnit objects whose
-        //    price fields have been scaled into [0,1], preserving relative movement shapes.
-        List<StockUnit> normHist = normalizeWindowMinMax(recentHist);
-        notif.setNormalizedList(normHist);  // store back into the notification for downstream use
+        // 3) Build sublists for each lookback length.
+        //    These represent the raw (unnormalized) candlestick sequences
+        //    right before the alert.
+        List<StockUnit> recent15 = rawHist.subList(from15, size);
+        List<StockUnit> recent20 = rawHist.subList(from20, size);
+        List<StockUnit> recent30 = rawHist.subList(from30, size);
+        List<StockUnit> recent50 = rawHist.subList(from50, size);
 
-        // 4) Build a combined candlestick chart covering both history and future windows
-        //    - The chart’s Y-axis is fixed to [0,1] so that every window uses the same vertical scale.
-        //    - recentHist provides the lookback candles, rawFuture provides forward candles for context.
-        JFreeChart chart = createCandlestickChart(recentHist, rawFuture);
+        // 4) Normalize each lookback window using a min–max scaler.
+        //    - Prices are rescaled to [0,1] while preserving shape.
+        //    - Each window is normalized independently, so patterns remain
+        //      comparable across symbols and scales.
+        List<StockUnit> norm15 = normalizeWindowMinMax(recent15);
+        List<StockUnit> norm20 = normalizeWindowMinMax(recent20);
+        List<StockUnit> norm30 = normalizeWindowMinMax(recent30);
+        List<StockUnit> norm50 = normalizeWindowMinMax(recent50);
 
-        // 5) Display the chart in the existing ChartPanel UI component
+        // 5) Attach the normalized sequences back to the Notification object.
+        //    These will be available later for ML input, JSON export, etc.
+        notif.setNormalized15before(norm15);
+        notif.setNormalized20before(norm20);
+        notif.setNormalized30before(norm30);
+        notif.setNormalized50before(norm50);
+
+        // 6) Build a combined candlestick chart for visualization.
+        //    - The chart shows both the lookback (here we use 50 bars)
+        //      and the forward window after the event.
+        //    - Y-axis is typically fixed to [0,1] so normalized scales are consistent.
+        JFreeChart chart = createCandlestickChart(recent15, rawFuture);
+
+        // 7) Render the chart into the application’s UI by setting it on the ChartPanel.
         chartPanel.setChart(chart);
     }
 
@@ -278,10 +313,7 @@ public class NotificationLabelingUI extends JFrame {
      * @param futureWindow The list of {@link StockUnit} representing the next up to 10 bars (future period).
      * @return A {@link JFreeChart} instance showing the combined OHLC data.
      */
-    private JFreeChart createCandlestickChart(
-            List<StockUnit> historical,
-            List<StockUnit> futureWindow
-    ) {
+    private JFreeChart createCandlestickChart(List<StockUnit> historical, List<StockUnit> futureWindow) {
         // 1) Convert both historical and futureStock lists into a single array of OHLCDataItem
         int totalBars = historical.size() + futureWindow.size();   // Total bars to plot
         OHLCDataItem[] dataItems = new OHLCDataItem[totalBars];    // Allocate array

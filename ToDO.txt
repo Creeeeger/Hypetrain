@@ -33,3 +33,9 @@ Version 2.0:
 
 -----
 check if the new parralel fetch works.
+
+
+-> label uptrend as usual
+create windows of period
+use autoencoder to generate new samples
+normalize each window manually by min max normalizing
