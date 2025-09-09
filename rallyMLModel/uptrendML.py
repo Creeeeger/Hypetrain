@@ -479,7 +479,7 @@ def plot_prediction(model):
 if __name__ == "__main__":
     set_reproducibility(SEED)
 
-    # 1) Load your one stock
+    # 1) Load stock
     df = load_data(stock_file)
 
     # 3) Split into train/val (optional if you’re retraining)
@@ -520,7 +520,7 @@ if __name__ == "__main__":
     )
     print("VAL dist:", Counter(y_val))
 
-    # 6) Train your model
+    # 6) Train model
     with tf.device('/CPU:0'):
         model = build_dilated_CNN(WINDOW_SIZE, X_train.shape[2])
         final_model = build_tcn_model(WINDOW_SIZE, X_train.shape[2])
@@ -585,3 +585,14 @@ if __name__ == "__main__":
 
     plot_prediction(model)
     plot_prediction(final_model)
+
+    '''
+    label uptrend as usual
+    create windows of period
+    experiment with different window lengths to see which length is relevant
+    use autoencoder to generate new samples
+    normalize each window manually by min max normalizing
+    
+    create new features
+    use different stock for testing
+    '''

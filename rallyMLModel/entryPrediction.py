@@ -70,7 +70,7 @@ def set_seeds():
 #           DATA LOADING
 # ======================================
 
-def load_notifications_from_jsonl(json_path):
+def load_notifications(json_path):
     windows = []
     labels = []
     skipped = 0
@@ -291,7 +291,7 @@ def augment_window(window):
 # ======================================
 def evaluate_with_confusion(model, json_path, threshold):
     # 1) Load raw data + true labels
-    x_test, y_test = load_notifications_from_jsonl(json_path)  # shape = (N_val, 19, 6)
+    x_test, y_test = load_notifications(json_path)  # shape = (N_val, 19, 6)
 
     augmented_X = []
     augmented_y = []
@@ -367,7 +367,7 @@ if __name__ == "__main__":
     set_seeds()
 
     # --- Load all data and do split
-    X_all, y_all = load_notifications_from_jsonl(JSON_PATH)
+    X_all, y_all = load_notifications(JSON_PATH)
     X_train, X_test, y_train, y_test = time_based_split(X_all, y_all)
 
     augmented_X = []
@@ -388,7 +388,7 @@ if __name__ == "__main__":
     print(f"Augmented copies: {augmented_X.shape[0]} samples")
     print(f"Combined train: {X_train_aug.shape[0]} samples")
 
-    # 5) Now call your training routine on X_train_aug / y_train_aug
+    # 5) Call training routine on X_train_aug / y_train_aug
     model, encoder, history = train_autoencoder_classifier(
         X_train_aug, y_train_aug,
         X_test, y_test,
@@ -406,7 +406,41 @@ if __name__ == "__main__":
 
     save_onnx_model(model)
 
-    '''
-    -> possibly try a slightly more expressive model	
+'''
+use a cnn + lstm combo to predict the next movement
+ - use this with a longer time window
+ - add a 3 state model with a percentage certainty about the increase or decrease.
+ 
+ 
+ add an autoencoder and a bottleneck to try to recreate the future. - try with longer windows as well 
+ based on the future creation if it works create more synthetic samples.
+ 
+ normalize all windows between 0 and 1 individually
+ 
+ 
+ 4. Predictive Modeling / Sequence Generation
+	•	Beyond reconstructing the immediate future, you can:
+	•	Feed the bottleneck into a decoder that predicts multiple steps ahead.
+	•	Combine this with your primary model to see “what might happen next” and improve signal reliability.
+	•	Essentially, it becomes a generative model for future price sequences.
+
+⸻
+
+5. Synthetic Data Augmentation
+	•	Once the autoencoder can reconstruct future sequences reliably, you can:
+	•	Generate slightly varied versions of your sequences.
+	•	Expand your training dataset for rare market conditions.
+	•	This helps your CNN+LSTM learn better generalization.
+
+⸻
+
+6. Latent Space Clustering
+	•	After training, you can cluster the latent representations of windows:
+	•	Identify similar market regimes or patterns.
+	•	Use cluster membership as a feature for your meta-model (e.g., “signals in cluster A tend to be more reliable”).
+	
+	
+	
+	-> possibly try a slightly more expressive model	
 	-> add additional features to the model
-	'''
+'''
