@@ -359,7 +359,7 @@ public class RallyPredictor implements AutoCloseable {
 
     /**
      * Performs a streaming uptrend prediction for the given symbol using a preloaded ONNX model.
-     * Loads the ONNX model from disk (under rallyMLModel/uptrendPredictor.onnx or tinyUptrend.onnx) the first time,
+     * Loads the ONNX model from disk (under rallyMLModel/uptrendML.onnx) the first time,
      * then uses a singleton RallyPredictor instance to update the symbol’s feature buffer
      * and return the latest uptrend prediction.
      *
@@ -370,7 +370,7 @@ public class RallyPredictor implements AutoCloseable {
     public static float predictUptrend(float[] features, String symbol) {
         // Build the absolute path to the uptrend ONNX model file
         String uptrendModelPath = Paths
-                .get(System.getProperty("user.dir"), "rallyMLModel", "tinyUptrend.onnx")
+                .get(System.getProperty("user.dir"), "rallyMLModel", "uptrendML.onnx")
                 .toString();
         try {
             // Get (or create) the singleton predictor for this model
@@ -477,8 +477,8 @@ public class RallyPredictor implements AutoCloseable {
         // Base directory where all ONNX models live
         String base = Paths.get(System.getProperty("user.dir"), "rallyMLModel").toString();
 
-        // 1) uptrendPredictor.onnx or tinyUptrend.onnx → dynamicUptrendBufferSize & featureLengthUptrend
-        int[] up = inspect(Paths.get(base, "tinyUptrend.onnx").toString());
+        // 1) uptrendML.onnx → dynamicUptrendBufferSize & featureLengthUptrend
+        int[] up = inspect(Paths.get(base, "uptrendML.onnx").toString());
         dynamicUptrendBufferSize = up[0];
         featureLengthUptrend = up[1];
 
