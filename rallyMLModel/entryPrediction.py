@@ -1,6 +1,8 @@
 import json
 import os
 import random
+from pathlib import Path
+from typing import Dict, List, Tuple
 
 import numpy as np
 import tensorflow as tf
@@ -22,10 +24,10 @@ from tensorflow.keras.optimizers import Adam
 
 # File paths
 JSON_PATH = "notifications.json"
-VAL_JSON_PATH = "valnotifications.json"
+VAL_JSON_PATH = "notifications.json"
 
 # Window sizes
-LOOKBACK_SIZE = 20
+LOOKBACK_SIZE = 50
 
 # Feature columns and dimensions
 FEATURE_COLS = ['open', 'high', 'low', 'close', 'volume']
@@ -57,6 +59,23 @@ CONV_FILTERS = 16
 KERNEL_SIZE = 3
 POOL_SIZE = 2
 
+WINDOW_ORDER: Tuple[str, ...] = (
+    "beforeWindow",  # raw prices before
+    "afterWindow",  # raw prices after
+    "normalized50before",  # 50 bars normalised
+    "normalized30before",  # 30 bars
+    "normalized20before",  # 20 bars
+    "normalized15before",  # 15 bars
+)
+REQ_LEN: Dict[str, int] = {
+    "beforeWindow": 50,
+    "afterWindow": 50,
+    "normalized50before": 50,
+    "normalized30before": 30,
+    "normalized20before": 20,
+    "normalized15before": 15,
+}
+
 
 def set_seeds():
     tf.config.set_visible_devices([], "GPU")
@@ -69,64 +88,60 @@ def set_seeds():
 # ======================================
 #           DATA LOADING
 # ======================================
+def load_notifications(json_path: str | Path):
+    path = Path(json_path)
+    if not path.is_file():
+        raise FileNotFoundError(path)
 
-def load_notifications(json_path):
-    windows = []
-    labels = []
+    buffers: Dict[str, List[np.ndarray]] = {k: [] for k in WINDOW_ORDER}
+    labels: List[int] = []
     skipped = 0
 
-    # Read newline-delimited JSON (one object per line)
-    all_notifs = []
-    with open(json_path, 'r') as f:
-        for line in f:
+    with path.open("r", encoding="utf-8") as fh:
+        for line_no, line in enumerate(fh, 1):
             line = line.strip()
             if not line:
                 continue
+
             try:
                 obj = json.loads(line)
-                all_notifs.append(obj)
             except json.JSONDecodeError:
-                # Skip malformed lines
                 skipped += 1
+                continue
 
-    for obj in all_notifs:
-        # 1) Grab the lookback‐ and validation‐window arrays
-        lookback = obj.get("lookbackWindow", [])
+            target = obj.get("target")
+            if not isinstance(target, int):
+                skipped += 1
+                continue
 
-        # 2) Skip if lookback or validation window is too short
-        if len(lookback) < LOOKBACK_SIZE:
-            skipped += 1
-            continue
+            # Validate presence + length for all windows first -----------
+            if any(len(obj.get(k, [])) < REQ_LEN[k] for k in WINDOW_ORDER):
+                skipped += 1
+                continue
 
-        # 3) Extract the provided 'target' label; skip if missing or not an integer
-        raw_target = obj.get("target", None)
-        if not isinstance(raw_target, int):
-            skipped += 1
-            continue
-        label = raw_target
+            # Transform & store -------------------------------------------
+            for key in WINDOW_ORDER:
+                seq = obj[key][-REQ_LEN[key]:]  # most‑recent slice
+                arr = np.empty((REQ_LEN[key], len(FEATURE_COLS)), dtype=np.float32)
+                for i, bar in enumerate(seq):
+                    arr[i] = (
+                        bar["open"],
+                        bar["high"],
+                        bar["low"],
+                        bar["close"],
+                        bar["volume"],
+                    )
+                buffers[key].append(arr)
+            labels.append(target)
 
-        # 4) Build the (LOOKBACK_SIZE × n_features) window from the last LOOKBACK_SIZE bars
-        recent_lookback = lookback[-LOOKBACK_SIZE:]
-        x_window = np.zeros((LOOKBACK_SIZE, len(FEATURE_COLS)), dtype=float)
-        for i, bar in enumerate(recent_lookback):
-            x_window[i, 0] = bar['open']
-            x_window[i, 1] = bar['high']
-            x_window[i, 2] = bar['low']
-            x_window[i, 3] = bar['close']
-            x_window[i, 4] = bar['volume']
+    print(f"Loaded {len(labels)} valid notifications, skipped {skipped}")
 
-        # 5) Append to our lists
-        windows.append(x_window)
-        labels.append(label)
+    if not labels:
+        raise RuntimeError("No valid notifications – check your file.")
 
-    print(f"Loaded {len(windows)} valid notifications, skipped {skipped}")
-    if not windows:
-        raise RuntimeError("No valid notifications—check JSON or size constraints.")
+    stacked = [np.stack(buffers[k], axis=0) for k in WINDOW_ORDER]
 
-    x = np.stack(windows, axis=0)  # shape = (N, LOOKBACK_SIZE, n_features)
-    y = np.array(labels, dtype=int)  # shape = (N,)
-
-    return x, y
+    return *stacked, np.asarray(labels, dtype=np.int32)
 
 
 class F1Metrics(tf.keras.callbacks.Callback):
@@ -152,12 +167,10 @@ class F1Metrics(tf.keras.callbacks.Callback):
 #         SPLIT DATA
 # ======================================
 def time_based_split(X, y, test_size=TEST_SPLIT, random_state=42):
-    # 1) Random split (stratify by y to preserve class balance)
     X_train, X_test, y_train, y_test = train_test_split(
         X, y,
         test_size=test_size,
-        random_state=random_state,
-        stratify=y
+        random_state=random_state
     )
 
     print(f"  Train samples: {X_train.shape[0]}, Test samples: {X_test.shape[0]}")
@@ -167,7 +180,6 @@ def time_based_split(X, y, test_size=TEST_SPLIT, random_state=42):
 # ======================================
 #       MODEL CONSTRUCTION
 # ======================================
-
 def build_model(
         seq_len=LOOKBACK_SIZE,
         n_feat=NUM_FEATURES,
@@ -223,13 +235,8 @@ def build_model(
 # ======================================
 
 def train_autoencoder_classifier(
-        X_train, y_train, X_val, y_val,
-        seq_len=LOOKBACK_SIZE,
-        n_feat=NUM_FEATURES,
-        latent_dim=LATENT_DIM,
-        alpha=ALPHA,
-        lr=LEARNING_RATE,
-        epochs=EPOCHS,
+        X_train, y_train, X_val, y_val, seq_len=LOOKBACK_SIZE, n_feat=NUM_FEATURES,
+        latent_dim=LATENT_DIM, alpha=ALPHA, lr=LEARNING_RATE, epochs=EPOCHS,
         batch_size=BATCH_SIZE
 ):
     """
@@ -257,7 +264,7 @@ def train_autoencoder_classifier(
 
     # Force CPU usage if desired; remove `with tf.device('/CPU:0')` if you want GPU
     with tf.device('/CPU:0'):
-        history = model.fit(
+        model.fit(
             x=X_train,
             y={"reconstruction": X_train, "classifier": y_train},
             validation_data=(X_val, {"reconstruction": X_val, "classifier": y_val}),
@@ -273,7 +280,7 @@ def train_autoencoder_classifier(
             verbose=1
         )
 
-    return model, encoder_model, history
+    return model, encoder_model
 
 
 def jitter_time_series(window, sigma=0.01):
@@ -281,32 +288,24 @@ def jitter_time_series(window, sigma=0.01):
     return window + noise
 
 
-def augment_window(window):
-    window = jitter_time_series(window, sigma=0.004)
-    return window
-
-
 # ======================================
 #         EVALUATION ON NEW FILE
 # ======================================
-def evaluate_with_confusion(model, json_path, threshold):
-    # 1) Load raw data + true labels
-    x_test, y_test = load_notifications(json_path)  # shape = (N_val, 19, 6)
-
+def evaluate_with_confusion(model, threshold, data, y):
     augmented_X = []
     augmented_y = []
 
-    for i in range(len(x_test)):
+    for i in range(len(data)):
         for _ in range(3):
-            augmented_X.append(augment_window(x_test[i]))
-            augmented_y.append(y_test[i])
+            augmented_X.append(jitter_time_series(data[i], sigma=0.004))
+            augmented_y.append(y[i])
 
     # 4) Convert to numpy arrays and concatenate with the original training set
     augmented_X = np.array(augmented_X)  # shape = (N_train * K, LOOKBACK_SIZE, NUM_FEATURES)
     augmented_y = np.array(augmented_y)  # shape = (N_train * K,)
 
-    x_test_aug = np.concatenate([x_test, augmented_X], axis=0)
-    y_test_aug = np.concatenate([y_test, augmented_y], axis=0)
+    x_test_aug = np.concatenate([data, augmented_X], axis=0)
+    y_test_aug = np.concatenate([y, augmented_y], axis=0)
 
     # 4) Run predictions
     _, cls_probs = model.predict(x_test_aug, batch_size=1)
@@ -364,33 +363,19 @@ def save_onnx_model(model):
 #               MAIN
 # ======================================
 if __name__ == "__main__":
-    set_seeds()
+    set_seeds()  # set seed for reproducibility
 
     # --- Load all data and do split
-    X_all, y_all = load_notifications(JSON_PATH)
-    X_train, X_test, y_train, y_test = time_based_split(X_all, y_all)
+    before, after, n50, n30, n20, n15, y = load_notifications(JSON_PATH)
+    '''
+    before and after are the raw prices before and after the event (50 minutes)
+    n50, n30, n20, n15 are the 50, 30, 20, 15 bars normalized before the event
+    y is the target label (0 for downwards, 1 for sidewards, 2 for upwards)
+    '''
+    X_train, X_test, y_train, y_test = time_based_split(n50, y)
 
-    augmented_X = []
-    augmented_y = []
-
-    for i in range(len(X_train)):
-        for _ in range(TIMES_SIZE):
-            augmented_X.append(augment_window(X_train[i]))
-            augmented_y.append(y_train[i])
-
-    augmented_X = np.array(augmented_X)
-    augmented_y = np.array(augmented_y)
-
-    X_train_aug = np.concatenate([X_train, augmented_X], axis=0)
-    y_train_aug = np.concatenate([y_train, augmented_y], axis=0)
-
-    print(f"Original train: {X_train.shape[0]} samples")
-    print(f"Augmented copies: {augmented_X.shape[0]} samples")
-    print(f"Combined train: {X_train_aug.shape[0]} samples")
-
-    # 5) Call training routine on X_train_aug / y_train_aug
-    model, encoder, history = train_autoencoder_classifier(
-        X_train_aug, y_train_aug,
+    model, encoder = train_autoencoder_classifier(
+        X_train, y_train,
         X_test, y_test,
         seq_len=LOOKBACK_SIZE,
         n_feat=NUM_FEATURES,
@@ -402,45 +387,31 @@ if __name__ == "__main__":
     )
 
     # --- Evaluate on the validation JSON files ---
-    evaluate_with_confusion(model, "valnotifications.json", 0.5)
+    before, after, n50, n30, n20, n15, y = load_notifications(VAL_JSON_PATH)
+    evaluate_with_confusion(model, 0.5, n50, y)
 
     save_onnx_model(model)
 
 '''
-use a cnn + lstm combo to predict the next movement
- - use this with a longer time window
- - add a 3 state model with a percentage certainty about the increase or decrease.
- 
+ change to a 3 state model with a percentage certainty about the increase or decrease or neutral
  
  add an autoencoder and a bottleneck to try to recreate the future. - try with longer windows as well 
- based on the future creation if it works create more synthetic samples.
- 
- normalize all windows between 0 and 1 individually
- 
- 
- 4. Predictive Modeling / Sequence Generation
-	•	Beyond reconstructing the immediate future, you can:
-	•	Feed the bottleneck into a decoder that predicts multiple steps ahead.
-	•	Combine this with your primary model to see “what might happen next” and improve signal reliability.
-	•	Essentially, it becomes a generative model for future price sequences.
+ based on the future creation if it works create more synthetic samples. 
 
-⸻
-
-5. Synthetic Data Augmentation
+Synthetic Data Augmentation
 	•	Once the autoencoder can reconstruct future sequences reliably, you can:
+	•   use the encoder to give the user an idea of what might happens in the future
+	•   output the certainty of the future
+	•	Combine this with your primary model to see “what might happen next” and improve signal reliability.
+
+	
+	•	Once the autoencoder can reconstruct past sequences reliably, you can:
 	•	Generate slightly varied versions of your sequences.
 	•	Expand your training dataset for rare market conditions.
 	•	This helps your CNN+LSTM learn better generalization.
 
-⸻
-
-6. Latent Space Clustering
+Latent Space Clustering
 	•	After training, you can cluster the latent representations of windows:
 	•	Identify similar market regimes or patterns.
 	•	Use cluster membership as a feature for your meta-model (e.g., “signals in cluster A tend to be more reliable”).
-	
-	
-	
-	-> possibly try a slightly more expressive model	
-	-> add additional features to the model
 '''
