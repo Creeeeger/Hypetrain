@@ -16,6 +16,7 @@ from tensorflow.keras.layers import Input, Conv1D, BatchNormalization, MaxPool1D
 from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
+from tensorflow.python.keras.saving.save import save_model
 
 # ====================
 # Configuration / Parameters
@@ -55,7 +56,7 @@ TRAIN_PARAMS = {
 AE_PARAMS = {
     "latent_dim": 32,  # size of bottleneck
     "lr": 1e-3,
-    "epochs": 60,
+    "epochs": 30,
     "batch_size": 128,
     "es_patience": 8,
     "rlrp_factor": 0.5,
@@ -89,7 +90,7 @@ def split_data(df: pd.DataFrame, ratio: float):
 
 def make_sequences(
         df: pd.DataFrame,
-        min_pos_count: int = 5,
+        min_pos_count: int = 7,
         require_consecutive: bool = True
 ):
     df = df.copy()
@@ -174,45 +175,6 @@ def build_seq_autoencoder(seq_len: int, n_feats: int, latent_dim: int):
     ae_inp = Input((seq_len, n_feats), name='ae_input')
     x = Conv1D(32, 5, padding='same', activation='relu', name='enc_conv1')(ae_inp)
     x = BatchNormalization(name='enc_bn1')(x)
-    # (optional) REMOVE pooling to keep resolution (or switch to stride in conv)
-    # x = MaxPool1D(2, name='enc_pool1')(x)
-    x = LSTM(64, return_sequences=False, name='enc_lstm')(x)
-    z = Dense(latent_dim, name='latent')(x)
-
-    # ----- Decoder with positional ramp -----
-    latent_input = Input((latent_dim,), name='latent_input')
-    y = RepeatVector(seq_len, name='dec_repeat')(latent_input)
-
-    # build a [seq_len, 1] ramp and tile for the batch, then concat with y
-    pos = Lambda(lambda _:
-        tf.tile(tf.linspace(0.0, 1.0, seq_len)[None, :, None], [tf.shape(_)[0], 1, 1]),
-        name='time_ramp')(latent_input)
-    y = Concatenate(name='dec_concat')([y, pos])           # shape: (B, T, latent_dim+1)
-
-    y = LSTM(64, return_sequences=True, name='dec_lstm')(y)
-    y = TimeDistributed(Dense(32, activation='relu'), name='dec_td1')(y)
-    ae_out = TimeDistributed(Dense(n_feats), name='dec_out')(y)
-
-    autoencoder = Model(ae_inp, ae_out, name='seq_autoencoder')
-    # reuse decoder layers by name
-    dy = autoencoder.get_layer('dec_repeat')(latent_input)
-    pos2 = autoencoder.get_layer('time_ramp')(latent_input)
-    dy = autoencoder.get_layer('dec_concat')([dy, pos2])
-    dy = autoencoder.get_layer('dec_lstm')(dy)
-    dy = autoencoder.get_layer('dec_td1')(dy)
-    dec_out = autoencoder.get_layer('dec_out')(dy)
-    decoder = Model(latent_input, dec_out, name='seq_decoder')
-
-    encoder = Model(ae_inp, z, name='seq_encoder')
-    autoencoder.compile(optimizer=Adam(AE_PARAMS["lr"]), loss=MeanSquaredError())
-    return autoencoder, encoder, decoder
-
-
-def build_seq_autoencoder1(seq_len: int, n_feats: int, latent_dim: int):
-    # ----- Encoder -----
-    ae_inp = Input((seq_len, n_feats), name='ae_input')
-    x = Conv1D(32, 5, padding='same', activation='relu', name='enc_conv1')(ae_inp)
-    x = BatchNormalization(name='enc_bn1')(x)
     x = MaxPool1D(2, name='enc_pool1')(x)
     x = LSTM(64, return_sequences=False, name='enc_lstm')(x)
     z = Dense(latent_dim, name='latent')(x)
@@ -233,7 +195,41 @@ def build_seq_autoencoder1(seq_len: int, n_feats: int, latent_dim: int):
     dy = autoencoder.get_layer('dec_td1')(dy)
     dec_out = autoencoder.get_layer('dec_out')(dy)
     decoder = Model(latent_input, dec_out, name='seq_decoder')
+    autoencoder.compile(optimizer=Adam(AE_PARAMS["lr"]), loss=MeanSquaredError())
+    return autoencoder, encoder, decoder
 
+
+def build_seq_autoencoder_new(seq_len: int, n_feats: int, latent_dim: int):
+    # ----- Encoder -----
+    enc_in = Input((seq_len, n_feats), name='ae_input')
+    x = Conv1D(32, 5, padding='same', activation='relu', name='enc_conv1')(enc_in)
+    x = BatchNormalization(name='enc_bn1')(x)
+    # (no pooling to keep temporal resolution)
+    # x = MaxPool1D(2, name='enc_pool1')(x)
+    x = LSTM(64, return_sequences=False, name='enc_lstm')(x)
+    z = Dense(latent_dim, name='latent')(x)
+    encoder = Model(enc_in, z, name='seq_encoder')
+
+    # ----- Decoder -----
+    lat_in = Input((latent_dim,), name='latent_input')
+    y = RepeatVector(seq_len, name='dec_repeat')(lat_in)
+
+    # time ramp (B, T, 1), concat to provide positional info
+    pos = Lambda(
+        lambda t: tf.tile(tf.linspace(0.0, 1.0, seq_len)[None, :, None],
+                          [tf.shape(t)[0], 1, 1]),
+        name='time_ramp'
+    )(lat_in)
+    y = Concatenate(name='dec_concat')([y, pos])
+
+    y = LSTM(64, return_sequences=True, name='dec_lstm')(y)
+    y = TimeDistributed(Dense(32, activation='relu'), name='dec_td1')(y)
+    dec_out = TimeDistributed(Dense(n_feats), name='dec_out')(y)
+    decoder = Model(lat_in, dec_out, name='seq_decoder')
+
+    # ----- Autoencoder (shares encoder/decoder weights) -----
+    ae_out = decoder(encoder(enc_in))
+    autoencoder = Model(enc_in, ae_out, name='seq_autoencoder')
     autoencoder.compile(optimizer=Adam(AE_PARAMS["lr"]), loss=MeanSquaredError())
     return autoencoder, encoder, decoder
 
@@ -293,9 +289,19 @@ def synthesize_positive_windows(encoder, decoder, X_pos, n_synth: int, noise_std
 
 
 def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
+    # Find the column index of 'close' in FEATURES
+    close_idx = FEATURES.index('close')
+
+    X_train = X_train[:, :, [close_idx]]  # shape: (N, T, 1)
+    X_val = X_val[:, :, [close_idx]]  # shape: (M, T, 1)
+
     assert X_train.ndim == 3, f"Expected X_train with shape (N,T,C), got {X_train.shape}"
     seq_len, n_feats = X_train.shape[1], X_train.shape[2]
     autoencoder, encoder, decoder = build_seq_autoencoder(seq_len, n_feats, AE_PARAMS["latent_dim"])
+
+    print(autoencoder.summary())
+    print(encoder.summary())
+    print(decoder.summary())
 
     # Select positives
     X_pos = X_train[y_train == 1]
@@ -314,6 +320,9 @@ def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
         else:
             print(f"[AE] Skipping validation: X_val shape {X_val.shape} incompatible with X_train {X_train.shape}.")
 
+    plot_windows(X_train, ['close'], n=min(4, X_train.shape[0]),
+                 title=" positive windows (AE)")
+
     es = EarlyStopping(monitor='val_loss' if val_data else 'loss',
                        mode='min', patience=AE_PARAMS['es_patience'],
                        restore_best_weights=True)
@@ -330,7 +339,7 @@ def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
         callbacks=[es, rlrp],
         verbose=1
     )
-    return autoencoder, encoder, decoder
+    return autoencoder, encoder, decoder, X_train
 
 
 def export_to_onnx(model: Model, onnx_filename: str):
@@ -348,6 +357,50 @@ def export_to_onnx(model: Model, onnx_filename: str):
     print(f"ONNX model saved to {onnx_filename}")
 
 
+def features_from_close_batch(X_close: np.ndarray, ma_window: int = 10, slope_window: int = 5) -> np.ndarray:
+    if X_close.ndim == 2:
+        X_close = X_close[:, :, None]
+
+    N, T, _ = X_close.shape
+    out = np.zeros((N, T, len(FEATURES)), dtype=np.float32)
+
+    for i in range(N):
+        c = X_close[i, :, 0].astype(np.float64)  # 1D (T,)
+
+        # ma_10 with min_periods=1 (defined from first point)
+        ma10 = pd.Series(c).rolling(ma_window, min_periods=1).mean().to_numpy()
+
+        # slope_5 with variable-length window near the start; slope=0 if <2 points
+        slopes = np.zeros(T, dtype=np.float64)
+        for t in range(T):
+            start = max(0, t - (slope_window - 1))
+            seg = c[start:t + 1]
+            if seg.size >= 2:
+                x = np.arange(seg.size, dtype=np.float64)
+                s, _ = np.polyfit(x, seg, 1)  # slope
+                slopes[t] = s
+            else:
+                slopes[t] = 0.0
+
+        # ret_1: percent change; 0 at first element
+        ret = np.zeros(T, dtype=np.float64)
+        denom = np.where(np.abs(c[:-1]) < 1e-12, 1e-12, c[:-1])
+        ret[1:] = np.diff(c) / denom
+
+        # Stack in FEATURE order
+        W = np.stack([c, ma10, slopes, ret], axis=-1)  # (T, 4)
+
+        # Per-window, per-feature min-max normalization (same as make_sequences)
+        mins = W.min(axis=0)
+        maxs = W.max(axis=0)
+        rng = np.where((maxs - mins) == 0, 1e-6, (maxs - mins))
+        W_norm = (W - mins) / rng
+
+        out[i] = W_norm.astype(np.float32)
+
+    return out
+
+
 if __name__ == "__main__":
     # set seed for reproducibility
     set_seeds()
@@ -362,17 +415,10 @@ if __name__ == "__main__":
     X_train, y_train = make_sequences(train_df)
     X_val, y_val = make_sequences(val_df)
 
-    # --- make close-only copies for AE ---
-    # Find the column index of 'close' in FEATURES
-    close_idx = FEATURES.index('close')
-
-    Xc_train = X_train[:, :, [close_idx]]  # shape: (N, T, 1)
-    Xc_val = X_val[:, :, [close_idx]]  # shape: (M, T, 1)
-
     # --- train AE on train positives only ---
-    ae, enc, dec = train_autoencoder_on_positives(Xc_train, y_train, Xc_val, y_val)
+    ae, enc, dec, Xc_train = train_autoencoder_on_positives(X_train, y_train, X_val, y_val)
 
-    # --- NEW: decide how many positives to synthesize ---
+    # --- decide how many positives to synthesize ---
     if enc is not None and dec is not None:
         pos_count = int(np.sum(y_train == 1))
         neg_count = int(np.sum(y_train == 0))
@@ -380,18 +426,36 @@ if __name__ == "__main__":
         n_synth = max(0, target_pos - pos_count)
 
         if n_synth > 0 and pos_count > 0:
-            X_pos = Xc_train[y_train == 1]
-            X_synth = synthesize_positive_windows(enc, dec, X_pos, n_synth, AE_PARAMS["noise_std"])
-            y_synth = np.ones((X_synth.shape[0],), dtype=y_train.dtype)
+            X_pos = X_train[y_train == 1]
+            X_synth = synthesize_positive_windows(enc, dec, Xc_train[y_train == 1], n_synth, AE_PARAMS["noise_std"])
+            plot_windows(X_synth, ['close'], n=min(10, X_synth.shape[0]),
+                         title="Synthetic positive windows (AE + features)")
 
-            # concat synthetic positives
-            #X_train = np.concatenate([X_train, X_synth], axis=0)
-            #y_train = np.concatenate([y_train, y_synth], axis=0)
-            #print(f"[AE] Synthesized {X_synth.shape[0]} positive windows. "  f"Train size now: {X_train.shape[0]}")
+            plot_windows(X_pos, FEATURES, n=min(10, X_pos.shape[0]),
+                         title="positive windows (AE + features)")
 
-            # --- Visualize: synthetic positive windows from AE ---
-            if X_synth.shape[0] > 0:
-                plot_windows(X_synth, FEATURES, n=min(10, X_synth.shape[0]), title="Synthetic positive windows (AE)")
+            plot_windows(X_train, FEATURES, n=min(10, X_train.shape[0]),
+                         title="windows (AE + features)")
+
+            # Build full 4-feature stack from synthetic close-only windows
+            X_synth_full = features_from_close_batch(X_synth)  # -> (n_synth, T, 4)
+            y_synth = np.ones((X_synth_full.shape[0],), dtype=y_train.dtype)
+
+            # concat synthetic positives into the training set
+            X_train = np.concatenate([X_train, X_synth_full], axis=0)
+            y_train = np.concatenate([y_train, y_synth], axis=0)
+            print(f"[AE] Synthesized {X_synth_full.shape[0]} positive windows. " f"Train size now: {X_train.shape[0]}")
+
+            # visualize a few of the full synthetic windows
+            plot_windows(X_synth_full, FEATURES, n=min(10, X_synth_full.shape[0]),
+                         title="Synthetic positive windows (AE + features)")
+
+            plot_windows(X_pos, FEATURES, n=min(10, X_pos.shape[0]),
+                         title="positive windows (AE + features)")
+
+            plot_windows(X_train, FEATURES, n=min(10, X_train.shape[0]),
+                         title="windows (AE + features)")
+
         else:
             print("[AE] No synthesis needed or unavailable.")
     else:
