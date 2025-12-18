@@ -1,5 +1,6 @@
 import os
 import random
+import argparse
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -25,6 +26,7 @@ from tensorflow.python.keras.saving.save import save_model
 FEATURES = ['close', 'ma_10', 'slope_5', 'ret_1']
 WINDOW_SIZE = 18
 SPLIT_RATIO = 0.8
+TARGET_COL = "target"
 STOCK_FILE = "uptrendStocksQUBTUNAMBG.csv"
 TEST_FILE = "uptrendStocksQUBTUNAMBG.csv"
 
@@ -91,9 +93,12 @@ def split_data(df: pd.DataFrame, ratio: float):
 def make_sequences(
         df: pd.DataFrame,
         min_pos_count: int = 7,
-        require_consecutive: bool = True
+        require_consecutive: bool = True,
+        target_col: str = TARGET_COL,
 ):
     df = df.copy()
+    if target_col not in df.columns:
+        raise ValueError(f"Target column '{target_col}' not found. Available: {df.columns.tolist()}")
 
     # --- feature engineering ---
     df['ma_10'] = df['close'].rolling(10, min_periods=1).mean()
@@ -106,7 +111,7 @@ def make_sequences(
     df['ret_1'] = df['close'].pct_change().fillna(0)
 
     arr = df[FEATURES].values
-    y_all = df['target'].values.astype(int)
+    y_all = pd.to_numeric(df[target_col], errors="coerce").fillna(0).astype(int).values
 
     def max_consecutive_ones(a):
         # runs of ones length
@@ -401,19 +406,30 @@ def features_from_close_batch(X_close: np.ndarray, ma_window: int = 10, slope_wi
     return out
 
 
+def parse_args():
+    p = argparse.ArgumentParser(description="Train uptrend model with separate train/eval files")
+    p.add_argument("--train-file", default=STOCK_FILE, help="CSV used for training/validation split")
+    p.add_argument("--eval-file", default=TEST_FILE, help="CSV used for evaluation (no split)")
+    p.add_argument("--target-col", default=TARGET_COL, help="Target column name (e.g. target_clean)")
+    p.add_argument("--split-ratio", type=float, default=SPLIT_RATIO, help="Train/val split ratio on train-file")
+    return p.parse_args()
+
+
 if __name__ == "__main__":
     # set seed for reproducibility
     set_seeds()
 
+    args = parse_args()
+
     # Load and prepare data
-    df = load_data(STOCK_FILE)
+    df = load_data(args.train_file)
 
     # split into train and validation sets
-    train_df, val_df = split_data(df, SPLIT_RATIO)
+    train_df, val_df = split_data(df, args.split_ratio)
 
     # engineer features and normalize window data
-    X_train, y_train = make_sequences(train_df)
-    X_val, y_val = make_sequences(val_df)
+    X_train, y_train = make_sequences(train_df, target_col=args.target_col)
+    X_val, y_val = make_sequences(val_df, target_col=args.target_col)
 
     # --- train AE on train positives only ---
     ae, enc, dec, Xc_train = train_autoencoder_on_positives(X_train, y_train, X_val, y_val)
@@ -502,10 +518,10 @@ if __name__ == "__main__":
             print(f"{layer.name:20s} bias values: {layer.bias.numpy()}\n")
 
     # Evaluate on test set if provided
-    if TEST_FILE:
-        test_df = load_data(TEST_FILE)
+    if args.eval_file:
+        test_df = load_data(args.eval_file)
 
-        X_test, y_test = make_sequences(test_df)
+        X_test, y_test = make_sequences(test_df, target_col=args.target_col)
 
         results = model.evaluate(X_test, y_test, batch_size=TRAIN_PARAMS['batch_size'])
         print("Test set evaluation:", dict(zip(model.metrics_names, results)))
