@@ -41,8 +41,8 @@ FEATURES = ['close', 'ma_10', 'slope_5', 'ret_1']
 WINDOW_SIZE = 18
 SPLIT_RATIO = 0.8
 TARGET_COL = "target"
-STOCK_FILE = "uptrendStocksQUBTUNAMBG.csv"
-TEST_FILE = "uptrendStocksQUBTUNAMBG.csv"
+STOCK_FILE = "uptrendStocksQUBTUNAMBG__target_clean__minrun8_gr0.9_red1_ret0.002_gap0.csv"
+TEST_FILE = "uptrendStocksOBTSUNAMBG__target_clean__minrun8_gr0.9_red1_ret0.002_gap0.csv"
 SEQ_STRIDE = 1
 NORMALIZATION = "zscore"  # "zscore" keeps sign; "minmax" matches old behavior
 
@@ -370,7 +370,13 @@ def _sample_indices(n_total: int, n: int):
     return np.random.choice(n_total, size=n, replace=False)
 
 
-def plot_windows(X: np.ndarray, feature_names, n: int = 5, title: str = "Windows"):
+def plot_windows(
+        X: np.ndarray,
+        feature_names,
+        n: int = 5,
+        title: str = "Windows",
+        save_path: str | None = None,
+):
     """Plot n windows (each as a small multi-feature time series panel).
     X shape: (N, seq_len, n_feats)."""
     if X is None or X.size == 0:
@@ -400,7 +406,48 @@ def plot_windows(X: np.ndarray, feature_names, n: int = 5, title: str = "Windows
         axes[0].legend(loc='upper right', ncol=min(4, w.shape[1]))
     fig.suptitle(title)
     plt.tight_layout()
-    plt.show()
+    if save_path:
+        plt.savefig(save_path, dpi=160)
+        plt.close(fig)
+        print(f"[PLOT] Saved {save_path}")
+    else:
+        plt.show()
+
+
+def plot_ae_reconstructions(
+        autoencoder,
+        X_pos,
+        n: int = 4,
+        title: str = "AE reconstructions (close)",
+        save_path: str | None = None,
+):
+    if X_pos is None or X_pos.size == 0:
+        print("[AE] No positive windows available for reconstruction plot.")
+        return
+
+    n = min(n, X_pos.shape[0])
+    idx = _sample_indices(X_pos.shape[0], n)
+    X_sample = X_pos[idx]
+    X_recon = autoencoder.predict(X_sample, verbose=0)
+
+    fig, axes = plt.subplots(n, 1, figsize=(10, 2.4 * n), sharex=True)
+    if n == 1:
+        axes = [axes]
+    for i, ax in enumerate(axes):
+        ax.plot(X_sample[i, :, 0], color='black', linewidth=1.5, label='orig')
+        ax.plot(X_recon[i, :, 0], color='tab:orange', linewidth=1.2, label='recon')
+        ax.set_ylabel("norm close")
+        ax.legend(loc='upper right')
+        ax.grid(True, alpha=0.3)
+    axes[-1].set_xlabel("t (steps)")
+    fig.suptitle(title)
+    plt.tight_layout()
+    if save_path:
+        plt.savefig(save_path, dpi=160)
+        plt.close(fig)
+        print(f"[PLOT] Saved {save_path}")
+    else:
+        plt.show()
 
 
 def synthesize_positive_windows(encoder, decoder, X_pos, n_synth: int, noise_std: float):
@@ -418,7 +465,14 @@ def synthesize_positive_windows(encoder, decoder, X_pos, n_synth: int, noise_std
     return X_synth
 
 
-def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
+def train_autoencoder_on_positives(
+        X_train,
+        y_train,
+        X_val=None,
+        y_val=None,
+        plot_recon: bool = True,
+        plot_dir: str | None = None,
+):
     # Find the column index of 'close' in FEATURES
     close_idx = FEATURES.index('close')
 
@@ -450,8 +504,13 @@ def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
         else:
             print(f"[AE] Skipping validation: X_val shape {X_val.shape} incompatible with X_train {X_train.shape}.")
 
-    plot_windows(X_train, ['close'], n=min(4, X_train.shape[0]),
-                 title=" positive windows (AE)")
+    plot_windows(
+        X_train,
+        ['close'],
+        n=min(4, X_train.shape[0]),
+        title="positive windows (AE)",
+        save_path=f"{plot_dir}/ae_positive_windows.png" if plot_dir else None,
+    )
 
     es = EarlyStopping(monitor='val_loss' if val_data else 'loss',
                        mode='min', patience=AE_PARAMS['es_patience'],
@@ -469,6 +528,14 @@ def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
         callbacks=[es, rlrp],
         verbose=1
     )
+    if plot_recon:
+        plot_ae_reconstructions(
+            autoencoder,
+            X_pos,
+            n=4,
+            title="AE reconstructions (close)",
+            save_path=f"{plot_dir}/ae_reconstructions.png" if plot_dir else None,
+        )
     return autoencoder, encoder, decoder, X_train
 
 
@@ -586,6 +653,17 @@ def parse_args():
         action="store_true",
         help="Enable autoencoder-based positive synthesis (recommended only with --norm=minmax)",
     )
+    p.add_argument(
+        "--ae-only",
+        action="store_true",
+        help="Train/visualize the autoencoder and exit (requires --use-ae)",
+    )
+    p.add_argument(
+        "--plot-dir",
+        type=str,
+        default=None,
+        help="Directory to save plots (if omitted, plots are shown interactively)",
+    )
     return p.parse_args()
 
 
@@ -596,6 +674,10 @@ if __name__ == "__main__":
     require_consecutive = not args.no_require_consecutive
     if args.use_ae and args.norm != "minmax":
         raise ValueError("--use-ae currently requires --norm=minmax (otherwise synthetic feature stats won't match).")
+    if args.ae_only and not args.use_ae:
+        raise ValueError("--ae-only requires --use-ae.")
+    if args.plot_dir:
+        os.makedirs(args.plot_dir, exist_ok=True)
 
     # Load and prepare data
     df = load_data(args.train_file)
@@ -624,7 +706,12 @@ if __name__ == "__main__":
 
     if args.use_ae:
         # --- train AE on train positives only ---
-        ae, enc, dec, Xc_train = train_autoencoder_on_positives(X_train, y_train, X_val, y_val)
+        ae, enc, dec, Xc_train = train_autoencoder_on_positives(
+            X_train, y_train, X_val, y_val, plot_dir=args.plot_dir
+        )
+        if args.ae_only:
+            print("[AE] --ae-only set; exiting after autoencoder training/visualization.")
+            raise SystemExit(0)
 
         # --- decide how many positives to synthesize ---
         if enc is not None and dec is not None:
