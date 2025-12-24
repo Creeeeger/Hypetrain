@@ -472,6 +472,8 @@ def train_autoencoder_on_positives(
         y_val=None,
         plot_recon: bool = True,
         plot_dir: str | None = None,
+        plot_n: int = 4,
+        recon_n: int = 4,
 ):
     # Find the column index of 'close' in FEATURES
     close_idx = FEATURES.index('close')
@@ -505,9 +507,9 @@ def train_autoencoder_on_positives(
             print(f"[AE] Skipping validation: X_val shape {X_val.shape} incompatible with X_train {X_train.shape}.")
 
     plot_windows(
-        X_train,
+        X_pos,
         ['close'],
-        n=min(4, X_train.shape[0]),
+        n=min(plot_n, X_pos.shape[0]),
         title="positive windows (AE)",
         save_path=f"{plot_dir}/ae_positive_windows.png" if plot_dir else None,
     )
@@ -532,7 +534,7 @@ def train_autoencoder_on_positives(
         plot_ae_reconstructions(
             autoencoder,
             X_pos,
-            n=4,
+            n=min(recon_n, X_pos.shape[0]),
             title="AE reconstructions (close)",
             save_path=f"{plot_dir}/ae_reconstructions.png" if plot_dir else None,
         )
@@ -664,6 +666,18 @@ def parse_args():
         default=None,
         help="Directory to save plots (if omitted, plots are shown interactively)",
     )
+    p.add_argument(
+        "--ae-plot-n",
+        type=int,
+        default=16,
+        help="How many positive windows to plot for AE inspection",
+    )
+    p.add_argument(
+        "--ae-recon-n",
+        type=int,
+        default=16,
+        help="How many reconstruction samples to plot for AE inspection",
+    )
     return p.parse_args()
 
 
@@ -707,7 +721,13 @@ if __name__ == "__main__":
     if args.use_ae:
         # --- train AE on train positives only ---
         ae, enc, dec, Xc_train = train_autoencoder_on_positives(
-            X_train, y_train, X_val, y_val, plot_dir=args.plot_dir
+            X_train,
+            y_train,
+            X_val,
+            y_val,
+            plot_dir=args.plot_dir,
+            plot_n=args.ae_plot_n,
+            recon_n=args.ae_recon_n,
         )
         if args.ae_only:
             print("[AE] --ae-only set; exiting after autoencoder training/visualization.")
