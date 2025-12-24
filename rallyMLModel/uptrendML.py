@@ -1,23 +1,37 @@
+import argparse
 import os
 import random
-import argparse
+
+REPO_ROOT = os.path.dirname(os.path.abspath(__file__))
+os.environ.setdefault("MPLCONFIGDIR", os.path.join(REPO_ROOT, ".mplconfig"))
+os.environ.setdefault("XDG_CACHE_HOME", os.path.join(REPO_ROOT, ".cache"))
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import tensorflow as tf
+
 import tf2onnx
-from keras.losses import BinaryCrossentropy
-from keras.metrics import Precision, Recall, AUC
-from keras.src.layers import Concatenate, Lambda
+from tensorflow.keras.losses import BinaryCrossentropy
+from tensorflow.keras.metrics import Precision, Recall, AUC
 from sklearn.utils import class_weight
 from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau
-from tensorflow.keras.layers import Input, Conv1D, BatchNormalization, MaxPool1D, LSTM, Dropout, Dense, RepeatVector, \
-    TimeDistributed
+from tensorflow.keras.layers import (
+    Input,
+    Conv1D,
+    BatchNormalization,
+    MaxPool1D,
+    LSTM,
+    Dropout,
+    Dense,
+    RepeatVector,
+    TimeDistributed,
+    Concatenate,
+    Lambda,
+)
 from tensorflow.keras.losses import MeanSquaredError
 from tensorflow.keras.models import Model
 from tensorflow.keras.optimizers import Adam
-from tensorflow.python.keras.saving.save import save_model
 
 # ====================
 # Configuration / Parameters
@@ -29,12 +43,17 @@ SPLIT_RATIO = 0.8
 TARGET_COL = "target"
 STOCK_FILE = "uptrendStocksQUBTUNAMBG.csv"
 TEST_FILE = "uptrendStocksQUBTUNAMBG.csv"
+SEQ_STRIDE = 1
+NORMALIZATION = "zscore"  # "zscore" keeps sign; "minmax" matches old behavior
 
 # Random seed
 SEED = int.from_bytes(os.urandom(4), 'big')
 
-# Undersampling
-NEG_SAMPLE_KEEP_RATIO = 1 - 0.94  # keep 6% of negatives
+# Negative sampling / balancing (training only)
+NEG_POS_RATIO = 3.0  # keep at most this many negatives per positive (0=keep all negatives)
+NEG_SAMPLING = "mixed"  # "random", "near_pos", "mixed"
+NEAR_POS_RADIUS = 300  # sequences within +/- this distance from a positive sequence
+HARD_NEG_FRACTION = 0.7  # for mixed: fraction of negatives sampled from near_pos bucket
 
 # Model hyperparameters
 MODEL_PARAMS = {
@@ -71,12 +90,13 @@ AE_PARAMS = {
 ONNX_OPSET = 18
 
 
-def set_seeds():
-    # Set seeds
-    random.seed(SEED)
-    np.random.seed(SEED)
-    tf.random.set_seed(SEED)
-    print(f"Seed used for this run: {SEED}")
+def set_seeds(seed: int | None = None) -> int:
+    seed_used = int(SEED if seed is None else seed)
+    random.seed(seed_used)
+    np.random.seed(seed_used)
+    tf.random.set_seed(seed_used)
+    print(f"Seed used for this run: {seed_used}")
+    return seed_used
 
 
 def load_data(path: str) -> pd.DataFrame:
@@ -90,11 +110,31 @@ def split_data(df: pd.DataFrame, ratio: float):
     return train_df, val_df
 
 
+def normalize_window(window_feats: np.ndarray, method: str) -> np.ndarray:
+    if method == "minmax":
+        mins = window_feats.min(axis=0)
+        maxs = window_feats.max(axis=0)
+        ranges = np.where(maxs - mins == 0, 1e-6, maxs - mins)
+        return (window_feats - mins) / ranges
+
+    if method == "zscore":
+        means = window_feats.mean(axis=0)
+        stds = window_feats.std(axis=0)
+        stds = np.where(stds == 0, 1e-6, stds)
+        out = (window_feats - means) / stds
+        return np.clip(out, -6.0, 6.0)
+
+    raise ValueError(f"Unknown normalization method: {method}")
+
+
 def make_sequences(
         df: pd.DataFrame,
         min_pos_count: int = 7,
         require_consecutive: bool = True,
         target_col: str = TARGET_COL,
+        stride: int = SEQ_STRIDE,
+        normalization: str = NORMALIZATION,
+        return_end_indices: bool = False,
 ):
     df = df.copy()
     if target_col not in df.columns:
@@ -103,12 +143,18 @@ def make_sequences(
     # --- feature engineering ---
     df['ma_10'] = df['close'].rolling(10, min_periods=1).mean()
 
-    def slope(x):
+    def slope_log(x):
         idx = np.arange(len(x))
+        x = np.asarray(x, dtype=np.float64)
+        x = np.log(np.clip(x, 1e-9, None))
         return np.polyfit(idx, x, 1)[0]
 
-    df['slope_5'] = df['close'].rolling(5).apply(slope, raw=True).fillna(0)
-    df['ret_1'] = df['close'].pct_change().fillna(0)
+    # slope on log(close) is scale-invariant (approx. return per bar)
+    df['slope_5'] = df['close'].rolling(5).apply(slope_log, raw=True).fillna(0)
+
+    # log-return keeps sign and is price-scale invariant
+    lc = np.log(np.clip(df['close'].astype(float).values, 1e-9, None))
+    df['ret_1'] = pd.Series(lc).diff().fillna(0).to_numpy()
 
     arr = df[FEATURES].values
     y_all = pd.to_numeric(df[target_col], errors="coerce").fillna(0).astype(int).values
@@ -127,15 +173,14 @@ def make_sequences(
         return int(run_lengths.max()) if run_lengths.size else 0
 
     X, y = [], []
-    for i in range(WINDOW_SIZE, len(df)):
+    end_indices = []
+    stride = int(max(1, stride))
+    for i in range(WINDOW_SIZE, len(df), stride):
         window_feats = arr[i - WINDOW_SIZE:i].copy()
         window_labels = y_all[i - WINDOW_SIZE:i]
 
         # --- normalize per feature within this window ---
-        mins = window_feats.min(axis=0)
-        maxs = window_feats.max(axis=0)
-        ranges = np.where(maxs - mins == 0, 1e-6, maxs - mins)
-        window_feats = (window_feats - mins) / ranges
+        window_feats = normalize_window(window_feats, normalization)
 
         # --- window label based on labels inside the window ---
         if require_consecutive:
@@ -145,8 +190,85 @@ def make_sequences(
 
         X.append(window_feats)
         y.append(label)
+        end_indices.append(i - 1)
 
-    return np.array(X), np.array(y, dtype=int)
+    X = np.array(X)
+    y = np.array(y, dtype=int)
+    if return_end_indices:
+        return X, y, np.array(end_indices, dtype=int)
+    return X, y
+
+
+def downsample_negatives(
+        X: np.ndarray,
+        y: np.ndarray,
+        neg_pos_ratio: float,
+        sampling: str,
+        near_pos_radius: int,
+        hard_neg_fraction: float,
+        seed: int,
+):
+    pos_idx = np.where(y == 1)[0]
+    neg_idx = np.where(y == 0)[0]
+
+    if pos_idx.size == 0 or neg_pos_ratio <= 0:
+        return X, y
+
+    desired_neg = int(min(neg_idx.size, round(neg_pos_ratio * pos_idx.size)))
+    if desired_neg >= neg_idx.size:
+        return X, y
+
+    rng = np.random.default_rng(seed)
+    sampling = str(sampling)
+    near_pos_radius = int(max(0, near_pos_radius))
+    hard_neg_fraction = float(np.clip(hard_neg_fraction, 0.0, 1.0))
+
+    def sample_from(candidates: np.ndarray, k: int) -> np.ndarray:
+        if k <= 0 or candidates.size == 0:
+            return np.array([], dtype=int)
+        k = int(min(k, candidates.size))
+        return rng.choice(candidates, size=k, replace=False)
+
+    if sampling not in {"random", "near_pos", "mixed"}:
+        raise ValueError("neg_sampling must be one of: random, near_pos, mixed")
+
+    if sampling == "random" or near_pos_radius == 0:
+        neg_keep = sample_from(neg_idx, desired_neg)
+    else:
+        # Build a boolean mask of sequence indices near any positive (difference array trick)
+        n = y.shape[0]
+        diff = np.zeros(n + 1, dtype=np.int32)
+        for p in pos_idx:
+            s = max(0, int(p) - near_pos_radius)
+            e = min(n, int(p) + near_pos_radius + 1)
+            diff[s] += 1
+            diff[e] -= 1
+        near = np.cumsum(diff[:-1]) > 0
+
+        hard_candidates = neg_idx[near[neg_idx]]
+        easy_candidates = neg_idx[~near[neg_idx]]
+
+        if sampling == "near_pos":
+            neg_keep = sample_from(hard_candidates, desired_neg)
+            if neg_keep.size < desired_neg:
+                neg_keep = np.concatenate([neg_keep, sample_from(easy_candidates, desired_neg - neg_keep.size)])
+        else:
+            k_hard = int(round(desired_neg * hard_neg_fraction))
+            k_easy = desired_neg - k_hard
+            hard_pick = sample_from(hard_candidates, k_hard)
+            easy_pick = sample_from(easy_candidates, k_easy)
+            # If one bucket is empty, fill from the other
+            remaining = desired_neg - (hard_pick.size + easy_pick.size)
+            if remaining > 0:
+                pool = np.setdiff1d(neg_idx, np.concatenate([hard_pick, easy_pick]), assume_unique=False)
+                filler = sample_from(pool, remaining)
+                neg_keep = np.concatenate([hard_pick, easy_pick, filler])
+            else:
+                neg_keep = np.concatenate([hard_pick, easy_pick])
+
+    keep_idx = np.concatenate([pos_idx, neg_keep])
+    rng.shuffle(keep_idx)
+    return X[keep_idx], y[keep_idx]
 
 
 def build_model(seq_len: int, n_feats: int):
@@ -250,7 +372,7 @@ def _sample_indices(n_total: int, n: int):
 
 def plot_windows(X: np.ndarray, feature_names, n: int = 5, title: str = "Windows"):
     """Plot n windows (each as a small multi-feature time series panel).
-    X shape: (N, seq_len, n_feats). Values are expected to be window-normalized in [0,1]."""
+    X shape: (N, seq_len, n_feats)."""
     if X is None or X.size == 0:
         print(f"[PLOT] No data provided for '{title}'.")
         return
@@ -266,7 +388,10 @@ def plot_windows(X: np.ndarray, feature_names, n: int = 5, title: str = "Windows
         w = X[idx[i]]  # (seq_len, n_feats)
         for f in range(w.shape[1]):
             ax.plot(w[:, f], label=str(feature_names[f]) if feature_names is not None else f"f{f}")
-        ax.set_ylim(0, 1)
+        lo = float(np.nanmin(w))
+        hi = float(np.nanmax(w))
+        pad = (hi - lo) * 0.1 if hi > lo else 1.0
+        ax.set_ylim(lo - pad, hi + pad)
         ax.set_ylabel(f"win {idx[i]}")
         ax.grid(True, alpha=0.3)
 
@@ -348,6 +473,9 @@ def train_autoencoder_on_positives(X_train, y_train, X_val=None, y_val=None):
 
 
 def export_to_onnx(model: Model, onnx_filename: str):
+    if tf2onnx is None:
+        print("[ONNX] tf2onnx not available; skipping export.")
+        return
     output_name = model.outputs[0].name.split(':')[0]
     model.output_names = [output_name]
 
@@ -362,7 +490,12 @@ def export_to_onnx(model: Model, onnx_filename: str):
     print(f"ONNX model saved to {onnx_filename}")
 
 
-def features_from_close_batch(X_close: np.ndarray, ma_window: int = 10, slope_window: int = 5) -> np.ndarray:
+def features_from_close_batch(
+        X_close: np.ndarray,
+        ma_window: int = 10,
+        slope_window: int = 5,
+        normalization: str = NORMALIZATION,
+) -> np.ndarray:
     if X_close.ndim == 2:
         X_close = X_close[:, :, None]
 
@@ -379,7 +512,7 @@ def features_from_close_batch(X_close: np.ndarray, ma_window: int = 10, slope_wi
         slopes = np.zeros(T, dtype=np.float64)
         for t in range(T):
             start = max(0, t - (slope_window - 1))
-            seg = c[start:t + 1]
+            seg = np.log(np.clip(c[start:t + 1], 1e-9, None))
             if seg.size >= 2:
                 x = np.arange(seg.size, dtype=np.float64)
                 s, _ = np.polyfit(x, seg, 1)  # slope
@@ -387,19 +520,15 @@ def features_from_close_batch(X_close: np.ndarray, ma_window: int = 10, slope_wi
             else:
                 slopes[t] = 0.0
 
-        # ret_1: percent change; 0 at first element
+        # ret_1: log return; 0 at first element
         ret = np.zeros(T, dtype=np.float64)
-        denom = np.where(np.abs(c[:-1]) < 1e-12, 1e-12, c[:-1])
-        ret[1:] = np.diff(c) / denom
+        lc = np.log(np.clip(c, 1e-9, None))
+        ret[1:] = np.diff(lc)
 
         # Stack in FEATURE order
         W = np.stack([c, ma10, slopes, ret], axis=-1)  # (T, 4)
 
-        # Per-window, per-feature min-max normalization (same as make_sequences)
-        mins = W.min(axis=0)
-        maxs = W.max(axis=0)
-        rng = np.where((maxs - mins) == 0, 1e-6, (maxs - mins))
-        W_norm = (W - mins) / rng
+        W_norm = normalize_window(W, normalization)
 
         out[i] = W_norm.astype(np.float32)
 
@@ -412,14 +541,61 @@ def parse_args():
     p.add_argument("--eval-file", default=TEST_FILE, help="CSV used for evaluation (no split)")
     p.add_argument("--target-col", default=TARGET_COL, help="Target column name (e.g. target_clean)")
     p.add_argument("--split-ratio", type=float, default=SPLIT_RATIO, help="Train/val split ratio on train-file")
+    p.add_argument("--seed", type=int, default=None, help="Fix seed for reproducible runs (default: random)")
+    p.add_argument("--epochs", type=int, default=TRAIN_PARAMS["epochs"], help="Training epochs")
+    p.add_argument("--batch-size", type=int, default=TRAIN_PARAMS["batch_size"], help="Batch size")
+    p.add_argument("--stride", type=int, default=SEQ_STRIDE, help="Sequence stride (reduces overlap; e.g. 2,3,5)")
+    p.add_argument(
+        "--norm",
+        choices=["zscore", "minmax"],
+        default=NORMALIZATION,
+        help="Per-window feature normalization method",
+    )
+    p.add_argument("--min-pos-count", type=int, default=7, help="Pos label requires >= this many positives in window")
+    p.add_argument(
+        "--no-require-consecutive",
+        action="store_true",
+        help="If set: use total positive count in window instead of consecutive run length",
+    )
+    p.add_argument(
+        "--neg-pos-ratio",
+        type=float,
+        default=NEG_POS_RATIO,
+        help="Training sampling: keep at most N negatives per positive (0=keep all)",
+    )
+    p.add_argument(
+        "--neg-sampling",
+        choices=["random", "near_pos", "mixed"],
+        default=NEG_SAMPLING,
+        help="How to pick negatives when downsampling",
+    )
+    p.add_argument(
+        "--near-pos-radius",
+        type=int,
+        default=NEAR_POS_RADIUS,
+        help="For near_pos/mixed: negatives within +/- this many sequences from any positive are considered 'hard'",
+    )
+    p.add_argument(
+        "--hard-neg-fraction",
+        type=float,
+        default=HARD_NEG_FRACTION,
+        help="For mixed: fraction of negatives sampled from near_pos bucket",
+    )
+    p.add_argument(
+        "--use-ae",
+        action="store_true",
+        help="Enable autoencoder-based positive synthesis (recommended only with --norm=minmax)",
+    )
     return p.parse_args()
 
 
 if __name__ == "__main__":
     # set seed for reproducibility
-    set_seeds()
-
     args = parse_args()
+    seed_used = set_seeds(args.seed)
+    require_consecutive = not args.no_require_consecutive
+    if args.use_ae and args.norm != "minmax":
+        raise ValueError("--use-ae currently requires --norm=minmax (otherwise synthetic feature stats won't match).")
 
     # Load and prepare data
     df = load_data(args.train_file)
@@ -428,62 +604,61 @@ if __name__ == "__main__":
     train_df, val_df = split_data(df, args.split_ratio)
 
     # engineer features and normalize window data
-    X_train, y_train = make_sequences(train_df, target_col=args.target_col)
-    X_val, y_val = make_sequences(val_df, target_col=args.target_col)
+    X_train, y_train, _train_end_idx = make_sequences(
+        train_df,
+        target_col=args.target_col,
+        min_pos_count=args.min_pos_count,
+        require_consecutive=require_consecutive,
+        stride=args.stride,
+        normalization=args.norm,
+        return_end_indices=True,
+    )
+    X_val, y_val = make_sequences(
+        val_df,
+        target_col=args.target_col,
+        min_pos_count=args.min_pos_count,
+        require_consecutive=require_consecutive,
+        stride=1,
+        normalization=args.norm,
+    )
 
-    # --- train AE on train positives only ---
-    ae, enc, dec, Xc_train = train_autoencoder_on_positives(X_train, y_train, X_val, y_val)
+    if args.use_ae:
+        # --- train AE on train positives only ---
+        ae, enc, dec, Xc_train = train_autoencoder_on_positives(X_train, y_train, X_val, y_val)
 
-    # --- decide how many positives to synthesize ---
-    if enc is not None and dec is not None:
-        pos_count = int(np.sum(y_train == 1))
-        neg_count = int(np.sum(y_train == 0))
-        target_pos = int(AE_PARAMS["synth_target_pos_ratio"] * neg_count)
-        n_synth = max(0, target_pos - pos_count)
+        # --- decide how many positives to synthesize ---
+        if enc is not None and dec is not None:
+            pos_count = int(np.sum(y_train == 1))
+            neg_count = int(np.sum(y_train == 0))
+            target_pos = int(AE_PARAMS["synth_target_pos_ratio"] * neg_count)
+            n_synth = max(0, target_pos - pos_count)
 
-        if n_synth > 0 and pos_count > 0:
-            X_pos = X_train[y_train == 1]
-            X_synth = synthesize_positive_windows(enc, dec, Xc_train[y_train == 1], n_synth, AE_PARAMS["noise_std"])
-            plot_windows(X_synth, ['close'], n=min(10, X_synth.shape[0]),
-                         title="Synthetic positive windows (AE + features)")
+            if n_synth > 0 and pos_count > 0:
+                X_synth = synthesize_positive_windows(enc, dec, Xc_train[y_train == 1], n_synth, AE_PARAMS["noise_std"])
+                X_synth_full = features_from_close_batch(X_synth, normalization=args.norm)  # -> (n_synth, T, 4)
+                y_synth = np.ones((X_synth_full.shape[0],), dtype=y_train.dtype)
 
-            plot_windows(X_pos, FEATURES, n=min(10, X_pos.shape[0]),
-                         title="positive windows (AE + features)")
-
-            plot_windows(X_train, FEATURES, n=min(10, X_train.shape[0]),
-                         title="windows (AE + features)")
-
-            # Build full 4-feature stack from synthetic close-only windows
-            X_synth_full = features_from_close_batch(X_synth)  # -> (n_synth, T, 4)
-            y_synth = np.ones((X_synth_full.shape[0],), dtype=y_train.dtype)
-
-            # concat synthetic positives into the training set
-            X_train = np.concatenate([X_train, X_synth_full], axis=0)
-            y_train = np.concatenate([y_train, y_synth], axis=0)
-            print(f"[AE] Synthesized {X_synth_full.shape[0]} positive windows. " f"Train size now: {X_train.shape[0]}")
-
-            # visualize a few of the full synthetic windows
-            plot_windows(X_synth_full, FEATURES, n=min(10, X_synth_full.shape[0]),
-                         title="Synthetic positive windows (AE + features)")
-
-            plot_windows(X_pos, FEATURES, n=min(10, X_pos.shape[0]),
-                         title="positive windows (AE + features)")
-
-            plot_windows(X_train, FEATURES, n=min(10, X_train.shape[0]),
-                         title="windows (AE + features)")
-
+                X_train = np.concatenate([X_train, X_synth_full], axis=0)
+                y_train = np.concatenate([y_train, y_synth], axis=0)
+                print(f"[AE] Synthesized {X_synth_full.shape[0]} positive windows. Train size now: {X_train.shape[0]}")
+            else:
+                print("[AE] No synthesis needed or unavailable.")
         else:
-            print("[AE] No synthesis needed or unavailable.")
-    else:
-        print("[AE] Autoencoder unavailable; skipping synthesis.")
+            print("[AE] Autoencoder unavailable; skipping synthesis.")
 
-    # Under-sample negatives
-    neg_idx = np.where(y_train == 0)[0]
-    drop_size = int(len(neg_idx) * (1 - NEG_SAMPLE_KEEP_RATIO))
-    drop_idx = np.random.choice(neg_idx, size=drop_size, replace=False)
-    keep_mask = np.ones(len(y_train), dtype=bool)
-    keep_mask[drop_idx] = False
-    X_train, y_train = X_train[keep_mask], y_train[keep_mask]
+    # Downsample negatives (keeps all positives)
+    before = (int(np.sum(y_train == 1)), int(np.sum(y_train == 0)))
+    X_train, y_train = downsample_negatives(
+        X_train,
+        y_train,
+        neg_pos_ratio=args.neg_pos_ratio,
+        sampling=args.neg_sampling,
+        near_pos_radius=args.near_pos_radius,
+        hard_neg_fraction=args.hard_neg_fraction,
+        seed=seed_used,
+    )
+    after = (int(np.sum(y_train == 1)), int(np.sum(y_train == 0)))
+    print(f"[Sampling] pos/neg before={before[0]}/{before[1]} after={after[0]}/{after[1]}")
 
     # Build and initialize model
     model = build_model(WINDOW_SIZE, X_train.shape[2])
@@ -505,8 +680,8 @@ if __name__ == "__main__":
         model.fit(
             X_train, y_train,
             validation_data=(X_val, y_val),
-            epochs=TRAIN_PARAMS['epochs'],
-            batch_size=TRAIN_PARAMS['batch_size'],
+            epochs=args.epochs,
+            batch_size=args.batch_size,
             class_weight=class_weight_dict,
             callbacks=[es, rlrp]
         )
@@ -521,9 +696,16 @@ if __name__ == "__main__":
     if args.eval_file:
         test_df = load_data(args.eval_file)
 
-        X_test, y_test = make_sequences(test_df, target_col=args.target_col)
+        X_test, y_test = make_sequences(
+            test_df,
+            target_col=args.target_col,
+            min_pos_count=args.min_pos_count,
+            require_consecutive=require_consecutive,
+            stride=1,
+            normalization=args.norm,
+        )
 
-        results = model.evaluate(X_test, y_test, batch_size=TRAIN_PARAMS['batch_size'])
+        results = model.evaluate(X_test, y_test, batch_size=args.batch_size)
         print("Test set evaluation:", dict(zip(model.metrics_names, results)))
 
         fig, ax1 = plt.subplots(figsize=(12, 5))
